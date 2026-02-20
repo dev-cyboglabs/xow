@@ -11,7 +11,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import base64
 import io
 import json
@@ -996,9 +996,11 @@ async def process_full_video(recording_id: str, raw_video_id: str, ext: str, mim
         video_data = await grid_out.read()
 
         booth_name = recording.get('booth_name', 'XoW Booth')
-        recording_time = recording.get('start_time', datetime.now())
-        if isinstance(recording_time, datetime):
-            recording_time = recording_time.strftime("%Y-%m-%d %H:%M:%S")
+        utc_start = recording.get('start_time')
+        if isinstance(utc_start, datetime):
+            # start_time is stored as UTC — convert to local time for the burned-in overlay
+            local_dt = utc_start.replace(tzinfo=timezone.utc).astimezone(tz=None)
+            recording_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
         else:
             recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
