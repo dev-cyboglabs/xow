@@ -880,17 +880,17 @@ async def upload_video(
     total_chunks: int = Form(1),
     background_tasks: BackgroundTasks = None
 ):
-    """Upload video file for a recording - remuxes for streaming and extracts audio for transcription"""
+    """Upload video file - stores to GridFS immediately and processes overlay/audio in background"""
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
-        
+
         video_data = await video.read()
-        
+
         filename = video.filename or "recording.mp4"
         content_type = video.content_type or "video/mp4"
-        
+
         if "mp4" in content_type or filename.endswith(".mp4"):
             ext = "mp4"
             mime = "video/mp4"
@@ -903,51 +903,31 @@ async def upload_video(
         else:
             ext = "mp4"
             mime = "video/mp4"
-        
+
         if total_chunks == 1:
-            # Get booth name from recording for overlay
-            booth_name = recording.get('booth_name', 'XoW Booth')
-            recording_time = recording.get('start_time', datetime.now()).strftime("%Y-%m-%d %H:%M:%S") if isinstance(recording.get('start_time'), datetime) else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Add video overlay with timestamp, booth name, and XoW branding
-            logger.info(f"Adding video overlay for booth: {booth_name}")
-            overlay_video = await add_video_overlay(video_data, ext, booth_name, recording_time)
-            
-            # Remux video for web streaming (adds faststart flag for seeking)
-            logger.info(f"Remuxing video for streaming support...")
-            remuxed_video = await remux_video_for_streaming(overlay_video, ext)
-            
-            # Single upload - store video
-            video_id = await fs_bucket.upload_from_stream(
+            # Store raw video to GridFS immediately so we can respond right away
+            raw_video_id = await fs_bucket.upload_from_stream(
                 f"video_{recording_id}.{ext}",
-                io.BytesIO(remuxed_video),
+                io.BytesIO(video_data),
                 metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
             )
-            
-            # Perform head count detection from video frames
-            logger.info(f"Performing head count detection for recording {recording_id}")
-            frames = await extract_video_frames(video_data, ext, num_frames=5)
-            head_count_result = await detect_head_count_from_frames(frames)
-            
+
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
                 {"$set": {
-                    "video_file_id": str(video_id),
+                    "video_file_id": str(raw_video_id),
                     "has_video": True,
                     "video_mime_type": mime,
-                    "status": "processing",
-                    "head_count": head_count_result.get("max_count", 0),
-                    "avg_head_count": head_count_result.get("avg_count", 0),
-                    "head_count_detections": head_count_result.get("detections", [])
+                    "status": "processing"
                 }}
             )
-            
-            logger.info(f"Head count detection: max={head_count_result.get('max_count', 0)}, avg={head_count_result.get('avg_count', 0)}")
-            
-            # Extract audio from video and process (use original data for audio extraction)
+
+            # All heavy processing (overlay, remux, head count, audio) runs in background
             if background_tasks:
-                background_tasks.add_task(process_video_audio, recording_id, video_data, ext)
-            
+                background_tasks.add_task(
+                    process_full_video, recording_id, str(raw_video_id), ext, mime
+                )
+
         else:
             # Chunked upload
             await db.video_chunks.insert_one({
@@ -959,48 +939,115 @@ async def upload_video(
                 "mime_type": mime,
                 "extension": ext
             })
-            
+
             chunks_count = await db.video_chunks.count_documents({"recording_id": recording_id})
             if chunks_count == total_chunks:
                 chunks = await db.video_chunks.find(
                     {"recording_id": recording_id}
                 ).sort("chunk_index", 1).to_list(total_chunks)
-                
+
                 combined_data = b''.join([
                     base64.b64decode(c['data']) for c in chunks
                 ])
-                
+
                 first_chunk = chunks[0] if chunks else {}
                 mime = first_chunk.get('mime_type', 'video/mp4')
                 ext = first_chunk.get('extension', 'mp4')
-                
-                video_id = await fs_bucket.upload_from_stream(
+
+                raw_video_id = await fs_bucket.upload_from_stream(
                     f"video_{recording_id}.{ext}",
                     io.BytesIO(combined_data),
                     metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
                 )
-                
+
                 await db.recordings.update_one(
                     {"_id": ObjectId(recording_id)},
                     {"$set": {
-                        "video_file_id": str(video_id),
+                        "video_file_id": str(raw_video_id),
                         "has_video": True,
                         "video_mime_type": mime,
                         "status": "processing"
                     }}
                 )
-                
+
                 await db.video_chunks.delete_many({"recording_id": recording_id})
-                
-                # Extract audio and process
+
                 if background_tasks:
-                    background_tasks.add_task(process_video_audio, recording_id, combined_data, ext)
-        
-        logger.info(f"Video uploaded for recording {recording_id}: {ext} ({mime})")
-        return {"success": True, "message": f"Video uploaded, extracting audio for analysis", "format": mime}
+                    background_tasks.add_task(
+                        process_full_video, recording_id, str(raw_video_id), ext, mime
+                    )
+
+        logger.info(f"Video received for recording {recording_id}: {ext} ({mime}), processing in background")
+        return {"success": True, "message": "Video received, processing in background", "format": mime}
     except Exception as e:
         logger.error(f"Video upload error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+async def process_full_video(recording_id: str, raw_video_id: str, ext: str, mime: str):
+    """Background task: apply overlay, remux, head count detection, and audio extraction"""
+    try:
+        recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
+        if not recording:
+            return
+
+        # Read the raw video back from GridFS
+        grid_out = await fs_bucket.open_download_stream(ObjectId(raw_video_id))
+        video_data = await grid_out.read()
+
+        booth_name = recording.get('booth_name', 'XoW Booth')
+        recording_time = recording.get('start_time', datetime.now())
+        if isinstance(recording_time, datetime):
+            recording_time = recording_time.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Apply overlay
+        logger.info(f"Adding video overlay for recording {recording_id}")
+        overlay_video = await add_video_overlay(video_data, ext, booth_name, recording_time)
+
+        # Remux for web streaming
+        logger.info(f"Remuxing video for recording {recording_id}")
+        remuxed_video = await remux_video_for_streaming(overlay_video, ext)
+
+        # Replace raw file in GridFS with processed version
+        try:
+            await fs_bucket.delete(ObjectId(raw_video_id))
+        except Exception as del_err:
+            logger.warning(f"Could not delete raw video {raw_video_id}: {del_err}")
+
+        processed_video_id = await fs_bucket.upload_from_stream(
+            f"video_{recording_id}.{ext}",
+            io.BytesIO(remuxed_video),
+            metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
+        )
+
+        # Head count detection
+        logger.info(f"Performing head count detection for recording {recording_id}")
+        frames = await extract_video_frames(video_data, ext, num_frames=5)
+        head_count_result = await detect_head_count_from_frames(frames)
+
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {
+                "video_file_id": str(processed_video_id),
+                "head_count": head_count_result.get("max_count", 0),
+                "avg_head_count": head_count_result.get("avg_count", 0),
+                "head_count_detections": head_count_result.get("detections", [])
+            }}
+        )
+
+        logger.info(f"Video processing complete for recording {recording_id}, starting audio extraction")
+
+        # Extract audio from original video and run transcription
+        await process_video_audio(recording_id, video_data, ext)
+
+    except Exception as e:
+        logger.error(f"Background video processing error for {recording_id}: {e}")
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {"status": "error", "error": str(e)}}
+        )
 
 async def process_video_audio(recording_id: str, video_data: bytes, video_format: str):
     """Extract audio from video and process transcription"""
@@ -1089,33 +1136,38 @@ async def process_transcription_with_diarization(recording_id: str):
         grid_out = await fs_bucket.open_download_stream(ObjectId(recording['audio_file_id']))
         audio_data = await grid_out.read()
         
-        # Transcribe with Whisper
+        # Transcribe with Whisper (auto-detects language including Tamil)
         transcript = ""
+        detected_language = None
         if whisper_client:
             try:
                 audio_file = io.BytesIO(audio_data)
                 audio_file.name = "audio.m4a"
-                
+
                 response = whisper_client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio_file,
-                    response_format="text"
+                    response_format="verbose_json"
                 )
-                transcript = response if isinstance(response, str) else str(response)
-                logger.info(f"Transcription completed: {len(transcript)} characters")
+                transcript = response.text if hasattr(response, 'text') else str(response)
+                detected_language = response.language if hasattr(response, 'language') else None
+                logger.info(f"Transcription completed: {len(transcript)} chars, detected language: {detected_language}")
             except Exception as e:
                 logger.error(f"Whisper transcription error: {e}")
                 transcript = ""
         
         if transcript:
+            update_fields = {"transcript": transcript}
+            if detected_language:
+                update_fields["detected_language"] = detected_language
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
-                {"$set": {"transcript": transcript}}
+                {"$set": update_fields}
             )
-            
+
             # Process with GPT for diarization and visitor extraction
             logger.info(f"Performing speaker diarization for recording {recording_id}")
-            await perform_advanced_diarization(recording_id, transcript, recording.get('duration', 0))
+            await perform_advanced_diarization(recording_id, transcript, recording.get('duration', 0), detected_language)
         else:
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
@@ -1146,7 +1198,7 @@ async def process_diarization_only(recording_id: str, transcript: str):
             {"$set": {"status": "error", "error": str(e)}}
         )
 
-async def perform_advanced_diarization(recording_id: str, transcript: str, duration: float):
+async def perform_advanced_diarization(recording_id: str, transcript: str, duration: float, detected_language: str = None):
     """Use GPT to perform advanced speaker diarization and create visitor badges"""
     if not openai_client:
         await db.recordings.update_one(
@@ -1165,9 +1217,17 @@ async def perform_advanced_diarization(recording_id: str, transcript: str, durat
         if barcode_scans:
             barcode_list = [f"- {b['barcode_data']} at {b.get('video_timestamp', 0):.1f}s" for b in barcode_scans]
             barcode_info = f"\n\nBarcode scans during recording:\n" + "\n".join(barcode_list)
-        
+
+        # Build language instruction for GPT prompts
+        response_language = LANGUAGE_NAMES.get(detected_language, "English") if detected_language else "English"
+        lang_instruction = (
+            f"The transcript is in {response_language}. "
+            f"Write all summaries, topics, questions, and key points in {response_language}."
+        ) if detected_language and detected_language != "en" else ""
+
         # Step 1: Get overall analysis
         analysis_prompt = f"""Analyze this expo booth conversation transcript and provide:
+{lang_instruction}
 
 TRANSCRIPT:
 {transcript}
@@ -1194,6 +1254,7 @@ Provide a JSON response with:
         # Step 2: Get speaker segments and visitor badges
         diarization_prompt = f"""Analyze this expo booth conversation and identify distinct speakers/visitors.
 For each visitor interaction, create a visitor badge.
+{lang_instruction}
 
 TRANSCRIPT:
 {transcript}
@@ -1606,6 +1667,22 @@ async def get_recording_status(recording_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+LANGUAGE_NAMES = {
+    "en": "English",
+    "ta": "Tamil",
+    "es": "Spanish",
+    "fr": "French",
+    "de": "German",
+    "zh": "Chinese (Simplified)",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "hi": "Hindi",
+    "ar": "Arabic",
+    "pt": "Portuguese",
+    "ru": "Russian",
+    "it": "Italian",
+}
+
 @api_router.post("/recordings/{recording_id}/translate")
 async def translate_transcript(recording_id: str, target_language: str = "en"):
     """Translate a recording's transcript to another language"""
@@ -1613,29 +1690,43 @@ async def translate_transcript(recording_id: str, target_language: str = "en"):
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
-        
+
         transcript = recording.get('transcript')
         if not transcript:
             raise HTTPException(status_code=400, detail="No transcript available")
-        
+
         if not openai_client:
             raise HTTPException(status_code=500, detail="Translation service not available")
-        
+
+        # Map language code to full name so GPT produces accurate output
+        language_name = LANGUAGE_NAMES.get(target_language, target_language)
+
         response = openai_client.chat.completions.create(
             model="gpt-4o",
-            messages=[{
-                "role": "user",
-                "content": f"Translate the following text to {target_language}. Only return the translation, no explanations:\n\n{transcript}"
-            }]
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a professional translator. Translate the user's text into {language_name}. "
+                        f"Return ONLY the translated text with no explanations, notes, or original text. "
+                        f"Preserve paragraph breaks and punctuation style."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": transcript
+                }
+            ]
         )
-        
-        translated = response.choices[0].message.content
-        
+
+        translated = response.choices[0].message.content.strip()
+
         return {
             "success": True,
             "original_transcript": transcript,
             "translated_transcript": translated,
-            "target_language": target_language
+            "target_language": target_language,
+            "language_name": language_name
         }
     except HTTPException:
         raise
