@@ -100,7 +100,9 @@ def serialize_value(value):
     if isinstance(value, ObjectId):
         return str(value)
     elif isinstance(value, datetime):
-        return value.isoformat()
+        # Append 'Z' to mark as UTC — without it, JavaScript treats the string
+        # as local time, causing the displayed time to be off by the UTC offset
+        return value.isoformat() + 'Z'
     elif isinstance(value, dict):
         return {k: serialize_value(v) for k, v in value.items()}
     elif isinstance(value, list):
@@ -1488,7 +1490,7 @@ async def get_dashboard_insights():
         recent_activity.append({
             "id": str(r['_id']),
             "booth_name": r.get('booth_name', 'Unknown'),
-            "start_time": r.get('start_time'),
+            "start_time": (r.get('start_time').isoformat() + 'Z') if r.get('start_time') else None,
             "duration": r.get('duration', 0),
             "status": r.get('status', 'unknown'),
             "total_interactions": r.get('head_count', 0) or r.get('visitor_count', len(r.get('visitors', []))),
@@ -1538,7 +1540,8 @@ async def get_dashboard_visitors():
             recording = await db.recordings.find_one({"_id": ObjectId(v['recording_id'])})
             if recording:
                 visitor_data['booth_name'] = recording.get('booth_name')
-                visitor_data['recording_date'] = recording.get('start_time')
+                st = recording.get('start_time')
+                visitor_data['recording_date'] = (st.isoformat() + 'Z') if st else None
         
         result.append(visitor_data)
     
