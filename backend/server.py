@@ -448,6 +448,255 @@ async def add_video_overlay(video_data: bytes, video_format: str = "mp4",
         logger.error(f"Video overlay exception: {type(e).__name__}: {e}")
         return video_data
 
+
+# ==================== FILE-PATH BASED HELPERS (no in-memory video loading) ====================
+
+async def add_video_overlay_file(input_path: str, video_format: str = "mp4",
+                                  booth_name: str = "XoW Booth",
+                                  recording_time: str = None) -> str:
+    """Add overlay using file paths — avoids loading full video into memory. Returns output path."""
+    output_path = input_path + f'_overlay.{video_format}'
+    try:
+        if not recording_time:
+            recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            dt = datetime.strptime(recording_time, "%Y-%m-%d %H:%M:%S")
+            date_str = dt.strftime("%Y-%m-%d")
+            time_str = dt.strftime("%H\\:%M\\:%S")
+        except Exception:
+            date_str = recording_time[:10] if len(recording_time) >= 10 else recording_time
+            time_str = recording_time[11:19].replace(":", "\\:") if len(recording_time) >= 19 else "00\\:00\\:00"
+
+        safe_booth = booth_name.replace("'", "").replace(":", " ").replace("\\", "").replace('"', "")
+        if len(safe_booth) > 25:
+            safe_booth = safe_booth[:22] + "..."
+
+        font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+        if not os.path.exists(font_path):
+            font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+        if not os.path.exists(font_path):
+            font_path = ""
+        font_opt = f":fontfile={font_path}" if font_path else ""
+
+        filter_parts = [
+            f"drawbox=x=15:y=15:w=180:h=70:color=black@0.6:t=fill",
+            f"drawtext=text='{date_str}':fontsize=14:fontcolor=white:x=25:y=25{font_opt}",
+            f"drawtext=text='{time_str}':fontsize=14:fontcolor=0x10B981:x=25:y=45{font_opt}",
+            f"drawtext=text='%{{pts\\:hms}}':fontsize=14:fontcolor=0xEF4444:x=115:y=45{font_opt}",
+            f"drawtext=text='REC':fontsize=12:fontcolor=0xEF4444:x=145:y=25:box=1:boxcolor=0xEF4444@0.3:boxborderw=3{font_opt}",
+            f"drawbox=x=w-100:y=15:w=85:h=30:color=black@0.6:t=fill",
+            f"drawtext=text='F\\: %{{frame_num}}':start_number=1:fontsize=12:fontcolor=0xFBBF24:x=w-92:y=22{font_opt}",
+            f"drawtext=text='{safe_booth}':fontsize=14:fontcolor=white:x=15:y=h-30:box=1:boxcolor=black@0.6:boxborderw=6{font_opt}",
+            f"drawbox=x=w-55:y=h-35:w=45:h=25:color=0xE54B2A@0.9:t=fill",
+            f"drawtext=text='XoW':fontsize=14:fontcolor=white:x=w-50:y=h-31{font_opt}",
+        ]
+        filter_complex = ','.join(filter_parts)
+        cmd = [
+            'ffmpeg', '-i', input_path, '-vf', filter_complex,
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
+            '-y', output_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=86400)  # 24h for very long videos
+        if result.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            logger.error(f"FFmpeg overlay (file) failed: {result.stderr.decode()[:500]}")
+            return input_path  # fall back to input on failure
+        logger.info(f"File overlay applied: {os.path.getsize(output_path)} bytes")
+        return output_path
+    except Exception as e:
+        logger.error(f"Overlay file exception: {e}")
+        return input_path
+
+
+async def remux_video_for_streaming_file(input_path: str, video_format: str = "mp4") -> str:
+    """Remux for web streaming using file paths. Returns output path."""
+    output_path = input_path + f'_remux.{video_format}'
+    try:
+        cmd = ['ffmpeg', '-i', input_path, '-c', 'copy', '-movflags', '+faststart', '-y', output_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=43200)  # 12h
+        if result.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            logger.warning(f"Remux (file) failed, using input: {result.stderr.decode()[:200]}")
+            return input_path
+        logger.info(f"File remux done: {os.path.getsize(output_path)} bytes")
+        return output_path
+    except Exception as e:
+        logger.error(f"Remux file exception: {e}")
+        return input_path
+
+
+async def extract_video_frames_file(video_path: str, video_format: str = "mp4", num_frames: int = 5) -> list:
+    """Extract frames from a video file path for AI analysis — no in-memory video load."""
+    try:
+        probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                     '-of', 'default=noprint_wrappers=1:nokey=1', video_path]
+        probe_result = subprocess.run(probe_cmd, capture_output=True, timeout=60)
+        duration = float(probe_result.stdout.decode().strip()) if probe_result.returncode == 0 else 10.0
+        frames = []
+        frame_dir = tempfile.mkdtemp()
+        interval = max(duration / (num_frames + 1), 1)
+        for i in range(num_frames):
+            timestamp = interval * (i + 1)
+            frame_path = os.path.join(frame_dir, f'frame_{i}.jpg')
+            cmd = ['ffmpeg', '-ss', str(timestamp), '-i', video_path,
+                   '-frames:v', '1', '-q:v', '2', '-y', frame_path]
+            subprocess.run(cmd, capture_output=True, timeout=60)
+            if os.path.exists(frame_path):
+                with open(frame_path, 'rb') as f:
+                    frames.append({'timestamp': timestamp, 'data': base64.b64encode(f.read()).decode('utf-8')})
+                os.unlink(frame_path)
+        os.rmdir(frame_dir)
+        logger.info(f"Extracted {len(frames)} frames from file for head count")
+        return frames
+    except Exception as e:
+        logger.error(f"Frame extraction from file failed: {e}")
+        return []
+
+
+async def process_video_audio_file(recording_id: str, video_path: str, video_format: str):
+    """Extract audio from video file path and run transcription — no in-memory video load."""
+    audio_path = video_path + '.extracted.m4a'
+    try:
+        logger.info(f"Extracting audio from video file for recording {recording_id}")
+        cmd = ['ffmpeg', '-i', video_path, '-vn', '-acodec', 'aac', '-b:a', '128k', '-y', audio_path]
+        result = subprocess.run(cmd, capture_output=True, timeout=43200)  # 12h
+        if result.returncode != 0:
+            logger.error(f"Audio extract (file) failed: {result.stderr.decode()[:500]}")
+            await db.recordings.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": {"status": "uploaded", "error": "Audio extraction failed"}}
+            )
+            return
+        with open(audio_path, 'rb') as f:
+            audio_data = f.read()
+        if audio_data:
+            audio_id = await fs_bucket.upload_from_stream(
+                f"audio_{recording_id}.m4a", io.BytesIO(audio_data),
+                metadata={"recording_id": recording_id, "type": "audio", "extracted_from_video": True}
+            )
+            await db.recordings.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": {"audio_file_id": str(audio_id), "has_audio": True}}
+            )
+            await process_transcription_with_diarization(recording_id)
+            logger.info(f"Audio extracted and transcription started for {recording_id}")
+        else:
+            logger.error(f"Empty audio for {recording_id}")
+    except Exception as e:
+        logger.error(f"process_video_audio_file error for {recording_id}: {e}")
+    finally:
+        if os.path.exists(audio_path):
+            try:
+                os.unlink(audio_path)
+            except Exception:
+                pass
+
+
+async def _run_video_pipeline(recording_id: str, video_path: str,
+                               raw_video_id_to_delete: str, ext: str, mime: str, recording: dict):
+    """Core pipeline: overlay → remux → upload to GridFS → head count → audio. File-path based."""
+    overlay_path = None
+    remux_path = None
+    try:
+        booth_name = recording.get('booth_name', 'XoW Booth')
+        utc_start = recording.get('start_time')
+        if isinstance(utc_start, datetime):
+            local_dt = utc_start.replace(tzinfo=timezone.utc).astimezone(tz=None)
+            recording_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        logger.info(f"Adding video overlay for recording {recording_id}")
+        overlay_path = await add_video_overlay_file(video_path, ext, booth_name, recording_time)
+
+        logger.info(f"Remuxing video for recording {recording_id}")
+        remux_path = await remux_video_for_streaming_file(overlay_path, ext)
+
+        # Delete old raw GridFS entry if provided
+        if raw_video_id_to_delete:
+            try:
+                await fs_bucket.delete(ObjectId(raw_video_id_to_delete))
+            except Exception as del_err:
+                logger.warning(f"Could not delete raw video {raw_video_id_to_delete}: {del_err}")
+
+        # Stream processed video into GridFS — no full read into memory
+        with open(remux_path, 'rb') as f:
+            processed_video_id = await fs_bucket.upload_from_stream(
+                f"video_{recording_id}.{ext}", f,
+                metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
+            )
+
+        logger.info(f"Performing head count detection for recording {recording_id}")
+        frames = await extract_video_frames_file(video_path, ext, num_frames=5)
+        head_count_result = await detect_head_count_from_frames(frames)
+
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {
+                "video_file_id": str(processed_video_id),
+                "head_count": head_count_result.get("max_count", 0),
+                "avg_head_count": head_count_result.get("avg_count", 0),
+                "head_count_detections": head_count_result.get("detections", [])
+            }}
+        )
+        logger.info(f"Video processing complete for recording {recording_id}, starting audio extraction")
+        await process_video_audio_file(recording_id, video_path, ext)
+
+    finally:
+        # Clean up overlay/remux temp files (caller owns video_path)
+        for p in [overlay_path, remux_path]:
+            if p and p != video_path and os.path.exists(p):
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
+
+
+async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str, mime: str):
+    """Stream GridFS video chunks into a temp file, then run the processing pipeline."""
+    tmp_path = None
+    try:
+        recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
+        if not recording:
+            return
+
+        # Stream all chunks → single temp file (no full memory load)
+        with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            for ref in chunk_refs:
+                grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
+                while True:
+                    block = await grid_out.read(1024 * 1024)  # 1MB at a time
+                    if not block:
+                        break
+                    tmp_file.write(block)
+
+        logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: "
+                    f"{os.path.getsize(tmp_path)} bytes")
+
+        # Clean up GridFS chunks and refs
+        for ref in chunk_refs:
+            try:
+                await fs_bucket.delete(ObjectId(ref['gridfs_id']))
+            except Exception as e:
+                logger.warning(f"Could not delete chunk {ref['gridfs_id']}: {e}")
+        await db.video_chunk_refs.delete_many({"recording_id": recording_id})
+
+        await _run_video_pipeline(recording_id, tmp_path, None, ext, mime, recording)
+
+    except Exception as e:
+        logger.error(f"Chunk merge error for {recording_id}: {e}")
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {"status": "error", "error": str(e)}}
+        )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/health")
@@ -931,52 +1180,59 @@ async def upload_video(
                 )
 
         else:
-            # Chunked upload
-            await db.video_chunks.insert_one({
-                "recording_id": recording_id,
-                "chunk_index": chunk_index,
-                "total_chunks": total_chunks,
-                "data": base64.b64encode(video_data).decode('utf-8'),
-                "uploaded_at": datetime.utcnow(),
-                "mime_type": mime,
-                "extension": ext
-            })
+            # Chunked upload — store each chunk directly in GridFS (no base64/MongoDB size limit)
+            # Support resume: replace chunk if it was already uploaded
+            existing_ref = await db.video_chunk_refs.find_one(
+                {"recording_id": recording_id, "chunk_index": chunk_index}
+            )
+            if existing_ref:
+                try:
+                    await fs_bucket.delete(ObjectId(existing_ref['gridfs_id']))
+                except Exception:
+                    pass
 
-            chunks_count = await db.video_chunks.count_documents({"recording_id": recording_id})
-            if chunks_count == total_chunks:
-                chunks = await db.video_chunks.find(
+            chunk_gridfs_id = await fs_bucket.upload_from_stream(
+                f"chunk_{recording_id}_{chunk_index:05d}",
+                io.BytesIO(video_data),
+                metadata={"recording_id": recording_id, "chunk_index": chunk_index, "type": "video_chunk"}
+            )
+
+            await db.video_chunk_refs.update_one(
+                {"recording_id": recording_id, "chunk_index": chunk_index},
+                {"$set": {
+                    "gridfs_id": str(chunk_gridfs_id),
+                    "total_chunks": total_chunks,
+                    "mime_type": mime,
+                    "extension": ext,
+                    "uploaded_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+
+            chunks_done = await db.video_chunk_refs.count_documents({"recording_id": recording_id})
+            logger.info(f"Chunk {chunk_index + 1}/{total_chunks} received for recording {recording_id}")
+
+            if chunks_done == total_chunks:
+                chunk_refs = await db.video_chunk_refs.find(
                     {"recording_id": recording_id}
                 ).sort("chunk_index", 1).to_list(total_chunks)
 
-                combined_data = b''.join([
-                    base64.b64decode(c['data']) for c in chunks
-                ])
-
-                first_chunk = chunks[0] if chunks else {}
-                mime = first_chunk.get('mime_type', 'video/mp4')
-                ext = first_chunk.get('extension', 'mp4')
-
-                raw_video_id = await fs_bucket.upload_from_stream(
-                    f"video_{recording_id}.{ext}",
-                    io.BytesIO(combined_data),
-                    metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
-                )
+                first_ref = chunk_refs[0] if chunk_refs else {}
+                mime = first_ref.get('mime_type', 'video/mp4')
+                ext = first_ref.get('extension', 'mp4')
 
                 await db.recordings.update_one(
                     {"_id": ObjectId(recording_id)},
                     {"$set": {
-                        "video_file_id": str(raw_video_id),
                         "has_video": True,
                         "video_mime_type": mime,
                         "status": "processing"
                     }}
                 )
 
-                await db.video_chunks.delete_many({"recording_id": recording_id})
-
                 if background_tasks:
                     background_tasks.add_task(
-                        process_full_video, recording_id, str(raw_video_id), ext, mime
+                        merge_chunks_and_process, recording_id, chunk_refs, ext, mime
                     )
 
         logger.info(f"Video received for recording {recording_id}: {ext} ({mime}), processing in background")
@@ -987,64 +1243,24 @@ async def upload_video(
 
 
 async def process_full_video(recording_id: str, raw_video_id: str, ext: str, mime: str):
-    """Background task: apply overlay, remux, head count detection, and audio extraction"""
+    """Background task: stream video from GridFS to temp file, then run the processing pipeline."""
+    tmp_path = None
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             return
 
-        # Read the raw video back from GridFS
-        grid_out = await fs_bucket.open_download_stream(ObjectId(raw_video_id))
-        video_data = await grid_out.read()
+        # Stream from GridFS → temp file (avoids loading entire video into memory)
+        with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp_file:
+            tmp_path = tmp_file.name
+            grid_out = await fs_bucket.open_download_stream(ObjectId(raw_video_id))
+            while True:
+                block = await grid_out.read(1024 * 1024)  # 1MB at a time
+                if not block:
+                    break
+                tmp_file.write(block)
 
-        booth_name = recording.get('booth_name', 'XoW Booth')
-        utc_start = recording.get('start_time')
-        if isinstance(utc_start, datetime):
-            # start_time is stored as UTC — convert to local time for the burned-in overlay
-            local_dt = utc_start.replace(tzinfo=timezone.utc).astimezone(tz=None)
-            recording_time = local_dt.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Apply overlay
-        logger.info(f"Adding video overlay for recording {recording_id}")
-        overlay_video = await add_video_overlay(video_data, ext, booth_name, recording_time)
-
-        # Remux for web streaming
-        logger.info(f"Remuxing video for recording {recording_id}")
-        remuxed_video = await remux_video_for_streaming(overlay_video, ext)
-
-        # Replace raw file in GridFS with processed version
-        try:
-            await fs_bucket.delete(ObjectId(raw_video_id))
-        except Exception as del_err:
-            logger.warning(f"Could not delete raw video {raw_video_id}: {del_err}")
-
-        processed_video_id = await fs_bucket.upload_from_stream(
-            f"video_{recording_id}.{ext}",
-            io.BytesIO(remuxed_video),
-            metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
-        )
-
-        # Head count detection
-        logger.info(f"Performing head count detection for recording {recording_id}")
-        frames = await extract_video_frames(video_data, ext, num_frames=5)
-        head_count_result = await detect_head_count_from_frames(frames)
-
-        await db.recordings.update_one(
-            {"_id": ObjectId(recording_id)},
-            {"$set": {
-                "video_file_id": str(processed_video_id),
-                "head_count": head_count_result.get("max_count", 0),
-                "avg_head_count": head_count_result.get("avg_count", 0),
-                "head_count_detections": head_count_result.get("detections", [])
-            }}
-        )
-
-        logger.info(f"Video processing complete for recording {recording_id}, starting audio extraction")
-
-        # Extract audio from original video and run transcription
-        await process_video_audio(recording_id, video_data, ext)
+        await _run_video_pipeline(recording_id, tmp_path, raw_video_id, ext, mime, recording)
 
     except Exception as e:
         logger.error(f"Background video processing error for {recording_id}: {e}")
@@ -1052,6 +1268,12 @@ async def process_full_video(recording_id: str, raw_video_id: str, ext: str, mim
             {"_id": ObjectId(recording_id)},
             {"$set": {"status": "error", "error": str(e)}}
         )
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 async def process_video_audio(recording_id: str, video_data: bytes, video_format: str):
     """Extract audio from video and process transcription"""

@@ -21,6 +21,7 @@ import { Video, ResizeMode } from 'expo-av';
 import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
 
 interface LocalRecording {
   id: string;
@@ -67,6 +68,7 @@ export default function GalleryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0); // 0–1, video chunk progress
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'local' | 'cloud'>('all');
   
@@ -209,53 +211,113 @@ export default function GalleryScreen() {
 
   const uploadToCloud = async (recording: LocalRecording) => {
     if (!deviceId) return;
-    
-    setUploadingId(recording.localId);
-    
-    try {
-      // Create recording entry in backend
-      const res = await axios.post(`${API_URL}/api/recordings`, {
-        device_id: deviceId,
-        expo_name: 'Expo 2025',
-        booth_name: recording.boothName,
-      });
-      
-      const recordingId = res.data.id;
 
-      // Upload video if available
+    setUploadingId(recording.localId);
+    setUploadProgress(0);
+
+    const resumeKey = `xow_upload_${recording.localId}`;
+
+    try {
+      // ── Resume detection ──────────────────────────────────────────────────
+      let recordingId: string;
+      let videoStartChunk = 0;
+
+      const savedResume = await AsyncStorage.getItem(resumeKey);
+      const resumeState = savedResume ? JSON.parse(savedResume) : null;
+
+      if (resumeState?.recordingId && resumeState.nextChunk > 0) {
+        // Verify the recording still exists on the server
+        try {
+          await axios.get(`${API_URL}/api/recordings/${resumeState.recordingId}`, { timeout: 8000 });
+          recordingId = resumeState.recordingId;
+          videoStartChunk = resumeState.nextChunk;
+          console.log(`Resuming upload from chunk ${videoStartChunk}`);
+        } catch {
+          // Server recording gone — start fresh
+          recordingId = '';
+          videoStartChunk = 0;
+        }
+      } else {
+        recordingId = '';
+      }
+
+      if (!recordingId) {
+        const res = await axios.post(`${API_URL}/api/recordings`, {
+          device_id: deviceId,
+          expo_name: 'Expo 2025',
+          booth_name: recording.boothName,
+        });
+        recordingId = res.data.id;
+      }
+
+      // ── Chunked video upload ──────────────────────────────────────────────
       if (recording.videoPath) {
         const fileInfo = await FileSystem.getInfoAsync(recording.videoPath);
         if (fileInfo.exists) {
+          const fileSize = (fileInfo as any).size as number;
           const isMovFile = recording.videoPath.toLowerCase().endsWith('.mov');
-          
-          console.log('Uploading video from:', recording.videoPath);
-          const uploadResult = await FileSystem.uploadAsync(
-            `${API_URL}/api/recordings/${recordingId}/upload-video`,
-            recording.videoPath,
-            {
-              fieldName: 'video',
-              httpMethod: 'POST',
-              uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-              mimeType: isMovFile ? 'video/quicktime' : 'video/mp4',
-              parameters: {
-                chunk_index: '0',
-                total_chunks: '1',
-              },
+          const mimeType = isMovFile ? 'video/quicktime' : 'video/mp4';
+          const totalChunks = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
+
+          console.log(`Video upload: ${fileSize} bytes → ${totalChunks} chunks of ${CHUNK_SIZE} bytes`);
+
+          for (let i = videoStartChunk; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const length = Math.min(CHUNK_SIZE, fileSize - start);
+
+            // Read chunk as base64
+            const chunkBase64 = await FileSystem.readAsStringAsync(recording.videoPath, {
+              encoding: FileSystem.EncodingType.Base64,
+              position: start,
+              length,
+            });
+
+            // Write to a temp file so uploadAsync can send it as multipart
+            const tempPath = `${FileSystem.cacheDirectory}xow_chunk_${i}.tmp`;
+            await FileSystem.writeAsStringAsync(tempPath, chunkBase64, {
+              encoding: FileSystem.EncodingType.Base64,
+            });
+
+            const uploadResult = await FileSystem.uploadAsync(
+              `${API_URL}/api/recordings/${recordingId}/upload-video`,
+              tempPath,
+              {
+                fieldName: 'video',
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                mimeType,
+                parameters: {
+                  chunk_index: String(i),
+                  total_chunks: String(totalChunks),
+                },
+              }
+            );
+
+            // Delete temp chunk file immediately
+            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+
+            if (uploadResult.status < 200 || uploadResult.status >= 300) {
+              throw new Error(`Chunk ${i + 1}/${totalChunks} upload failed (HTTP ${uploadResult.status})`);
             }
-          );
-          console.log('Video upload status:', uploadResult.status);
-          
-          if (uploadResult.status < 200 || uploadResult.status >= 300) {
-            throw new Error(`Video upload failed with status ${uploadResult.status}`);
+
+            // Update progress and save resume state
+            const progress = (i + 1) / totalChunks;
+            setUploadProgress(progress);
+            await AsyncStorage.setItem(resumeKey, JSON.stringify({
+              recordingId,
+              nextChunk: i + 1,
+              totalChunks,
+            }));
+
+            console.log(`Chunk ${i + 1}/${totalChunks} uploaded (${Math.round(progress * 100)}%)`);
           }
         }
       }
 
-      // Upload audio if available
+      // ── Audio upload (small file — single request is fine) ────────────────
       if (recording.audioPath) {
         const fileInfo = await FileSystem.getInfoAsync(recording.audioPath);
         if (fileInfo.exists) {
-          console.log('Uploading audio from:', recording.audioPath);
           const uploadResult = await FileSystem.uploadAsync(
             `${API_URL}/api/recordings/${recordingId}/upload-audio`,
             recording.audioPath,
@@ -266,15 +328,13 @@ export default function GalleryScreen() {
               mimeType: 'audio/m4a',
             }
           );
-          console.log('Audio upload status:', uploadResult.status);
-          
           if (uploadResult.status < 200 || uploadResult.status >= 300) {
-            throw new Error(`Audio upload failed with status ${uploadResult.status}`);
+            throw new Error(`Audio upload failed (HTTP ${uploadResult.status})`);
           }
         }
       }
 
-      // Upload barcode scans
+      // ── Barcode scans ─────────────────────────────────────────────────────
       for (const scan of recording.barcodeScansList || []) {
         try {
           await axios.post(`${API_URL}/api/barcodes`, {
@@ -286,10 +346,13 @@ export default function GalleryScreen() {
         } catch {}
       }
 
-      // Mark recording complete
+      // ── Mark complete ─────────────────────────────────────────────────────
       await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`);
 
-      // Update local recording as uploaded
+      // Clear resume state
+      await AsyncStorage.removeItem(resumeKey);
+
+      // Mark local recording as uploaded
       const localRecordings = await getLocalRecordings();
       const idx = localRecordings.findIndex(r => r.localId === recording.localId);
       if (idx !== -1) {
@@ -302,9 +365,13 @@ export default function GalleryScreen() {
       fetchRecordings();
     } catch (e: any) {
       console.error('Upload error:', e);
-      Alert.alert('Upload Failed', e?.message || 'Failed to upload recording to cloud');
+      Alert.alert(
+        'Upload Failed',
+        `${e?.message || 'Failed to upload'}\n\nTap Upload again to resume.`
+      );
     } finally {
       setUploadingId(null);
+      setUploadProgress(0);
     }
   };
 
@@ -449,7 +516,13 @@ export default function GalleryScreen() {
                 disabled={uploadingId === localItem.localId}
               >
                 {uploadingId === localItem.localId ? (
-                  <ActivityIndicator size="small" color="#10B981" />
+                  uploadProgress > 0 ? (
+                    <Text style={[styles.uploadBtnText, { color: '#10B981' }]}>
+                      {Math.round(uploadProgress * 100)}%
+                    </Text>
+                  ) : (
+                    <ActivityIndicator size="small" color="#10B981" />
+                  )
                 ) : (
                   <>
                     <Ionicons name="cloud-upload" size={14} color="#10B981" />
