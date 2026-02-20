@@ -15,7 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface StorageSettings {
   autoUpload: boolean;
-  storageLocation: 'internal' | 'external' | 'documents';
+  storageLocation: 'internal' | 'external';
 }
 
 export default function SettingsScreen() {
@@ -23,7 +23,7 @@ export default function SettingsScreen() {
   const { width, height } = useWindowDimensions();
   const [settings, setSettings] = useState<StorageSettings>({
     autoUpload: false,
-    storageLocation: 'documents',
+    storageLocation: 'internal',
   });
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const [deviceName, setDeviceName] = useState<string>('');
@@ -71,7 +71,7 @@ export default function SettingsScreen() {
     saveSettings(newSettings);
   };
 
-  const setStorageLocation = (location: 'internal' | 'external' | 'documents') => {
+  const setStorageLocation = (location: 'internal' | 'external') => {
     const newSettings = { ...settings, storageLocation: location };
     saveSettings(newSettings);
     Alert.alert('Storage Updated', `Recordings will be saved to ${getLocationName(location)}`);
@@ -81,7 +81,6 @@ export default function SettingsScreen() {
     switch (location) {
       case 'internal': return 'Internal Storage';
       case 'external': return 'External Storage (SD Card)';
-      case 'documents': return 'App Documents';
       default: return 'Unknown';
     }
   };
@@ -168,22 +167,6 @@ export default function SettingsScreen() {
             </View>
             <View style={styles.card}>
               <TouchableOpacity
-                style={[styles.locationOption, settings.storageLocation === 'documents' && styles.locationActive]}
-                onPress={() => setStorageLocation('documents')}
-              >
-                <Ionicons name="document-text" size={18} color={settings.storageLocation === 'documents' ? '#E54B2A' : '#666'} />
-                <View style={styles.locationInfo}>
-                  <Text style={[styles.locationTitle, settings.storageLocation === 'documents' && styles.locationTitleActive]}>
-                    App Documents
-                  </Text>
-                  <Text style={styles.locationDesc}>Default app storage (recommended)</Text>
-                </View>
-                {settings.storageLocation === 'documents' && (
-                  <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
                 style={[styles.locationOption, settings.storageLocation === 'internal' && styles.locationActive]}
                 onPress={() => setStorageLocation('internal')}
               >
@@ -192,7 +175,7 @@ export default function SettingsScreen() {
                   <Text style={[styles.locationTitle, settings.storageLocation === 'internal' && styles.locationTitleActive]}>
                     Internal Storage
                   </Text>
-                  <Text style={styles.locationDesc}>Device internal memory</Text>
+                  <Text style={styles.locationDesc}>Device internal memory (recommended)</Text>
                 </View>
                 {settings.storageLocation === 'internal' && (
                   <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />

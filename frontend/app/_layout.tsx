@@ -8,6 +8,11 @@ import * as SystemUI from 'expo-system-ui';
 
 export default function RootLayout() {
   React.useEffect(() => {
+    // For web App, skip native-only APIs
+    // if (Platform.OS === 'web') {
+    //   return;
+    // }
+
     // Hide status bar immediately (sync) so it takes effect right away
     if (Platform.OS === 'android') {
       RNStatusBar.setHidden(true, 'none');

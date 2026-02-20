@@ -10,6 +10,8 @@ import {
   useWindowDimensions,
   Alert,
   Modal,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -31,6 +33,8 @@ interface LocalRecording {
   isUploaded: boolean;
   boothName: string;
   deviceId: string;
+  fps?: number;
+  fpsTimeline?: number[];
 }
 
 interface BarcodeData {
@@ -71,6 +75,10 @@ export default function GalleryScreen() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
   const videoRef = useRef<any>(null);
+  const [videoPosition, setVideoPosition] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [videoFps, setVideoFps] = useState(30);
+  const [previewFpsTimeline, setPreviewFpsTimeline] = useState<number[]>([]);
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
@@ -143,6 +151,9 @@ export default function GalleryScreen() {
         if (fileInfo.exists) {
           setPreviewUri(localRec.videoPath);
           setPreviewTitle(fmtDate(localRec.createdAt));
+          // Set the actual FPS from the recording metadata
+          setVideoFps(localRec.fps || 30);
+          setPreviewFpsTimeline(localRec.fpsTimeline || []);
           setPreviewVisible(true);
         } else {
           Alert.alert('File Not Found', 'The video file could not be found.');
@@ -159,9 +170,41 @@ export default function GalleryScreen() {
   const closePreview = () => {
     setPreviewVisible(false);
     setPreviewUri(null);
+    setVideoPosition(0);
+    setVideoDuration(0);
+    setPreviewFpsTimeline([]);
     if (videoRef.current) {
       videoRef.current.stopAsync();
     }
+  };
+
+  const handlePlaybackStatusUpdate = (status: any) => {
+    if (status.isLoaded) {
+      const positionSeconds = status.positionMillis / 1000;
+      setVideoPosition(positionSeconds);
+      if (status.durationMillis) {
+        setVideoDuration(status.durationMillis / 1000);
+      }
+
+      if (previewFpsTimeline.length > 0) {
+        const secondIndex = Math.min(
+          Math.floor(positionSeconds),
+          previewFpsTimeline.length - 1
+        );
+        const fpsAtSecond = previewFpsTimeline[secondIndex];
+        if (typeof fpsAtSecond === 'number' && fpsAtSecond > 0) {
+          setVideoFps(fpsAtSecond);
+        }
+      }
+    }
+  };
+
+  const formatTC = (s: number) => {
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    const frames = Math.floor((s % 1) * videoFps);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
   };
 
   const uploadToCloud = async (recording: LocalRecording) => {
@@ -602,25 +645,53 @@ export default function GalleryScreen() {
         onRequestClose={closePreview}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{previewTitle}</Text>
-              <TouchableOpacity style={styles.closeBtn} onPress={closePreview}>
-                <Ionicons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
+          <ScrollView 
+            contentContainerStyle={styles.modalScrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{previewTitle}</Text>
+                <TouchableOpacity style={styles.closeBtn} onPress={closePreview}>
+                  <Ionicons name="close" size={24} color="#fff" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.videoContainer}>
+                {previewUri && (
+                  <Video
+                    {...{ ref: videoRef }}
+                    source={{ uri: previewUri }}
+                    style={styles.videoPlayer}
+                    useNativeControls
+                    resizeMode={ResizeMode.CONTAIN}
+                    shouldPlay
+                    isLooping={false}
+                    onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                  />
+                )}
+                
+                {/* Left-side overlay with Timecode and FPS */}
+                <View style={styles.videoOverlay}>
+                  <View style={styles.overlayLogo}>
+                    <Ionicons name="videocam" size={12} color="#fff" />
+                    <Text style={styles.overlayLogoText}>XoW</Text>
+                  </View>
+                  <View style={styles.overlayDivider} />
+                  <View style={styles.overlayBlock}>
+                    <Text style={styles.overlayLabel}>TIMECODE</Text>
+                    <Text style={styles.overlayTCValue}>{formatTC(videoPosition)}</Text>
+                  </View>
+                  <View style={styles.overlayDivider} />
+                  <View style={styles.overlayBlock}>
+                    <Text style={styles.overlayLabel}>FPS</Text>
+                    <Text style={styles.overlayFPSValue}>{videoFps}</Text>
+                  </View>
+                </View>
+              </View>
             </View>
-            {previewUri && (
-              <Video
-                {...{ ref: videoRef }}
-                source={{ uri: previewUri }}
-                style={styles.videoPlayer}
-                useNativeControls
-                resizeMode={ResizeMode.CONTAIN}
-                shouldPlay
-                isLooping={false}
-              />
-            )}
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -702,9 +773,21 @@ const styles = StyleSheet.create({
 
   // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { width: '90%', maxWidth: 600, backgroundColor: '#0a0a0a', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#1a1a1a' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  modalTitle: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  closeBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 20 },
+  modalContent: { width: '90%', maxWidth: 650, backgroundColor: '#0a0a0a', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#1a1a1a' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  modalTitle: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  closeBtn: { width: 32, height: 32, borderRadius: 6, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
+  
+  // Video container and overlay
+  videoContainer: { position: 'relative', width: '100%', backgroundColor: '#000' },
   videoPlayer: { width: '100%', aspectRatio: 16/9, backgroundColor: '#000' },
+  videoOverlay: { position: 'absolute', top: 10, left: 10, backgroundColor: 'rgba(0,0,0,0.85)', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 6, borderLeftWidth: 2, borderLeftColor: '#E54B2A', gap: 4 },
+  overlayLogo: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingBottom: 2 },
+  overlayLogoText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  overlayDivider: { height: 1, backgroundColor: '#333', marginVertical: 1 },
+  overlayBlock: { gap: 1 },
+  overlayLabel: { color: '#666', fontSize: 7, fontWeight: '700', letterSpacing: 0.3 },
+  overlayTCValue: { color: '#EF4444', fontSize: 12, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  overlayFPSValue: { color: '#E54B2A', fontSize: 12, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 });

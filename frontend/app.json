@@ -57,6 +57,14 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "XoW needs access to save videos and audio to your gallery",
+          "savePhotosPermission": "XoW needs permission to save recordings to your device",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "image": "./assets/images/icon.png",
