@@ -73,6 +73,8 @@ class RecordingCreate(BaseModel):
     device_id: str
     expo_name: str
     booth_name: str
+    start_time: Optional[str] = None  # ISO timestamp from device (actual recording time)
+    duration: Optional[float] = None  # Actual recording duration in seconds from device
 
 class BarcodeCreate(BaseModel):
     recording_id: str
@@ -977,13 +979,22 @@ async def remove_device_from_dashboard(user_id: str, device_code: str):
 @api_router.post("/recordings")
 async def create_recording(recording: RecordingCreate):
     """Start a new recording session"""
+    # Use the device's actual recording start time if provided, otherwise fall back to server time
+    if recording.start_time:
+        try:
+            start_time = datetime.fromisoformat(recording.start_time.replace('Z', '+00:00')).replace(tzinfo=None)
+        except Exception:
+            start_time = datetime.utcnow()
+    else:
+        start_time = datetime.utcnow()
+
     recording_doc = {
         "device_id": recording.device_id,
         "expo_name": recording.expo_name,
         "booth_name": recording.booth_name,
-        "start_time": datetime.utcnow(),
+        "start_time": start_time,
         "end_time": None,
-        "duration": 0,
+        "duration": recording.duration or 0,
         "status": "recording",
         "has_video": False,
         "has_audio": False,
@@ -1020,17 +1031,28 @@ async def get_recording(recording_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+class RecordingComplete(BaseModel):
+    duration: Optional[float] = None  # Actual recording duration in seconds from device
+
 @api_router.put("/recordings/{recording_id}/complete")
-async def complete_recording(recording_id: str):
+async def complete_recording(recording_id: str, body: Optional[RecordingComplete] = None):
     """Mark a recording as completed"""
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
-        
+
         end_time = datetime.utcnow()
-        duration = (end_time - recording['start_time']).total_seconds()
-        
+        # Use device-provided duration if available; otherwise keep existing duration
+        # (which was set during create_recording from the device). Only fall back to
+        # server-time calculation as a last resort.
+        if body and body.duration is not None:
+            duration = body.duration
+        elif recording.get('duration'):
+            duration = recording['duration']
+        else:
+            duration = (end_time - recording['start_time']).total_seconds()
+
         await db.recordings.update_one(
             {"_id": ObjectId(recording_id)},
             {"$set": {

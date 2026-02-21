@@ -260,6 +260,8 @@ export default function GalleryScreen() {
           device_id: deviceId,
           expo_name: 'Expo 2025',
           booth_name: recording.boothName,
+          start_time: recording.createdAt,   // preserve actual recording time
+          duration: recording.duration,       // preserve actual recording duration
         });
         recordingId = res.data.id;
       }
@@ -361,7 +363,9 @@ export default function GalleryScreen() {
       }
 
       // ── Mark complete ─────────────────────────────────────────────────────
-      await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`);
+      await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`, {
+        duration: recording.duration,   // send actual duration to prevent server recalculation
+      });
 
       // Clear resume state
       await AsyncStorage.removeItem(resumeKey);
