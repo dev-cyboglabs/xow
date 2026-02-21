@@ -862,7 +862,239 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.utcnow().isoformat()}
 
-# ==================== DASHBOARD AUTH MODELS ====================
+# ==================== PAIRING CODE HELPERS ====================
+
+import random as _random
+
+PAIRING_CODE_TTL_MINUTES = 5
+
+def _make_pairing_code() -> str:
+    """Generate a random 6-digit pairing code."""
+    return ''.join([str(_random.randint(0, 9)) for _ in range(6)])
+
+async def _refresh_pairing_code(device_id: str) -> dict:
+    """Generate a new pairing code for a device and persist it. Returns {pairing_code, expires_at}."""
+    code = _make_pairing_code()
+    expires_at = datetime.utcnow() + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+    await db.devices.update_one(
+        {"device_id": device_id},
+        {"$set": {"pairing_code": code, "pairing_expires_at": expires_at}}
+    )
+    return {"pairing_code": code, "pairing_expires_at": expires_at}
+
+async def get_session_device_ids(session_id: str) -> Optional[list]:
+    """Return the list of device_ids linked to a dashboard session, or None if session missing."""
+    if not session_id:
+        return None
+    session = await db.dashboard_sessions.find_one({"session_id": session_id})
+    if not session:
+        return None
+    return session.get("device_ids", [])
+
+# ==================== AUTH ENDPOINTS (Mobile App) ====================
+
+@api_router.post("/auth/register")
+async def register_device(device: DeviceCreate):
+    """Register a new device and generate its first pairing code."""
+    existing = await db.devices.find_one({"device_id": device.device_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="Device ID already registered")
+
+    code = _make_pairing_code()
+    expires_at = datetime.utcnow() + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+    device_doc = {
+        "device_id": device.device_id,
+        "password": device.password,
+        "name": device.name,
+        "created_at": datetime.utcnow(),
+        "is_active": True,
+        "pairing_code": code,
+        "pairing_expires_at": expires_at,
+        "is_paired": False,
+        "dashboard_session_id": None,
+    }
+    result = await db.devices.insert_one(device_doc)
+    device_doc['_id'] = result.inserted_id
+    return serialize_doc(device_doc)
+
+@api_router.post("/auth/login")
+async def login_device(login: DeviceLogin):
+    """Login a device. Refreshes pairing code if expired."""
+    device = await db.devices.find_one({
+        "device_id": login.device_id,
+        "password": login.password
+    })
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device ID or password")
+
+    # Ensure pairing code exists and is fresh
+    expires_at = device.get("pairing_expires_at")
+    if not expires_at or expires_at < datetime.utcnow() or not device.get("pairing_code"):
+        code_info = await _refresh_pairing_code(login.device_id)
+        device["pairing_code"] = code_info["pairing_code"]
+        device["pairing_expires_at"] = code_info["pairing_expires_at"]
+
+    return {
+        "success": True,
+        "device": serialize_doc(device),
+        "message": "Login successful"
+    }
+
+@api_router.get("/devices/{device_id}/pairing-code")
+async def get_pairing_code(device_id: str, password: str):
+    """Return the current pairing code for a device, refreshing it if expired."""
+    device = await db.devices.find_one({"device_id": device_id, "password": password})
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device credentials")
+
+    expires_at = device.get("pairing_expires_at")
+    needs_refresh = (not expires_at) or (expires_at < datetime.utcnow()) or not device.get("pairing_code")
+    if needs_refresh:
+        code_info = await _refresh_pairing_code(device_id)
+        pairing_code = code_info["pairing_code"]
+        pairing_expires_at = code_info["pairing_expires_at"]
+    else:
+        pairing_code = device["pairing_code"]
+        pairing_expires_at = expires_at
+
+    seconds_left = max(0, int((pairing_expires_at - datetime.utcnow()).total_seconds()))
+    return {
+        "pairing_code": pairing_code,
+        "expires_at": pairing_expires_at.isoformat() + "Z",
+        "expires_in_seconds": seconds_left,
+        "is_paired": device.get("is_paired", False),
+    }
+
+@api_router.post("/devices/{device_id}/remove-pairing")
+async def remove_device_pairing(device_id: str, password: str):
+    """Mobile 'Remove Device' — disconnects from dashboard and generates a new pairing code."""
+    device = await db.devices.find_one({"device_id": device_id, "password": password})
+    if not device:
+        raise HTTPException(status_code=401, detail="Invalid device credentials")
+
+    old_session_id = device.get("dashboard_session_id")
+
+    # Remove device from its dashboard session
+    if old_session_id:
+        await db.dashboard_sessions.update_one(
+            {"session_id": old_session_id},
+            {"$pull": {"device_ids": device_id}}
+        )
+
+    # Generate a fresh pairing code
+    code_info = await _refresh_pairing_code(device_id)
+    await db.devices.update_one(
+        {"device_id": device_id},
+        {"$set": {"is_paired": False, "dashboard_session_id": None}}
+    )
+
+    return {
+        "success": True,
+        "new_pairing_code": code_info["pairing_code"],
+        "expires_in_seconds": PAIRING_CODE_TTL_MINUTES * 60,
+        "message": "Device unlinked from dashboard. New pairing code generated.",
+    }
+
+# ==================== DASHBOARD PAIRING ENDPOINTS ====================
+
+@api_router.post("/dashboard/pair")
+async def pair_device(pairing_code: str, session_id: Optional[str] = None):
+    """
+    Dashboard enters the 6-digit pairing code from the mobile app.
+    Validates code, expiry, and availability.
+    Returns or creates a dashboard session that the browser stores.
+    """
+    now = datetime.utcnow()
+    device = await db.devices.find_one({"pairing_code": pairing_code})
+    if not device:
+        raise HTTPException(status_code=404, detail="Invalid pairing code")
+    if device.get("pairing_expires_at") and device["pairing_expires_at"] < now:
+        raise HTTPException(status_code=400, detail="Pairing code has expired. Open the mobile app for a new code.")
+    if device.get("is_paired") and device.get("dashboard_session_id") != session_id:
+        raise HTTPException(status_code=409, detail="This device is already linked to another dashboard session.")
+
+    device_id = device["device_id"]
+
+    # Get or create dashboard session
+    if session_id:
+        session = await db.dashboard_sessions.find_one({"session_id": session_id})
+    else:
+        session = None
+
+    if session:
+        # Add device to existing session if not already there
+        if device_id not in session.get("device_ids", []):
+            await db.dashboard_sessions.update_one(
+                {"session_id": session_id},
+                {"$addToSet": {"device_ids": device_id}, "$set": {"last_active": now}}
+            )
+    else:
+        # Create new session
+        session_id = str(uuid.uuid4())
+        await db.dashboard_sessions.insert_one({
+            "session_id": session_id,
+            "device_ids": [device_id],
+            "created_at": now,
+            "last_active": now,
+        })
+
+    # Mark device as paired
+    await db.devices.update_one(
+        {"device_id": device_id},
+        {"$set": {"is_paired": True, "dashboard_session_id": session_id}}
+    )
+
+    return {
+        "success": True,
+        "session_id": session_id,
+        "device_id": device_id,
+        "device_name": device.get("name", "Mobile Device"),
+        "message": "Device paired successfully.",
+    }
+
+@api_router.get("/dashboard/session/{session_id}/devices")
+async def get_session_devices(session_id: str):
+    """List all devices linked to a dashboard session."""
+    session = await db.dashboard_sessions.find_one({"session_id": session_id})
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    device_ids = session.get("device_ids", [])
+    devices = await db.devices.find({"device_id": {"$in": device_ids}}).to_list(None)
+
+    return {
+        "success": True,
+        "devices": [
+            {
+                "device_id": d["device_id"],
+                "device_name": d.get("name", "Mobile Device"),
+                "is_active": d.get("is_active", True),
+                "is_paired": d.get("is_paired", False),
+                "paired_at": d.get("paired_at"),
+            }
+            for d in devices
+        ],
+        "count": len(devices),
+    }
+
+@api_router.delete("/dashboard/session/{session_id}/devices/{device_id}")
+async def remove_device_from_session(session_id: str, device_id: str):
+    """Remove a device from a dashboard session (dashboard-side disconnect)."""
+    await db.dashboard_sessions.update_one(
+        {"session_id": session_id},
+        {"$pull": {"device_ids": device_id}}
+    )
+    # Only clear pairing if the device is actually in this session
+    device = await db.devices.find_one({"device_id": device_id, "dashboard_session_id": session_id})
+    if device:
+        code_info = await _refresh_pairing_code(device_id)
+        await db.devices.update_one(
+            {"device_id": device_id},
+            {"$set": {"is_paired": False, "dashboard_session_id": None}}
+        )
+    return {"success": True, "message": "Device removed from session."}
+
+# ==================== DASHBOARD AUTH MODELS (legacy) ====================
 
 class DashboardUserCreate(BaseModel):
     email: str
@@ -875,43 +1107,6 @@ class DashboardUserLogin(BaseModel):
 
 class DeviceAssociationRequest(BaseModel):
     device_code: str
-
-# ==================== AUTH ENDPOINTS (Mobile App) ====================
-
-@api_router.post("/auth/register")
-async def register_device(device: DeviceCreate):
-    """Register a new device"""
-    existing = await db.devices.find_one({"device_id": device.device_id})
-    if existing:
-        raise HTTPException(status_code=400, detail="Device ID already registered")
-    
-    device_doc = {
-        "device_id": device.device_id,
-        "password": device.password,
-        "name": device.name,
-        "created_at": datetime.utcnow(),
-        "is_active": True
-    }
-    result = await db.devices.insert_one(device_doc)
-    device_doc['_id'] = result.inserted_id
-    return serialize_doc(device_doc)
-
-@api_router.post("/auth/login")
-async def login_device(login: DeviceLogin):
-    """Login a device"""
-    device = await db.devices.find_one({
-        "device_id": login.device_id,
-        "password": login.password
-    })
-    
-    if not device:
-        raise HTTPException(status_code=401, detail="Invalid device ID or password")
-    
-    return {
-        "success": True,
-        "device": serialize_doc(device),
-        "message": "Login successful"
-    }
 
 # ==================== DASHBOARD AUTH ENDPOINTS ====================
 
@@ -1893,10 +2088,25 @@ async def create_barcode_scan(barcode: BarcodeCreate):
 # ==================== DASHBOARD DATA ENDPOINTS ====================
 
 @api_router.get("/dashboard/insights")
-async def get_dashboard_insights():
-    """Get aggregated insights for the dashboard"""
-    recordings = await db.recordings.find({}).to_list(1000)
-    visitors = await db.visitor_badges.find({}).to_list(1000)
+async def get_dashboard_insights(session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """Get aggregated insights for the dashboard, filtered to session's linked devices."""
+    # Resolve device filter: prefer session_id, fall back to legacy user_id
+    if session_id:
+        device_ids = await get_session_device_ids(session_id)
+    elif user_id:
+        device_ids = await get_linked_device_ids(user_id)
+    else:
+        device_ids = None
+
+    rec_query = {"device_id": {"$in": device_ids}} if device_ids is not None else {}
+    recordings = await db.recordings.find(rec_query).to_list(1000)
+
+    if device_ids is not None:
+        recording_ids = [str(r["_id"]) for r in recordings]
+        vis_query = {"recording_id": {"$in": recording_ids}}
+    else:
+        vis_query = {}
+    visitors = await db.visitor_badges.find(vis_query).to_list(1000)
     
     total_recordings = len(recordings)
     total_visitors = len(visitors)
@@ -1952,43 +2162,60 @@ async def get_dashboard_insights():
     }
 
 @api_router.get("/dashboard/recordings")
-async def get_dashboard_recordings():
-    """Get all recordings for the dashboard with full details"""
-    recordings = await db.recordings.find({}).sort("start_time", -1).to_list(100)
+async def get_dashboard_recordings(session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """Get recordings for the dashboard, filtered to session's linked devices."""
+    if session_id:
+        device_ids = await get_session_device_ids(session_id)
+    elif user_id:
+        device_ids = await get_linked_device_ids(user_id)
+    else:
+        device_ids = None
+
+    query = {"device_id": {"$in": device_ids}} if device_ids is not None else {}
+    recordings = await db.recordings.find(query).sort("start_time", -1).to_list(100)
     result = []
-    
+
     for r in recordings:
-        # Get the recording ID before serializing
         recording_id = str(r['_id'])
         rec_data = serialize_doc(r)
-        
-        # Get visitor badges for this recording
         visitors = await db.visitor_badges.find({"recording_id": recording_id}).to_list(50)
         rec_data['visitor_badges'] = [serialize_doc(v) for v in visitors]
-        
         result.append(rec_data)
-    
+
     return result
 
 @api_router.get("/dashboard/visitors")
-async def get_dashboard_visitors():
-    """Get all visitors with their recording info"""
-    visitors = await db.visitor_badges.find({}).sort("created_at", -1).to_list(500)
+async def get_dashboard_visitors(session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """Get all visitors with their recording info, filtered to session's linked devices."""
+    if session_id:
+        device_ids = await get_session_device_ids(session_id)
+    elif user_id:
+        device_ids = await get_linked_device_ids(user_id)
+    else:
+        device_ids = None
+
+    if device_ids is not None:
+        recs = await db.recordings.find(
+            {"device_id": {"$in": device_ids}}, {"_id": 1}
+        ).to_list(None)
+        recording_ids = [str(r["_id"]) for r in recs]
+        query = {"recording_id": {"$in": recording_ids}}
+    else:
+        query = {}
+
+    visitors = await db.visitor_badges.find(query).sort("created_at", -1).to_list(500)
     result = []
-    
+
     for v in visitors:
         visitor_data = serialize_doc(v)
-        
-        # Get recording info
         if v.get('recording_id'):
             recording = await db.recordings.find_one({"_id": ObjectId(v['recording_id'])})
             if recording:
                 visitor_data['booth_name'] = recording.get('booth_name')
                 st = recording.get('start_time')
                 visitor_data['recording_date'] = (st.isoformat() + 'Z') if st else None
-        
         result.append(visitor_data)
-    
+
     return result
 
 # ==================== MEDIA STREAMING ====================

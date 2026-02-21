@@ -25,8 +25,8 @@ export default function SettingsScreen() {
     autoUpload: false,
     storageLocation: 'internal',
   });
-  const [deviceCode, setDeviceCode] = useState<string | null>(null);
-  const [deviceName, setDeviceName] = useState<string>('');
+  const [deviceName, setDeviceName] = useState('');
+  const [deviceId, setDeviceId] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -36,9 +36,7 @@ export default function SettingsScreen() {
   const loadSettings = async () => {
     try {
       const saved = await AsyncStorage.getItem('xow_settings');
-      if (saved) {
-        setSettings(JSON.parse(saved));
-      }
+      if (saved) setSettings(JSON.parse(saved));
     } catch (e) {
       console.error('Load settings error:', e);
     }
@@ -48,9 +46,9 @@ export default function SettingsScreen() {
     try {
       const saved = await AsyncStorage.getItem('xow_device');
       if (saved) {
-        const device = JSON.parse(saved);
-        setDeviceName(device.name || 'Unknown Device');
-        setDeviceCode(device.device_id || null);
+        const d = JSON.parse(saved);
+        setDeviceName(d.name || 'Expo Booth');
+        setDeviceId(d.device_id || '');
       }
     } catch (e) {
       console.error('Load device error:', e);
@@ -66,14 +64,10 @@ export default function SettingsScreen() {
     }
   };
 
-  const toggleAutoUpload = () => {
-    const newSettings = { ...settings, autoUpload: !settings.autoUpload };
-    saveSettings(newSettings);
-  };
+  const toggleAutoUpload = () => saveSettings({ ...settings, autoUpload: !settings.autoUpload });
 
   const setStorageLocation = (location: 'internal' | 'external') => {
-    const newSettings = { ...settings, storageLocation: location };
-    saveSettings(newSettings);
+    saveSettings({ ...settings, storageLocation: location });
     Alert.alert('Storage Updated', `Recordings will be saved to ${getLocationName(location)}`);
   };
 
@@ -116,17 +110,12 @@ export default function SettingsScreen() {
             <View style={styles.card}>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Device Name</Text>
-                <Text style={styles.infoValue}>{deviceName}</Text>
+                <Text style={styles.infoValue}>{deviceName || 'Unknown Device'}</Text>
               </View>
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Device Code</Text>
-                <View style={styles.codeBadge}>
-                  <Text style={styles.codeText}>{deviceCode || '------'}</Text>
-                </View>
+                <Text style={styles.infoLabel}>Device ID</Text>
+                <Text style={[styles.infoValue, { fontFamily: 'monospace', fontSize: 12 }]}>{deviceId || '—'}</Text>
               </View>
-              <Text style={styles.hintText}>
-                Use this code to link with your dashboard account
-              </Text>
             </View>
           </View>
 
@@ -152,7 +141,7 @@ export default function SettingsScreen() {
                 />
               </View>
               <Text style={styles.hintText}>
-                {settings.autoUpload 
+                {settings.autoUpload
                   ? 'Recordings will upload automatically after recording stops'
                   : 'Recordings will be saved locally. Upload manually from Gallery.'}
               </Text>
@@ -205,7 +194,7 @@ export default function SettingsScreen() {
             <View style={styles.infoCard}>
               <Ionicons name="information-circle" size={18} color="#F59E0B" />
               <Text style={styles.infoText}>
-                Recordings are saved locally and can be uploaded to the cloud from the Gallery tab. 
+                Recordings are saved locally and can be uploaded to the cloud from the Gallery tab.
                 When Auto Upload is off, you have full control over when and which recordings to upload.
               </Text>
             </View>
@@ -243,8 +232,6 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   infoLabel: { color: '#666', fontSize: 12 },
   infoValue: { color: '#fff', fontSize: 13, fontWeight: '500' },
-  codeBadge: { backgroundColor: '#E54B2A', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
-  codeText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: 'monospace', letterSpacing: 2 },
   hintText: { color: '#555', fontSize: 10, marginTop: 10 },
 
   // Setting Row

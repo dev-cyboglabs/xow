@@ -183,6 +183,28 @@
         </div>
     </div>
 
+    <!-- Pairing overlay (shown when no session exists) -->
+    <div id="pair-overlay" class="fixed inset-0 bg-slate-900/95 backdrop-blur-sm hidden items-center justify-center z-50">
+        <div class="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
+            <div class="p-8 text-center">
+                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-orange-200">
+                    <span class="text-white font-bold text-3xl">X</span>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-900 mb-2">Welcome to XoW</h2>
+                <p class="text-gray-500 mb-8">Enter the pairing code shown in your mobile app to get started</p>
+                <div id="pair-content">
+                    <input type="text" id="pair-code-input" maxlength="6" pattern="[0-9]{6}" placeholder="000000"
+                        class="w-full px-4 py-4 text-center text-3xl font-mono tracking-[0.6em] border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none mb-4"
+                        oninput="this.value=this.value.replace(/\D/g,'')">
+                    <button onclick="submitPairCode()" class="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold shadow-lg shadow-orange-200 hover:shadow-xl transition-all text-lg">
+                        Connect Device
+                    </button>
+                    <p class="text-xs text-gray-400 mt-4">The code refreshes every 5 minutes in the mobile app</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API = '/api';
         let view = 'overview';
@@ -190,22 +212,81 @@
         let currentLang = 'en';
         let currentRecordingId = null;
 
-        document.addEventListener('DOMContentLoaded', () => { setView('overview'); refresh(); });
+        // ── Session helpers ──────────────────────────────────────────
+        function getSession() {
+            try { return JSON.parse(localStorage.getItem('xow_session') || 'null'); } catch { return null; }
+        }
+        function saveSession(s) { localStorage.setItem('xow_session', JSON.stringify(s)); }
+        function sessionParam() {
+            const s = getSession();
+            return s ? `?session_id=${encodeURIComponent(s.session_id)}` : '';
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const session = getSession();
+            if (!session) {
+                showPairOverlay();
+            } else {
+                setView('overview');
+                refresh();
+            }
+        });
+
+        // ── Pairing overlay ──────────────────────────────────────────
+        function showPairOverlay() {
+            const el = document.getElementById('pair-overlay');
+            el.classList.remove('hidden');
+            el.classList.add('flex');
+        }
+        function hidePairOverlay() {
+            const el = document.getElementById('pair-overlay');
+            el.classList.add('hidden');
+            el.classList.remove('flex');
+        }
+        async function submitPairCode() {
+            const code = document.getElementById('pair-code-input').value.trim();
+            if (code.length !== 6) { alert('Please enter the 6-digit code'); return; }
+            const session = getSession();
+            const url = session
+                ? `${API}/dashboard/pair?pairing_code=${code}&session_id=${encodeURIComponent(session.session_id)}`
+                : `${API}/dashboard/pair?pairing_code=${code}`;
+            try {
+                const res = await fetch(url, { method: 'POST' });
+                const result = await res.json();
+                if (!res.ok) { alert(result.detail || 'Pairing failed'); return; }
+                const existing = getSession();
+                const newDeviceIds = existing ? [...new Set([...existing.device_ids, result.device_id])] : [result.device_id];
+                saveSession({ session_id: result.session_id, device_ids: newDeviceIds });
+                document.getElementById('pair-content').innerHTML = `
+                    <div class="text-center">
+                        <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                            <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        </div>
+                        <h3 class="font-bold text-gray-900 text-xl mb-2">Connected!</h3>
+                        <p class="text-gray-500 mb-6">${result.device_name} has been linked to your dashboard.</p>
+                        <button onclick="hidePairOverlay(); devicesData={devices:[],count:0}; refresh(); setView('overview');"
+                            class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition-colors">
+                            Open Dashboard
+                        </button>
+                    </div>`;
+            } catch(e) { console.error(e); alert('Connection failed. Please try again.'); }
+        }
 
         async function refresh() {
             const icon = document.getElementById('refresh-icon');
             icon.classList.add('animate-spin');
+            const sp = sessionParam();
             try {
                 const [i, r, v] = await Promise.all([
-                    fetch(`${API}/dashboard/insights`).then(r => r.json()),
-                    fetch(`${API}/dashboard/recordings`).then(r => r.json()),
-                    fetch(`${API}/dashboard/visitors`).then(r => r.json())
+                    fetch(`${API}/dashboard/insights${sp}`).then(r => r.json()),
+                    fetch(`${API}/dashboard/recordings${sp}`).then(r => r.json()),
+                    fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json())
                 ]);
                 data = { insights: i, recordings: r, visitors: v };
                 render();
                 document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-emerald-500';
                 document.getElementById('status-text').textContent = 'System Online';
-            } catch(e) { 
+            } catch(e) {
                 console.error(e);
                 document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-red-500';
                 document.getElementById('status-text').textContent = 'Connection Error';
@@ -630,53 +711,48 @@
         }
 
         // Device management
-        let devicesData = { devices: [], count: 0, max_allowed: 10 };
-        let currentUserId = null;
-        
+        let devicesData = { devices: [], count: 0 };
+
         async function loadDevices() {
-            // Get user from localStorage
-            const userStr = localStorage.getItem('xow_user');
-            if (userStr) {
-                try {
-                    const user = JSON.parse(userStr);
-                    currentUserId = user.id;
-                    const response = await fetch(`${API}/dashboard/devices/${user.id}`);
-                    devicesData = await response.json();
-                } catch (e) {
-                    console.error('Error loading devices:', e);
-                }
+            const session = getSession();
+            if (!session) return;
+            try {
+                const res = await fetch(`${API}/dashboard/session/${encodeURIComponent(session.session_id)}/devices`);
+                devicesData = await res.json();
+            } catch (e) {
+                console.error('Error loading devices:', e);
             }
         }
-        
+
         function renderDevices() {
-            const user = localStorage.getItem('xow_user');
-            if (!user) {
+            const session = getSession();
+            if (!session) {
                 return `<div class="fade">
                     <div class="card rounded-2xl p-12 text-center">
                         <div class="w-20 h-20 rounded-2xl bg-orange-100 flex items-center justify-center mx-auto mb-6">
                             <svg class="w-10 h-10 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-2">Login Required</h3>
-                        <p class="text-gray-500 mb-6">Please log in to manage your devices</p>
-                        <button onclick="window.location.href='/api/home'" class="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium shadow-lg shadow-orange-200 hover:shadow-xl transition-all">
-                            Go to Login
+                        <h3 class="text-xl font-semibold text-gray-900 mb-2">No Active Session</h3>
+                        <p class="text-gray-500 mb-6">Pair your mobile device to get started</p>
+                        <button onclick="showPairOverlay()" class="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium shadow-lg shadow-orange-200 hover:shadow-xl transition-all">
+                            Pair a Device
                         </button>
                     </div>
                 </div>`;
             }
-            
+
             // Load devices if not loaded
             if (!devicesData.devices || devicesData.devices.length === 0) {
                 loadDevices().then(() => render());
             }
-            
+
             return `<div class="fade">
-                <!-- Header Section -->
+                <!-- Header -->
                 <div class="card rounded-2xl p-6 mb-6">
                     <div class="flex items-center justify-between">
                         <div>
                             <h3 class="font-semibold text-gray-900 text-lg">Your Devices</h3>
-                            <p class="text-sm text-gray-500 mt-1">${devicesData.count || 0} of ${devicesData.max_allowed || 10} devices connected</p>
+                            <p class="text-sm text-gray-500 mt-1">${devicesData.count || 0} device(s) connected</p>
                         </div>
                         <button onclick="showAddDeviceModal()" class="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium shadow-lg shadow-orange-200 hover:shadow-xl transition-all" data-testid="add-device-btn">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
@@ -684,16 +760,16 @@
                         </button>
                     </div>
                 </div>
-                
-                <!-- Devices List -->
+
+                <!-- Device List -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    ${(!devicesData.devices || devicesData.devices.length === 0) ? 
+                    ${(!devicesData.devices || devicesData.devices.length === 0) ?
                         `<div class="col-span-full card rounded-2xl p-12 text-center">
                             <div class="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-6">
                                 <svg class="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                             </div>
                             <h3 class="text-lg font-semibold text-gray-900 mb-2">No Devices Connected</h3>
-                            <p class="text-gray-500 mb-6">Click "Add Device" to connect your mobile app</p>
+                            <p class="text-gray-500 mb-6">Click "Add Device" and enter the pairing code from your mobile app</p>
                         </div>` :
                         devicesData.devices.map(d => `
                             <div class="card rounded-xl p-5" data-testid="device-card">
@@ -704,32 +780,31 @@
                                         </div>
                                         <div>
                                             <div class="font-semibold text-gray-900">${d.device_name || 'Mobile Device'}</div>
-                                            <div class="text-sm text-gray-500 font-mono">${d.device_code}</div>
+                                            <div class="text-sm text-gray-500 font-mono">${d.device_id}</div>
                                         </div>
                                     </div>
-                                    <span class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">${d.is_active ? 'Active' : 'Inactive'}</span>
+                                    <span class="text-xs px-2 py-1 ${d.is_paired ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'} rounded-full font-medium">${d.is_paired ? 'Paired' : 'Inactive'}</span>
                                 </div>
-                                ${d.associated_at ? `<div class="text-xs text-gray-500 mb-4">Connected ${fmtDate(d.associated_at)}</div>` : ''}
-                                <button onclick="removeDevice('${d.device_code}')" class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors" data-testid="remove-device-btn">
-                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                                    Remove Device
+                                <button onclick="removeDevice('${d.device_id}')" class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-sm font-medium transition-colors" data-testid="remove-device-btn">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                                    Disconnect
                                 </button>
                             </div>
                         `).join('')
                     }
                 </div>
-                
-                <!-- How it works section -->
+
+                <!-- How it works -->
                 <div class="card rounded-2xl p-6 mt-6">
                     <h3 class="font-semibold text-gray-900 mb-4">How to Connect a Device</h3>
-                    <div class="grid md:grid-cols-3 gap-6">
+                    <div class="grid md:grid-cols-2 gap-6">
                         <div class="flex gap-4">
                             <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
                                 <span class="text-orange-600 font-bold">1</span>
                             </div>
                             <div>
-                                <div class="font-medium text-gray-900">Get Device Code</div>
-                                <p class="text-sm text-gray-500 mt-1">Open the XoW mobile app and note the 6-digit device code displayed</p>
+                                <div class="font-medium text-gray-900">Get Pairing Code</div>
+                                <p class="text-sm text-gray-500 mt-1">Open the XoW mobile app → Settings and note the 6-digit pairing code (refreshes every 5 min)</p>
                             </div>
                         </div>
                         <div class="flex gap-4">
@@ -737,25 +812,14 @@
                                 <span class="text-orange-600 font-bold">2</span>
                             </div>
                             <div>
-                                <div class="font-medium text-gray-900">Add Device Here</div>
-                                <p class="text-sm text-gray-500 mt-1">Click "Add Device" and enter the 6-digit code to get an 8-digit OTP</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-4">
-                            <div class="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                                <span class="text-orange-600 font-bold">3</span>
-                            </div>
-                            <div>
-                                <div class="font-medium text-gray-900">Enter OTP</div>
-                                <p class="text-sm text-gray-500 mt-1">Enter the 8-digit OTP in your mobile app to complete the connection</p>
+                                <div class="font-medium text-gray-900">Enter Code Here</div>
+                                <p class="text-sm text-gray-500 mt-1">Click "Add Device", type the 6-digit code and the device links instantly — no OTP needed</p>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>`;
         }
-        
-        let pendingOtp = null;
         
         function showAddDeviceModal() {
             const modal = document.createElement('div');
@@ -765,103 +829,80 @@
                 <div class="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
                     <div class="p-6 border-b border-gray-100 bg-gray-50">
                         <div class="flex items-center justify-between">
-                            <h3 class="font-semibold text-gray-900">Add Device</h3>
+                            <h3 class="font-semibold text-gray-900">Add Another Device</h3>
                             <button onclick="closeAddDeviceModal()" class="p-2 hover:bg-gray-200 rounded-lg text-gray-500 transition-colors">
                                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                             </button>
                         </div>
                     </div>
                     <div class="p-6" id="add-device-content">
-                        <p class="text-sm text-gray-600 mb-4">Enter the 6-digit code displayed on your mobile app:</p>
-                        <input type="text" id="device-code-input" maxlength="6" pattern="[0-9]{6}" placeholder="000000" class="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none" data-testid="device-code-input">
+                        <p class="text-sm text-gray-600 mb-4">Enter the 6-digit pairing code from your mobile app (Settings screen):</p>
+                        <input type="text" id="device-code-input" maxlength="6" pattern="[0-9]{6}" placeholder="000000" oninput="this.value=this.value.replace(/\\D/g,'')" class="w-full px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none" data-testid="device-code-input">
                         <button onclick="addDevice()" class="w-full mt-4 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium shadow-lg shadow-orange-200 hover:shadow-xl transition-all" data-testid="submit-device-code-btn">
-                            Get OTP
+                            Connect Device
                         </button>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
         }
-        
+
         function closeAddDeviceModal() {
             const modal = document.getElementById('add-device-modal');
             if (modal) modal.remove();
-            pendingOtp = null;
         }
-        
+
         async function addDevice() {
-            const code = document.getElementById('device-code-input').value;
-            if (code.length !== 6 || !/^\d+$/.test(code)) {
-                alert('Please enter a valid 6-digit code');
-                return;
-            }
-            
-            const userStr = localStorage.getItem('xow_user');
-            if (!userStr) {
-                alert('Please log in first');
-                window.location.href = '/api/home';
-                return;
-            }
-            
-            const user = JSON.parse(userStr);
-            
+            const code = document.getElementById('device-code-input').value.trim();
+            if (code.length !== 6) { alert('Please enter the 6-digit pairing code'); return; }
+
+            const session = getSession();
+            const url = session
+                ? `${API}/dashboard/pair?pairing_code=${code}&session_id=${encodeURIComponent(session.session_id)}`
+                : `${API}/dashboard/pair?pairing_code=${code}`;
+
             try {
-                const response = await fetch(`${API}/dashboard/devices/add?user_id=${user.id}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ device_code: code })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    pendingOtp = result.otp;
-                    // Show OTP to user
+                const res = await fetch(url, { method: 'POST' });
+                const result = await res.json();
+                if (res.ok && result.success) {
+                    const existing = getSession();
+                    const newDeviceIds = existing ? [...new Set([...existing.device_ids, result.device_id])] : [result.device_id];
+                    saveSession({ session_id: result.session_id, device_ids: newDeviceIds });
                     const content = document.getElementById('add-device-content');
                     content.innerHTML = `
                         <div class="text-center">
                             <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mx-auto mb-4">
                                 <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
                             </div>
-                            <h4 class="font-semibold text-gray-900 mb-2">Enter this OTP on your mobile app</h4>
-                            <div class="text-4xl font-bold text-orange-600 font-mono tracking-[0.3em] py-4">${result.otp}</div>
-                            <p class="text-sm text-gray-500 mb-4">This code expires in ${result.expires_in_minutes} minutes</p>
-                            <button onclick="closeAddDeviceModal(); loadDevices().then(() => render());" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition-colors">
-                                Done
-                            </button>
-                        </div>
-                    `;
+                            <h4 class="font-semibold text-gray-900 mb-2">${result.device_name} Connected!</h4>
+                            <p class="text-sm text-gray-500 mb-4">Device linked to your dashboard session.</p>
+                            <button onclick="closeAddDeviceModal(); loadDevices().then(() => render());" class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition-colors">Done</button>
+                        </div>`;
                 } else {
-                    alert(result.detail || 'Failed to add device');
+                    alert(result.detail || 'Failed to connect. Check the code and try again.');
                 }
-            } catch (e) {
-                console.error(e);
-                alert('Failed to add device. Please try again.');
-            }
+            } catch (e) { console.error(e); alert('Connection failed. Please try again.'); }
         }
-        
-        async function removeDevice(deviceCode) {
-            if (!confirm('Remove this device? It will no longer be able to send recordings to this dashboard.')) return;
-            
-            const userStr = localStorage.getItem('xow_user');
-            if (!userStr) return;
-            
-            const user = JSON.parse(userStr);
-            
+
+        async function removeDevice(deviceId) {
+            if (!confirm('Disconnect this device from the dashboard? The mobile app will generate a new pairing code.')) return;
+            const session = getSession();
+            if (!session) return;
             try {
-                const response = await fetch(`${API}/dashboard/devices/${user.id}/${deviceCode}`, { method: 'DELETE' });
-                const result = await response.json();
-                
+                const res = await fetch(
+                    `${API}/dashboard/session/${encodeURIComponent(session.session_id)}/devices/${encodeURIComponent(deviceId)}`,
+                    { method: 'DELETE' }
+                );
+                const result = await res.json();
                 if (result.success) {
+                    session.device_ids = session.device_ids.filter(id => id !== deviceId);
+                    saveSession(session);
                     await loadDevices();
                     render();
                 } else {
-                    alert(result.detail || 'Failed to remove device');
+                    alert(result.detail || 'Failed to disconnect device');
                 }
-            } catch (e) {
-                console.error(e);
-                alert('Failed to remove device');
-            }
+            } catch (e) { console.error(e); alert('Failed to disconnect device'); }
         }
 
         // Main playback function with improved timestamp handling
@@ -1103,7 +1144,7 @@
                         setTimeout(() => card.remove(), 300);
                     }
                     
-                    const insights = await fetch(`${API}/dashboard/insights`).then(r => r.json());
+                    const insights = await fetch(`${API}/dashboard/insights${sessionParam()}`).then(r => r.json());
                     data.insights = insights;
                     if (view === 'overview') render();
                 } else {

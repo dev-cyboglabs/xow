@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   TextInput,
+  Modal,
   Platform,
   useWindowDimensions,
   Animated,
@@ -70,6 +71,8 @@ export default function RecorderScreen() {
   const [toastMessage, setToastMessage] = useState('');
   const [videoRecordingActive, setVideoRecordingActive] = useState(false);
   const [autoUpload, setAutoUpload] = useState(false);
+  const [showExitModal, setShowExitModal] = useState(false);
+  const [exitConfirmText, setExitConfirmText] = useState('');
   const toastAnim = useRef(new Animated.Value(0)).current;
   
   const cameraRef = useRef<CameraView>(null);
@@ -649,11 +652,21 @@ export default function RecorderScreen() {
     barcodeInputRef.current?.focus();
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     if (isRecording) {
       Alert.alert('Recording Active', 'Please stop recording before exiting.');
       return;
     }
+    setExitConfirmText('');
+    setShowExitModal(true);
+  };
+
+  const confirmExit = async () => {
+    if (exitConfirmText.trim().toLowerCase() !== 'yes') {
+      Alert.alert('Incorrect', 'Please type "yes" to confirm exit.');
+      return;
+    }
+    setShowExitModal(false);
     await AsyncStorage.removeItem('xow_device');
     router.replace('/');
   };
@@ -861,6 +874,36 @@ export default function RecorderScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Exit confirmation modal */}
+      <Modal transparent animationType="fade" visible={showExitModal} onRequestClose={() => setShowExitModal(false)}>
+        <View style={styles.exitOverlay}>
+          <View style={styles.exitModal}>
+            <View style={styles.exitIconRow}>
+              <Ionicons name="power" size={28} color="#EF4444" />
+            </View>
+            <Text style={styles.exitTitle}>Exit App</Text>
+            <Text style={styles.exitSub}>Type <Text style={styles.exitYes}>yes</Text> below to confirm exit</Text>
+            <TextInput
+              style={styles.exitInput}
+              placeholder="Type yes to exit"
+              placeholderTextColor="#444"
+              value={exitConfirmText}
+              onChangeText={setExitConfirmText}
+              autoCapitalize="none"
+              autoFocus
+            />
+            <View style={styles.exitBtnRow}>
+              <TouchableOpacity style={styles.exitCancelBtn} onPress={() => setShowExitModal(false)}>
+                <Text style={styles.exitCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.exitConfirmBtn} onPress={confirmExit}>
+                <Text style={styles.exitConfirmText}>Exit</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -952,4 +995,18 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', justifyContent: 'space-around', paddingTop: 10, borderTopWidth: 1, borderTopColor: '#1a1a1a' },
   actBtn: { alignItems: 'center', padding: 6 },
   actLabel: { color: '#888', fontSize: 8, marginTop: 3 },
+
+  // Exit modal
+  exitOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', alignItems: 'center' },
+  exitModal: { width: 280, backgroundColor: '#0f0f0f', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#2a2a2a' },
+  exitIconRow: { alignItems: 'center', marginBottom: 12 },
+  exitTitle: { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center', marginBottom: 6 },
+  exitSub: { color: '#888', fontSize: 13, textAlign: 'center', marginBottom: 16, lineHeight: 18 },
+  exitYes: { color: '#EF4444', fontWeight: '700' },
+  exitInput: { backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, color: '#fff', fontSize: 15, borderWidth: 1, borderColor: '#333', marginBottom: 20, textAlign: 'center' },
+  exitBtnRow: { flexDirection: 'row', gap: 10 },
+  exitCancelBtn: { flex: 1, paddingVertical: 11, borderRadius: 8, backgroundColor: '#1a1a1a', alignItems: 'center', borderWidth: 1, borderColor: '#333' },
+  exitCancelText: { color: '#888', fontSize: 14, fontWeight: '600' },
+  exitConfirmBtn: { flex: 1, paddingVertical: 11, borderRadius: 8, backgroundColor: '#EF4444', alignItems: 'center' },
+  exitConfirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
 });
