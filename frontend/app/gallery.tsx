@@ -81,6 +81,7 @@ export default function GalleryScreen() {
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoFps, setVideoFps] = useState(30);
   const [previewFpsTimeline, setPreviewFpsTimeline] = useState<number[]>([]);
+  const [videoHasEnded, setVideoHasEnded] = useState(false);
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
@@ -175,8 +176,16 @@ export default function GalleryScreen() {
     setVideoPosition(0);
     setVideoDuration(0);
     setPreviewFpsTimeline([]);
+    setVideoHasEnded(false);
     if (videoRef.current) {
       videoRef.current.stopAsync();
+    }
+  };
+
+  const replayVideo = async () => {
+    if (videoRef.current) {
+      await videoRef.current.replayAsync();
+      setVideoHasEnded(false);
     }
   };
 
@@ -186,6 +195,11 @@ export default function GalleryScreen() {
       setVideoPosition(positionSeconds);
       if (status.durationMillis) {
         setVideoDuration(status.durationMillis / 1000);
+      }
+
+      // Check if video has ended
+      if (status.didJustFinish) {
+        setVideoHasEnded(true);
       }
 
       if (previewFpsTimeline.length > 0) {
@@ -762,6 +776,14 @@ export default function GalleryScreen() {
                     <Text style={styles.overlayFPSValue}>{videoFps}</Text>
                   </View>
                 </View>
+
+                {/* Replay button - shown when video ends */}
+                {videoHasEnded && (
+                  <TouchableOpacity style={styles.replayButton} onPress={replayVideo}>
+                    <Ionicons name="refresh" size={32} color="#fff" />
+                    <Text style={styles.replayText}>Replay</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </ScrollView>
@@ -863,4 +885,8 @@ const styles = StyleSheet.create({
   overlayLabel: { color: '#666', fontSize: 7, fontWeight: '700', letterSpacing: 0.3 },
   overlayTCValue: { color: '#EF4444', fontSize: 12, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   overlayFPSValue: { color: '#E54B2A', fontSize: 12, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+
+  // Replay button
+  replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -60 }, { translateY: -60 }], width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
+  replayText: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 8, letterSpacing: 0.5 },
 });
