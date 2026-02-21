@@ -36,6 +36,7 @@ interface LocalRecording {
   deviceId: string;
   fps?: number;
   fpsTimeline?: number[];
+  capturedFrames?: string[];  // periodic visitor snapshot paths
 }
 
 interface BarcodeData {
@@ -56,6 +57,8 @@ interface CloudRecording {
   barcode_scans: any[];
   total_speakers?: number;
   host_identified?: boolean;
+  head_count?: number;
+  avg_head_count?: number;
 }
 
 type CombinedRecording = (LocalRecording & { source: 'local' }) | (CloudRecording & { source: 'cloud' });
@@ -351,6 +354,32 @@ export default function GalleryScreen() {
         }
       }
 
+      // ── Visitor frames (1-per-minute snapshots for AI head count) ────────
+      if (recording.capturedFrames && recording.capturedFrames.length > 0) {
+        for (let i = 0; i < recording.capturedFrames.length; i++) {
+          const framePath = recording.capturedFrames[i];
+          try {
+            const frameInfo = await FileSystem.getInfoAsync(framePath);
+            if (frameInfo.exists) {
+              await FileSystem.uploadAsync(
+                `${API_URL}/api/recordings/${recordingId}/upload-frame`,
+                framePath,
+                {
+                  fieldName: 'frame',
+                  httpMethod: 'POST',
+                  uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                  mimeType: 'image/jpeg',
+                  parameters: { frame_index: String(i) },
+                }
+              );
+              console.log(`Visitor frame ${i + 1}/${recording.capturedFrames.length} uploaded`);
+            }
+          } catch (e) {
+            console.log(`Visitor frame ${i} upload skipped:`, e);
+          }
+        }
+      }
+
       // ── Barcode scans ─────────────────────────────────────────────────────
       for (const scan of recording.barcodeScansList || []) {
         try {
@@ -504,6 +533,10 @@ export default function GalleryScreen() {
     const hasVideo = isLocal ? !!localItem.videoPath : cloudItem.has_video;
     const hasAudio = isLocal ? !!localItem.audioPath : cloudItem.has_audio;
     const barcodeCount = isLocal ? (localItem.barcodeScansList?.length || 0) : (cloudItem.barcode_scans?.length || 0);
+    // For cloud recordings, prefer AI-detected head count; fall back to barcode scans count
+    const visitorCount = isLocal
+      ? barcodeCount
+      : (cloudItem.head_count && cloudItem.head_count > 0 ? cloudItem.head_count : barcodeCount);
     const summaryText = !isLocal ? (cloudItem.overall_summary || cloudItem.summary) : null;
 
     return (
@@ -586,7 +619,12 @@ export default function GalleryScreen() {
         <View style={styles.statsRow}>
           <View style={styles.stat}>
             <Ionicons name="people" size={12} color="#E54B2A" />
-            <Text style={styles.statText}>{String(barcodeCount || 0)} visitors</Text>
+            <Text style={styles.statText}>{String(visitorCount || 0)} visitors</Text>
+            {!isLocal && cloudItem.head_count != null && cloudItem.head_count > 0 && (
+              <View style={styles.aiDetectedBadge}>
+                <Text style={styles.aiDetectedText}>AI</Text>
+              </View>
+            )}
           </View>
           {!isLocal && cloudItem.total_speakers != null && cloudItem.total_speakers > 0 && (
             <View style={styles.stat}>
@@ -866,6 +904,8 @@ const styles = StyleSheet.create({
   statText: { color: '#888', fontSize: 10 },
   hostBadge: { backgroundColor: 'rgba(16,185,129,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3 },
   hostText: { color: '#10B981', fontSize: 8, fontWeight: '700' },
+  aiDetectedBadge: { backgroundColor: 'rgba(139,92,246,0.2)', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginLeft: 4 },
+  aiDetectedText: { color: '#8B5CF6', fontSize: 7, fontWeight: '800', letterSpacing: 0.3 },
   localBadge: { backgroundColor: 'rgba(245,158,11,0.2)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 3 },
   localBadgeText: { color: '#F59E0B', fontSize: 8, fontWeight: '700' },
 

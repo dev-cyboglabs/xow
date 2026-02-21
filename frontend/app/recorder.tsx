@@ -40,6 +40,7 @@ interface LocalRecording {
   deviceId: string;
   fps?: number;
   fpsTimeline?: number[];
+  capturedFrames?: string[];  // periodic visitor snapshot paths (1 per minute)
 }
 
 interface BarcodeData {
@@ -75,6 +76,8 @@ export default function RecorderScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const frameTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fpsTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const frameCapIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const capturedFramesRef = useRef<string[]>([]);
   const frameCountRef = useRef(0);
   const lastFpsFrameRef = useRef(0);
   const latestFpsRef = useRef(0);
@@ -98,6 +101,7 @@ export default function RecorderScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
+      if (frameCapIntervalRef.current) clearInterval(frameCapIntervalRef.current);
       if (clockRef.current) clearInterval(clockRef.current);
     };
   }, []);
@@ -288,9 +292,26 @@ export default function RecorderScreen() {
   const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
+  // Capture a single snapshot from the camera for visitor detection
+  const captureVisitorFrame = async (storageDir: string) => {
+    if (!cameraRef.current) return;
+    try {
+      const photo = await (cameraRef.current as any).takePictureAsync({ quality: 0.6, skipProcessing: true });
+      if (photo?.uri) {
+        const framePath = `${storageDir}visitor_frame_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: photo.uri, to: framePath });
+        capturedFramesRef.current.push(framePath);
+        console.log(`Visitor frame ${capturedFramesRef.current.length} captured: ${framePath}`);
+      }
+    } catch (e: any) {
+      // Silent — photo capture during video recording may not be supported on all platforms
+      console.log('Visitor frame capture skipped:', e?.message);
+    }
+  };
+
   const startRecording = async () => {
     if (!device) return;
-    
+
     try {
       setIsRecording(true);
       setFrameCount(0);
@@ -299,16 +320,28 @@ export default function RecorderScreen() {
       setRecordingTime(0);
       recordingStartTime.current = Date.now();
       videoUriRef.current = null;
-      
+      capturedFramesRef.current = [];
+
+      // Ensure storage directory exists for visitor frames
+      const storageDir = `${FileSystem.documentDirectory}XoW_Recordings/`;
+      const dirInfo = await FileSystem.getInfoAsync(storageDir);
+      if (!dirInfo.exists) {
+        await FileSystem.makeDirectoryAsync(storageDir, { intermediates: true });
+      }
+
       const localId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setCurrentRecording({ localId });
-      
+
       frameCountRef.current = 0;
       lastFpsFrameRef.current = 0;
       latestFpsRef.current = 0;
       fpsSamplesRef.current = [];
       setFps(0);
       timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
+
+      // Capture a visitor frame immediately, then every 60 seconds
+      captureVisitorFrame(storageDir);
+      frameCapIntervalRef.current = setInterval(() => captureVisitorFrame(storageDir), 60000);
       frameTimerRef.current = setInterval(() => {
         frameCountRef.current += 1;
         setFrameCount(frameCountRef.current);
@@ -384,6 +417,7 @@ export default function RecorderScreen() {
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
+      if (frameCapIntervalRef.current) clearInterval(frameCapIntervalRef.current);
 
       let audioUri: string | null = null;
       let videoUri: string | null = null;
@@ -493,7 +527,9 @@ export default function RecorderScreen() {
               )
             : latestFpsRef.current || fps || 30,
         fpsTimeline: [...fpsSamplesRef.current],
+        capturedFrames: [...capturedFramesRef.current],
       };
+      capturedFramesRef.current = [];
 
       const existingRecordings = await getLocalRecordings();
       existingRecordings.unshift(localRecording);
@@ -550,6 +586,8 @@ export default function RecorderScreen() {
       device_id: device.device_id,
       expo_name: 'Expo 2025',
       booth_name: recording.boothName,
+      start_time: recording.createdAt,
+      duration: recording.duration,
     });
     
     const recordingId = res.data.id;
@@ -614,7 +652,9 @@ export default function RecorderScreen() {
       } catch {}
     }
 
-    await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`);
+    await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`, {
+      duration: recording.duration,
+    });
 
     const localRecordings = await getLocalRecordings();
     const idx = localRecordings.findIndex(r => r.localId === recording.localId);

@@ -245,6 +245,94 @@ async def detect_head_count_from_frames(frames: list) -> dict:
         logger.error(f"Head count detection failed: {e}")
         return {"max_count": 0, "avg_count": 0, "detections": []}
 
+async def count_unique_visitors_from_frames(recording_id: str):
+    """Send all periodic visitor frames to GPT-4o and count unique people (no double-counting)."""
+    try:
+        recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
+        if not recording:
+            return
+
+        frame_ids = recording.get('visitor_frame_ids', [])
+        if not frame_ids:
+            logger.info(f"No visitor frames for recording {recording_id}, skipping unique count")
+            return
+        if not openai_client:
+            logger.warning("OpenAI client not configured — skipping unique visitor count")
+            return
+
+        # Load all frames from GridFS as base64
+        image_parts = []
+        for fid in frame_ids:
+            try:
+                grid_out = await fs_bucket.open_download_stream(ObjectId(fid))
+                data = await grid_out.read()
+                b64 = base64.b64encode(data).decode('utf-8')
+                image_parts.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}", "detail": "low"}
+                })
+            except Exception as e:
+                logger.warning(f"Could not load visitor frame {fid}: {e}")
+
+        if not image_parts:
+            return
+
+        logger.info(f"Counting unique visitors across {len(image_parts)} frames for recording {recording_id}")
+
+        content = [
+            {
+                "type": "text",
+                "text": (
+                    f"These are {len(image_parts)} photos taken at 1-minute intervals from a single "
+                    f"expo booth recording session.\n\n"
+                    f"Count the TOTAL number of UNIQUE individuals visible across ALL photos combined.\n"
+                    f"- If the same person appears in multiple photos, count them ONLY ONCE.\n"
+                    f"- Use face features, clothing, and body shape to identify recurring individuals.\n"
+                    f"- Include everyone who is clearly visible, even partially.\n\n"
+                    f"Respond with ONLY a JSON object in this exact format:\n"
+                    f'{{\"unique_visitors\": NUMBER, \"confidence\": \"high\"|\"medium\"|\"low\", \"reasoning\": \"one sentence\"}}'
+                )
+            }
+        ] + image_parts
+
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{"role": "user", "content": content}],
+            max_tokens=200
+        )
+
+        result_text = response.choices[0].message.content.strip()
+        logger.info(f"GPT-4o visitor count response: {result_text}")
+
+        import re
+        try:
+            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
+            result = json.loads(json_match.group() if json_match else result_text)
+            unique_count = int(result.get('unique_visitors', 0))
+            confidence = result.get('confidence', 'medium')
+            reasoning = result.get('reasoning', '')
+        except Exception:
+            numbers = re.findall(r'\d+', result_text)
+            unique_count = int(numbers[0]) if numbers else 0
+            confidence = 'low'
+            reasoning = ''
+
+        logger.info(f"Unique visitors for recording {recording_id}: {unique_count} (confidence={confidence})")
+
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {
+                "head_count": unique_count,
+                "visitor_count_confidence": confidence,
+                "visitor_count_reasoning": reasoning,
+                "visitor_frame_count": len(image_parts),
+            }}
+        )
+
+    except Exception as e:
+        logger.error(f"count_unique_visitors_from_frames error for {recording_id}: {e}")
+
+
 # Extract audio from video using ffmpeg
 async def extract_audio_from_video(video_data: bytes, video_format: str = "mp4") -> bytes:
     """Extract audio track from video file using ffmpeg"""
@@ -1031,12 +1119,57 @@ async def get_recording(recording_id: str):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@api_router.post("/recordings/{recording_id}/upload-frame")
+async def upload_visitor_frame(
+    recording_id: str,
+    frame: UploadFile = File(...),
+    frame_index: str = Form("0"),
+):
+    """Receive a 1-minute periodic visitor snapshot and store it for AI head count."""
+    try:
+        recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+
+        frame_data = await frame.read()
+        if not frame_data:
+            raise HTTPException(status_code=400, detail="Empty frame data")
+
+        frame_id = await fs_bucket.upload_from_stream(
+            f"visitor_frame_{recording_id}_{frame_index}.jpg",
+            io.BytesIO(frame_data),
+            metadata={
+                "recording_id": recording_id,
+                "type": "visitor_frame",
+                "frame_index": int(frame_index),
+            }
+        )
+
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$push": {"visitor_frame_ids": str(frame_id)}}
+        )
+
+        logger.info(f"Visitor frame {frame_index} stored for recording {recording_id}")
+        return {"success": True, "frame_id": str(frame_id), "frame_index": int(frame_index)}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"upload_visitor_frame error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class RecordingComplete(BaseModel):
     duration: Optional[float] = None  # Actual recording duration in seconds from device
 
 @api_router.put("/recordings/{recording_id}/complete")
-async def complete_recording(recording_id: str, body: Optional[RecordingComplete] = None):
-    """Mark a recording as completed"""
+async def complete_recording(
+    recording_id: str,
+    background_tasks: BackgroundTasks,
+    body: Optional[RecordingComplete] = None,
+):
+    """Mark a recording as completed and trigger unique visitor counting if frames were uploaded."""
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
@@ -1061,7 +1194,13 @@ async def complete_recording(recording_id: str, body: Optional[RecordingComplete
                 "status": "completed"
             }}
         )
-        
+
+        # If periodic visitor frames were uploaded, trigger unique person counting in background
+        if recording.get('visitor_frame_ids'):
+            background_tasks.add_task(count_unique_visitors_from_frames, recording_id)
+            logger.info(f"Unique visitor counting queued for recording {recording_id} "
+                        f"({len(recording['visitor_frame_ids'])} frames)")
+
         updated = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         return serialize_doc(updated)
     except Exception as e:
@@ -1738,9 +1877,11 @@ async def get_dashboard_insights():
             "duration": r.get('duration', 0),
             "status": r.get('status', 'unknown'),
             "total_interactions": r.get('head_count', 0) or r.get('visitor_count', len(r.get('visitors', []))),
-            "head_count": r.get('head_count', 0)
+            "head_count": r.get('head_count', 0),
+            "visitor_count_confidence": r.get('visitor_count_confidence', None),
+            "visitor_frame_count": r.get('visitor_frame_count', 0),
         })
-    
+
     return {
         "total_recordings": total_recordings,
         "total_visitors": display_visitors,
