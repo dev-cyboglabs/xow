@@ -317,7 +317,8 @@ export default function GalleryScreen() {
             }
 
             // Update progress and save resume state
-            const progress = (i + 1) / totalChunks;
+            // Cap at 0.99 so 100% only shows when everything (audio, barcodes, complete) is truly done
+            const progress = Math.min((i + 1) / totalChunks, 0.99);
             setUploadProgress(progress);
             await AsyncStorage.setItem(resumeKey, JSON.stringify({
               recordingId,
@@ -379,6 +380,8 @@ export default function GalleryScreen() {
         await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(localRecordings));
       }
 
+      // Set 100% immediately before the alert so user sees the transition 99% → 100% → Alert
+      setUploadProgress(1);
       Alert.alert('Upload Complete', 'Recording uploaded to cloud successfully!');
       fetchRecordings();
     } catch (e: any) {
