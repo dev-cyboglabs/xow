@@ -61,13 +61,24 @@
                 <a href="#how-it-works" class="text-gray-600 hover:text-gray-900 font-medium">How It Works</a>
                 <a href="#pricing" class="text-gray-600 hover:text-gray-900 font-medium">Pricing</a>
             </nav>
-            <div class="flex items-center gap-4">
+            <!-- Logged-out buttons -->
+            <div id="auth-buttons" class="flex items-center gap-4">
                 <button onclick="showLogin()" class="px-4 py-2 text-gray-700 hover:text-[#E54B2A] font-medium transition-colors" data-testid="login-btn">
                     Log In
                 </button>
                 <button onclick="showSignup()" class="px-6 py-2.5 btn-primary text-white rounded-lg font-medium" data-testid="signup-btn">
                     Get Started Free
                 </button>
+            </div>
+            <!-- Logged-in: avatar + dashboard button -->
+            <div id="user-buttons" class="hidden items-center gap-3">
+                <a href="/api/dashboard" class="flex items-center gap-2 px-5 py-2.5 btn-primary text-white rounded-lg font-medium" data-testid="dashboard-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                    Dashboard
+                </a>
+                <div id="user-avatar" class="w-10 h-10 rounded-full bg-[#E54B2A] flex items-center justify-center cursor-pointer shadow-md shadow-orange-200 select-none" title="Logged in" onclick="handleAvatarClick()">
+                    <span id="avatar-initial" class="text-white font-bold text-base">U</span>
+                </div>
             </div>
         </div>
     </header>
@@ -327,6 +338,34 @@
         let isLoginMode = true;
         const API = '';
 
+        function checkLoginState() {
+            const session = (() => { try { return JSON.parse(localStorage.getItem('xow_session') || 'null'); } catch { return null; } })();
+            const user = (() => { try { return JSON.parse(localStorage.getItem('xow_user') || 'null'); } catch { return null; } })();
+            const loggedIn = !!(session || user);
+
+            document.getElementById('auth-buttons').classList.toggle('hidden', loggedIn);
+            document.getElementById('auth-buttons').classList.toggle('flex', !loggedIn);
+            document.getElementById('user-buttons').classList.toggle('hidden', !loggedIn);
+            document.getElementById('user-buttons').classList.toggle('flex', loggedIn);
+
+            if (loggedIn) {
+                const name = user?.name || user?.email || '';
+                const initial = name ? name.trim()[0].toUpperCase() : 'U';
+                document.getElementById('avatar-initial').textContent = initial;
+            }
+        }
+
+        function handleAvatarClick() {
+            if (confirm('Log out?')) {
+                localStorage.removeItem('xow_user');
+                localStorage.removeItem('xow_token');
+                localStorage.removeItem('xow_session');
+                checkLoginState();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', checkLoginState);
+
         function showLogin() {
             isLoginMode = true;
             updateAuthUI();
@@ -376,8 +415,10 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    localStorage.setItem('xow_token', data.token);
-                    localStorage.setItem('xow_user', JSON.stringify(data.user));
+                    localStorage.setItem('xow_token', data.token || '');
+                    localStorage.setItem('xow_user', JSON.stringify(data.user || data));
+                    hideAuth();
+                    checkLoginState();
                     window.location.href = '/api/dashboard';
                 } else {
                     alert(data.detail || 'Authentication failed');

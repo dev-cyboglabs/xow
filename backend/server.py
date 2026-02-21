@@ -891,6 +891,14 @@ async def get_session_device_ids(session_id: str) -> Optional[list]:
         return None
     return session.get("device_ids", [])
 
+async def get_linked_device_ids(user_id: str) -> list:
+    """Return device_ids linked to a legacy dashboard user account."""
+    try:
+        user = await db.dashboard_users.find_one({"_id": ObjectId(user_id)})
+        return user.get("devices", []) if user else []
+    except Exception:
+        return []
+
 # ==================== AUTH ENDPOINTS (Mobile App) ====================
 
 @api_router.post("/auth/register")
