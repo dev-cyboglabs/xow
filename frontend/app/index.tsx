@@ -14,10 +14,10 @@ import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
-// These two keys are written ONCE and never removed — they give the device a
-// stable identity across restarts, exits, and disconnects.
-const DEVICE_ID_KEY  = 'xow_permanent_device_id';
-const DEVICE_PWD_KEY = 'xow_permanent_device_password';
+// These keys are written ONCE and never removed — stable identity across restarts.
+const DEVICE_ID_KEY   = 'xow_permanent_device_id';
+const DEVICE_PWD_KEY  = 'xow_permanent_device_password';
+const DEVICE_NAME_KEY = 'xow_permanent_device_name';
 
 function randomHex(len: number) {
   let result = '';
@@ -67,6 +67,10 @@ export default function SetupScreen() {
         );
         const code = res.data?.new_pairing_code || '------';
         const secs  = res.data?.expires_in_seconds ?? 300;
+        // Always sync the server-assigned name so it stays up to date
+        if (res.data?.name) {
+          await AsyncStorage.setItem(DEVICE_NAME_KEY, res.data.name);
+        }
         setPairingCode(code);
         startCountdown(secs);
         setStatus('ready');
@@ -97,9 +101,12 @@ export default function SetupScreen() {
       const res = await axios.post(`${API_URL}/api/auth/register`, {
         device_id,
         password,
-        name: 'Expo Booth',
+        name: 'Booth',  // backend will overwrite with auto-assigned sequential name
       });
       const device = res.data;
+      // Persist the server-assigned booth name permanently
+      const assignedName = device.name || 'Booth';
+      await AsyncStorage.setItem(DEVICE_NAME_KEY, assignedName);
       const code = device.pairing_code || '------';
       setPairingCode(code);
       startCountdown(300);

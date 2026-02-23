@@ -118,9 +118,9 @@ export default function RecorderScreen() {
 
   const loadDevice = async () => {
     const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
-    const password  = await AsyncStorage.getItem('xow_permanent_device_password');
+    const name      = await AsyncStorage.getItem('xow_permanent_device_name');
     if (device_id) {
-      setDevice({ id: device_id, device_id, name: 'Expo Booth' });
+      setDevice({ id: device_id, device_id, name: name || 'Booth' });
     } else {
       router.replace('/');
     }

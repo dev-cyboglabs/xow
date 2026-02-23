@@ -872,6 +872,21 @@ def _make_pairing_code() -> str:
     """Generate a random 6-digit pairing code."""
     return ''.join([str(_random.randint(0, 9)) for _ in range(6)])
 
+async def _next_booth_name() -> str:
+    """Return the next unique Booth-XX name by finding the highest existing number."""
+    import re
+    devices = await db.devices.find(
+        {"name": {"$regex": r"^Booth-\d+$"}},
+        {"name": 1}
+    ).to_list(None)
+    numbers = []
+    for d in devices:
+        m = re.match(r"^Booth-(\d+)$", d.get("name", ""))
+        if m:
+            numbers.append(int(m.group(1)))
+    next_num = (max(numbers) + 1) if numbers else 1
+    return f"Booth-{next_num:02d}"
+
 async def _refresh_pairing_code(device_id: str) -> dict:
     """Generate a new pairing code for a device and persist it. Returns {pairing_code, expires_at}."""
     code = _make_pairing_code()
@@ -908,12 +923,15 @@ async def register_device(device: DeviceCreate):
     if existing:
         raise HTTPException(status_code=400, detail="Device ID already registered")
 
+    # Auto-assign the next unique sequential booth name
+    assigned_name = await _next_booth_name()
+
     code = _make_pairing_code()
     expires_at = datetime.utcnow() + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
     device_doc = {
         "device_id": device.device_id,
         "password": device.password,
-        "name": device.name,
+        "name": assigned_name,
         "created_at": datetime.utcnow(),
         "is_active": True,
         "pairing_code": code,
@@ -982,6 +1000,17 @@ async def remove_device_pairing(device_id: str, password: str):
     if not device:
         raise HTTPException(status_code=401, detail="Invalid device credentials")
 
+    # Migrate legacy generic names (e.g. "Expo Booth") to unique sequential booth names
+    import re
+    current_name = device.get("name", "")
+    is_generic = not re.match(r"^Booth-\d+$", current_name)
+    if is_generic:
+        current_name = await _next_booth_name()
+        await db.devices.update_one(
+            {"device_id": device_id},
+            {"$set": {"name": current_name}}
+        )
+
     # Generate a fresh pairing code
     code_info = await _refresh_pairing_code(device_id)
 
@@ -996,6 +1025,7 @@ async def remove_device_pairing(device_id: str, password: str):
         "success": True,
         "new_pairing_code": code_info["pairing_code"],
         "expires_in_seconds": PAIRING_CODE_TTL_MINUTES * 60,
+        "name": current_name,
         "message": "Pairing reset. New pairing code generated.",
     }
 

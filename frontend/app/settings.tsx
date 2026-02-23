@@ -45,8 +45,9 @@ export default function SettingsScreen() {
   const loadDevice = async () => {
     try {
       const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+      const name      = await AsyncStorage.getItem('xow_permanent_device_name');
       if (device_id) {
-        setDeviceName('Expo Booth');
+        setDeviceName(name || 'Booth');
         setDeviceId(device_id);
       }
     } catch (e) {
