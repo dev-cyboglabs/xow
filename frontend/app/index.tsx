@@ -14,19 +14,16 @@ import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
+// These two keys are written ONCE and never removed — they give the device a
+// stable identity across restarts, exits, and disconnects.
+const DEVICE_ID_KEY  = 'xow_permanent_device_id';
+const DEVICE_PWD_KEY = 'xow_permanent_device_password';
+
 function randomHex(len: number) {
   let result = '';
   const chars = '0123456789abcdef';
   for (let i = 0; i < len; i++) result += chars[Math.floor(Math.random() * 16)];
   return result;
-}
-
-function generateDeviceId() {
-  return `xow-${randomHex(4)}-${randomHex(4)}`;
-}
-
-function generatePassword() {
-  return randomHex(16);
 }
 
 export default function SetupScreen() {
@@ -43,42 +40,59 @@ export default function SetupScreen() {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current); };
   }, []);
 
+  /** Read or create permanent credentials — never regenerated after first run. */
+  const getOrCreateCredentials = async (): Promise<{ device_id: string; password: string }> => {
+    let device_id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+    let password  = await AsyncStorage.getItem(DEVICE_PWD_KEY);
+
+    if (!device_id || !password) {
+      device_id = `xow-${randomHex(4)}-${randomHex(4)}`;
+      password  = randomHex(16);
+      await AsyncStorage.setItem(DEVICE_ID_KEY, device_id);
+      await AsyncStorage.setItem(DEVICE_PWD_KEY, password);
+    }
+
+    return { device_id, password };
+  };
+
   const init = async () => {
     try {
-      const saved = await AsyncStorage.getItem('xow_device');
-      if (saved) {
-        const device = JSON.parse(saved);
-        // Always reset pairing on startup — device must be re-paired by the
-        // dashboard each session. This also generates a fresh pairing code.
-        try {
-          const res = await axios.post(
-            `${API_URL}/api/devices/${device.device_id}/remove-pairing?password=${device.password}`
-          );
-          const code = res.data?.new_pairing_code || '------';
-          const secondsLeft = res.data?.expires_in_seconds ?? 300;
-          setPairingCode(code);
-          startCountdown(secondsLeft);
-        } catch (_) {
-          // Server unreachable — show cached code
-          const code = device.pairing_code || '------';
-          setPairingCode(code);
-          startCountdown(300);
-        }
+      setStatus('checking');
+      const { device_id, password } = await getOrCreateCredentials();
+
+      // Try to reset pairing (also confirms the device exists on the server).
+      try {
+        const res = await axios.post(
+          `${API_URL}/api/devices/${device_id}/remove-pairing?password=${password}`
+        );
+        const code = res.data?.new_pairing_code || '------';
+        const secs  = res.data?.expires_in_seconds ?? 300;
+        setPairingCode(code);
+        startCountdown(secs);
         setStatus('ready');
         return;
+      } catch (err: any) {
+        const statusCode = err?.response?.status;
+
+        if (statusCode === 401 || statusCode === 404) {
+          // Device not found on server — register with the SAME permanent credentials.
+          await registerDevice(device_id, password);
+          return;
+        }
+
+        // Network / server unreachable — show pairing screen without a live code.
+        setPairingCode('------');
+        startCountdown(300);
+        setStatus('ready');
       }
-      // First launch — auto-register
-      await autoRegister();
     } catch (e) {
       setStatus('error');
       setErrorMsg('Could not connect to server. Make sure the server is running.');
     }
   };
 
-  const autoRegister = async () => {
+  const registerDevice = async (device_id: string, password: string) => {
     setStatus('registering');
-    const device_id = generateDeviceId();
-    const password = generatePassword();
     try {
       const res = await axios.post(`${API_URL}/api/auth/register`, {
         device_id,
@@ -86,7 +100,6 @@ export default function SetupScreen() {
         name: 'Expo Booth',
       });
       const device = res.data;
-      await AsyncStorage.setItem('xow_device', JSON.stringify(device));
       const code = device.pairing_code || '------';
       setPairingCode(code);
       startCountdown(300);
@@ -107,11 +120,11 @@ export default function SetupScreen() {
 
   const pollPairingStatus = async () => {
     try {
-      const saved = await AsyncStorage.getItem('xow_device');
-      if (!saved) return;
-      const device = JSON.parse(saved);
+      const device_id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      const password  = await AsyncStorage.getItem(DEVICE_PWD_KEY);
+      if (!device_id || !password) return;
       const res = await axios.get(
-        `${API_URL}/api/devices/${device.device_id}/pairing-code?password=${device.password}`
+        `${API_URL}/api/devices/${device_id}/pairing-code?password=${password}`
       );
       if (res.data?.is_paired) {
         router.replace('/recorder');
@@ -155,7 +168,7 @@ export default function SetupScreen() {
         <Text style={styles.brandName}>XoW</Text>
         <Ionicons name="alert-circle" size={40} color="#EF4444" style={{ marginTop: 24 }} />
         <Text style={styles.errorText}>{errorMsg}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={autoRegister}>
+        <TouchableOpacity style={styles.retryBtn} onPress={init}>
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
       </View>

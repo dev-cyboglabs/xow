@@ -117,9 +117,13 @@ export default function RecorderScreen() {
   };
 
   const loadDevice = async () => {
-    const saved = await AsyncStorage.getItem('xow_device');
-    if (saved) setDevice(JSON.parse(saved));
-    else router.replace('/');
+    const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+    const password  = await AsyncStorage.getItem('xow_permanent_device_password');
+    if (device_id) {
+      setDevice({ id: device_id, device_id, name: 'Expo Booth' });
+    } else {
+      router.replace('/');
+    }
   };
 
   const loadSettings = async () => {
@@ -667,7 +671,6 @@ export default function RecorderScreen() {
       return;
     }
     setShowExitModal(false);
-    await AsyncStorage.removeItem('xow_device');
     router.replace('/');
   };
 
