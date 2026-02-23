@@ -47,8 +47,24 @@ export default function SetupScreen() {
     try {
       const saved = await AsyncStorage.getItem('xow_device');
       if (saved) {
-        // Already registered — go straight to the app
-        router.replace('/recorder');
+        const device = JSON.parse(saved);
+        // Always reset pairing on startup — device must be re-paired by the
+        // dashboard each session. This also generates a fresh pairing code.
+        try {
+          const res = await axios.post(
+            `${API_URL}/api/devices/${device.device_id}/remove-pairing?password=${device.password}`
+          );
+          const code = res.data?.new_pairing_code || '------';
+          const secondsLeft = res.data?.expires_in_seconds ?? 300;
+          setPairingCode(code);
+          startCountdown(secondsLeft);
+        } catch (_) {
+          // Server unreachable — show cached code
+          const code = device.pairing_code || '------';
+          setPairingCode(code);
+          startCountdown(300);
+        }
+        setStatus('ready');
         return;
       }
       // First launch — auto-register
@@ -89,9 +105,29 @@ export default function SetupScreen() {
     }, 1000);
   };
 
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  const pollPairingStatus = async () => {
+    try {
+      const saved = await AsyncStorage.getItem('xow_device');
+      if (!saved) return;
+      const device = JSON.parse(saved);
+      const res = await axios.get(
+        `${API_URL}/api/devices/${device.device_id}/pairing-code?password=${device.password}`
+      );
+      if (res.data?.is_paired) {
+        router.replace('/recorder');
+      }
+    } catch (_) {
+      // silently ignore polling errors
+    }
+  };
 
-  const goToRecorder = () => router.replace('/recorder');
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const interval = setInterval(pollPairingStatus, 3000);
+    return () => clearInterval(interval);
+  }, [status]);
+
+  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
   // ── Loading / Registering ──────────────────────────────────────────────────
   if (status === 'checking' || status === 'registering') {
@@ -173,13 +209,13 @@ export default function SetupScreen() {
           </View>
 
           <Text style={styles.hint}>
-            You can always find this code in Settings. It's safe to skip for now.
+            Waiting for pairing… The app will open automatically once connected.
           </Text>
 
-          <TouchableOpacity style={styles.startBtn} onPress={goToRecorder}>
-            <Ionicons name="arrow-forward" size={16} color="#fff" />
-            <Text style={styles.startText}>Start Recording</Text>
-          </TouchableOpacity>
+          <View style={styles.waitingRow}>
+            <ActivityIndicator color="#8B5CF6" size="small" />
+            <Text style={styles.waitingText}>Waiting for connection</Text>
+          </View>
         </View>
       </View>
     </View>
@@ -218,6 +254,6 @@ const styles = StyleSheet.create({
 
   hint: { color: '#444', fontSize: 10, textAlign: 'center', marginBottom: 16, lineHeight: 15 },
 
-  startBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#E54B2A', borderRadius: 10, paddingVertical: 12 },
-  startText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  waitingText: { color: '#555', fontSize: 11 },
 });
