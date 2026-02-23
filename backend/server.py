@@ -975,22 +975,18 @@ async def get_pairing_code(device_id: str, password: str):
 
 @api_router.post("/devices/{device_id}/remove-pairing")
 async def remove_device_pairing(device_id: str, password: str):
-    """Mobile 'Remove Device' — disconnects from dashboard and generates a new pairing code."""
+    """Mobile app restart — resets pairing state so the device must re-pair.
+    Does NOT remove the device from the session's device_ids so that historical
+    recordings remain visible in the dashboard."""
     device = await db.devices.find_one({"device_id": device_id, "password": password})
     if not device:
         raise HTTPException(status_code=401, detail="Invalid device credentials")
 
-    old_session_id = device.get("dashboard_session_id")
-
-    # Remove device from its dashboard session
-    if old_session_id:
-        await db.dashboard_sessions.update_one(
-            {"session_id": old_session_id},
-            {"$pull": {"device_ids": device_id}}
-        )
-
     # Generate a fresh pairing code
     code_info = await _refresh_pairing_code(device_id)
+
+    # Reset pairing state only — leave session membership intact so recordings
+    # uploaded under this device_id stay visible in the dashboard.
     await db.devices.update_one(
         {"device_id": device_id},
         {"$set": {"is_paired": False, "dashboard_session_id": None}}
@@ -1000,7 +996,7 @@ async def remove_device_pairing(device_id: str, password: str):
         "success": True,
         "new_pairing_code": code_info["pairing_code"],
         "expires_in_seconds": PAIRING_CODE_TTL_MINUTES * 60,
-        "message": "Device unlinked from dashboard. New pairing code generated.",
+        "message": "Pairing reset. New pairing code generated.",
     }
 
 # ==================== DASHBOARD PAIRING ENDPOINTS ====================

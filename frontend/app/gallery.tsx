@@ -90,8 +90,8 @@ export default function GalleryScreen() {
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
 
   const loadDevice = async () => {
-    const saved = await AsyncStorage.getItem('xow_device');
-    if (saved) setDeviceId(JSON.parse(saved).device_id);
+    const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+    if (device_id) setDeviceId(device_id);
   };
 
   const fetchRecordings = async () => {

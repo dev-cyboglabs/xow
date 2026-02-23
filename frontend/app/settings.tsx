@@ -44,11 +44,10 @@ export default function SettingsScreen() {
 
   const loadDevice = async () => {
     try {
-      const saved = await AsyncStorage.getItem('xow_device');
-      if (saved) {
-        const d = JSON.parse(saved);
-        setDeviceName(d.name || 'Expo Booth');
-        setDeviceId(d.device_id || '');
+      const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+      if (device_id) {
+        setDeviceName('Expo Booth');
+        setDeviceId(device_id);
       }
     } catch (e) {
       console.error('Load device error:', e);

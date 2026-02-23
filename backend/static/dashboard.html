@@ -251,6 +251,8 @@
         let data = { insights: null, recordings: [], visitors: [] };
         let currentLang = 'en';
         let currentRecordingId = null;
+        let devicesData = { devices: [], count: 0 };
+        let devicePollInterval = null;
 
         // ── Session helpers ──────────────────────────────────────────
         function getSession() {
@@ -347,7 +349,9 @@
             document.getElementById('page-title').textContent = v.charAt(0).toUpperCase() + v.slice(1);
             if (v === 'devices') {
                 loadDevices().then(() => render());
+                startDevicePolling();
             } else {
+                stopDevicePolling();
                 render();
             }
         }
@@ -761,8 +765,6 @@
         }
 
         // Device management
-        let devicesData = { devices: [], count: 0 };
-
         async function loadDevices() {
             const session = getSession();
             if (!session) return;
@@ -771,6 +773,34 @@
                 devicesData = await res.json();
             } catch (e) {
                 console.error('Error loading devices:', e);
+            }
+        }
+
+        async function pollDevices() {
+            const session = getSession();
+            if (!session) return;
+            try {
+                const res = await fetch(`${API}/dashboard/session/${encodeURIComponent(session.session_id)}/devices`);
+                const fresh = await res.json();
+                // Detect any change in device count or is_paired status
+                const oldSig = JSON.stringify((devicesData.devices || []).map(d => ({ id: d.device_id, p: d.is_paired })));
+                const newSig = JSON.stringify((fresh.devices || []).map(d => ({ id: d.device_id, p: d.is_paired })));
+                if (oldSig !== newSig) {
+                    devicesData = fresh;
+                    if (view === 'devices') render();
+                }
+            } catch (_) { /* silently ignore */ }
+        }
+
+        function startDevicePolling() {
+            stopDevicePolling();
+            devicePollInterval = setInterval(pollDevices, 3000);
+        }
+
+        function stopDevicePolling() {
+            if (devicePollInterval) {
+                clearInterval(devicePollInterval);
+                devicePollInterval = null;
             }
         }
 
@@ -1264,6 +1294,8 @@
                 alert('Failed to submit transcript');
             }
         }
+
+        window.addEventListener('beforeunload', stopDevicePolling);
 
         // Keyboard shortcut to close modals
         document.addEventListener('keydown', (e) => {
