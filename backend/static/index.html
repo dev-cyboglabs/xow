@@ -309,7 +309,23 @@
                         <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                     </button>
                 </div>
-                <form id="auth-form" onsubmit="handleAuth(event)">
+
+                <!-- Success/Error Messages -->
+                <div id="auth-success" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p id="auth-success-text" class="text-sm text-green-800"></p>
+                    </div>
+                </div>
+                <div id="auth-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <p id="auth-error-text" class="text-sm text-red-800"></p>
+                    </div>
+                </div>
+                
+                <!-- Step 1: Signup/Login Form -->
+                <form id="auth-form" onsubmit="handleAuth(event)" class="auth-step">
                     <div id="name-field" class="hidden mb-4">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
                         <input type="text" id="name" class="w-full px-4 py-3 border border-gray-200 rounded-lg input-field" placeholder="John Doe">
@@ -318,15 +334,40 @@
                         <label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
                         <input type="email" id="email" required class="w-full px-4 py-3 border border-gray-200 rounded-lg input-field" placeholder="you@company.com">
                     </div>
-                    <div class="mb-6">
+                    <div id="password-field" class="mb-6">
                         <label class="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                        <input type="password" id="password" required class="w-full px-4 py-3 border border-gray-200 rounded-lg input-field" placeholder="Enter password">
+                        <input type="password" id="password" class="w-full px-4 py-3 border border-gray-200 rounded-lg input-field" placeholder="Enter password">
                     </div>
                     <button type="submit" class="w-full py-3 btn-primary text-white rounded-lg font-semibold" data-testid="auth-submit-btn">
-                        <span id="auth-button-text">Log In</span>
+                        <span id="auth-button-text">Send OTP</span>
                     </button>
                 </form>
-                <div class="mt-6 text-center text-sm text-gray-600">
+
+                <!-- Step 2: OTP Verification -->
+                <div id="otp-form" class="hidden auth-step">
+                    <div class="mb-6 text-center">
+                        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-100 flex items-center justify-center">
+                            <svg class="w-8 h-8 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+                        </div>
+                        <p class="text-sm text-gray-600">We've sent a 6-digit code to</p>
+                        <p class="font-semibold text-gray-900" id="otp-email"></p>
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Enter OTP</label>
+                        <input type="text" id="otp-input" maxlength="6" pattern="[0-9]{6}" required class="w-full px-4 py-3 border border-gray-200 rounded-lg input-field text-center text-2xl font-mono tracking-widest" placeholder="000000">
+                    </div>
+                    <button onclick="verifyOTP()" class="w-full py-3 btn-primary text-white rounded-lg font-semibold mb-3">
+                        Verify OTP
+                    </button>
+                    <button onclick="resendOTP()" class="w-full py-2 text-[#E54B2A] hover:text-[#C93D1E] font-medium text-sm">
+                        Resend OTP
+                    </button>
+                    <button onclick="backToSignup()" class="w-full py-2 text-gray-600 hover:text-gray-900 font-medium text-sm mt-2">
+                        ← Back to signup
+                    </button>
+                </div>
+
+                <div class="mt-6 text-center text-sm text-gray-600 auth-step" id="auth-switch">
                     <span id="auth-switch-text">Don't have an account?</span>
                     <button onclick="toggleAuthMode()" class="text-[#E54B2A] font-medium ml-1" id="auth-switch-btn">Sign Up</button>
                 </div>
@@ -336,6 +377,7 @@
 
     <script>
         let isLoginMode = true;
+        let pendingSignupEmail = '';
         const API = '';
 
         function checkLoginState() {
@@ -368,6 +410,7 @@
 
         function showLogin() {
             isLoginMode = true;
+            resetAuthModal();
             updateAuthUI();
             document.getElementById('auth-modal').classList.remove('hidden');
             document.getElementById('auth-modal').classList.add('flex');
@@ -375,6 +418,7 @@
 
         function showSignup() {
             isLoginMode = false;
+            resetAuthModal();
             updateAuthUI();
             document.getElementById('auth-modal').classList.remove('hidden');
             document.getElementById('auth-modal').classList.add('flex');
@@ -383,48 +427,167 @@
         function hideAuth() {
             document.getElementById('auth-modal').classList.add('hidden');
             document.getElementById('auth-modal').classList.remove('flex');
+            resetAuthModal();
+        }
+
+        function showSuccess(message) {
+            document.getElementById('auth-error').classList.add('hidden');
+            document.getElementById('auth-success-text').textContent = message;
+            document.getElementById('auth-success').classList.remove('hidden');
+        }
+
+        function showError(message) {
+            document.getElementById('auth-success').classList.add('hidden');
+            document.getElementById('auth-error-text').textContent = message;
+            document.getElementById('auth-error').classList.remove('hidden');
+        }
+
+        function clearMessages() {
+            document.getElementById('auth-success').classList.add('hidden');
+            document.getElementById('auth-error').classList.add('hidden');
+        }
+
+        function resetAuthModal() {
+            document.getElementById('auth-form').classList.remove('hidden');
+            document.getElementById('otp-form').classList.add('hidden');
+            document.getElementById('auth-switch').classList.remove('hidden');
+            document.getElementById('email').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('name').value = '';
+            document.getElementById('otp-input').value = '';
+            pendingSignupEmail = '';
+            clearMessages();
         }
 
         function toggleAuthMode() {
             isLoginMode = !isLoginMode;
+            resetAuthModal();
             updateAuthUI();
         }
 
         function updateAuthUI() {
             document.getElementById('auth-title').textContent = isLoginMode ? 'Welcome Back' : 'Create Account';
-            document.getElementById('auth-button-text').textContent = isLoginMode ? 'Log In' : 'Sign Up';
+            document.getElementById('auth-button-text').textContent = 'Send OTP';
             document.getElementById('auth-switch-text').textContent = isLoginMode ? "Don't have an account?" : 'Already have an account?';
             document.getElementById('auth-switch-btn').textContent = isLoginMode ? 'Sign Up' : 'Log In';
             document.getElementById('name-field').classList.toggle('hidden', isLoginMode);
+            document.getElementById('password-field').classList.toggle('hidden', isLoginMode);
+            document.getElementById('password').required = !isLoginMode;
+        }
+
+        function showOTPForm(email) {
+            pendingSignupEmail = email;
+            document.getElementById('auth-form').classList.add('hidden');
+            document.getElementById('auth-switch').classList.add('hidden');
+            document.getElementById('otp-form').classList.remove('hidden');
+            document.getElementById('otp-email').textContent = email;
+            document.getElementById('auth-title').textContent = 'Verify Your Email';
+        }
+
+        function backToSignup() {
+            resetAuthModal();
+            isLoginMode = false;
+            updateAuthUI();
         }
 
         async function handleAuth(e) {
             e.preventDefault();
+            clearMessages();
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const name = document.getElementById('name').value;
 
-            const endpoint = isLoginMode ? '/api/dashboard/auth/login' : '/api/dashboard/auth/signup';
-            const body = isLoginMode ? { email, password } : { email, password, name };
+            if (isLoginMode) {
+                try {
+                    const res = await fetch(API + '/api/dashboard/auth/login/initiate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showOTPForm(email);
+                        showSuccess(data.message || 'OTP sent to your email!');
+                    } else {
+                        showError(data.detail || 'Login failed');
+                    }
+                } catch (err) {
+                    showError('Connection error. Please try again.');
+                }
+            } else {
+                try {
+                    const res = await fetch(API + '/api/dashboard/auth/signup/initiate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password, name })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        showOTPForm(email);
+                        showSuccess(data.message || 'OTP sent to your email!');
+                    } else {
+                        showError(data.detail || 'Signup failed');
+                    }
+                } catch (err) {
+                    showError('Connection error. Please try again.');
+                }
+            }
+        }
+
+        async function verifyOTP() {
+            clearMessages();
+            const otp = document.getElementById('otp-input').value;
+            if (otp.length !== 6) {
+                showError('Please enter a valid 6-digit OTP');
+                return;
+            }
+
+            const endpoint = isLoginMode ? '/api/dashboard/auth/login/verify' : '/api/dashboard/auth/signup/verify';
+            const successMessage = isLoginMode ? 'Login successful! Redirecting...' : 'Account created successfully! Redirecting...';
 
             try {
                 const res = await fetch(API + endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify({ email: pendingSignupEmail, otp })
                 });
                 const data = await res.json();
                 if (res.ok) {
                     localStorage.setItem('xow_token', data.token || '');
                     localStorage.setItem('xow_user', JSON.stringify(data.user || data));
-                    hideAuth();
-                    checkLoginState();
-                    window.location.href = '/api/dashboard';
+                    showSuccess(successMessage);
+                    setTimeout(() => {
+                        hideAuth();
+                        checkLoginState();
+                        window.location.href = '/api/dashboard';
+                    }, 1000);
                 } else {
-                    alert(data.detail || 'Authentication failed');
+                    showError(data.detail || 'Invalid OTP');
                 }
             } catch (err) {
-                alert('Connection error. Please try again.');
+                showError('Connection error. Please try again.');
+            }
+        }
+
+        async function resendOTP() {
+            clearMessages();
+            const endpoint = isLoginMode ? '/api/dashboard/auth/login/resend-otp' : '/api/dashboard/auth/signup/resend-otp';
+            
+            try {
+                const res = await fetch(API + endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: pendingSignupEmail })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showSuccess(data.message || 'New OTP sent to your email!');
+                    document.getElementById('otp-input').value = '';
+                } else {
+                    showError(data.detail || 'Failed to resend OTP');
+                }
+            } catch (err) {
+                showError('Connection error. Please try again.');
             }
         }
     </script>

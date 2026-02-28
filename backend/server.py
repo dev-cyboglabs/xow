@@ -18,6 +18,8 @@ import json
 import subprocess
 import tempfile
 from openai import OpenAI
+import resend
+import random
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -36,6 +38,12 @@ openai_client = OpenAI(api_key=openai_api_key) if openai_api_key else None
 
 # Whisper client is same as main client now
 whisper_client = openai_client
+
+# Resend API configuration for OTP emails
+resend_api_key = os.environ.get('RESEND_API_KEY', '')
+if resend_api_key:
+    resend.api_key = resend_api_key
+otp_from_email = os.environ.get('OTP_FROM_EMAIL', 'onboarding@resend.dev')
 
 # Create the main app
 app = FastAPI(title="XoW Expo Recording System")
@@ -1135,6 +1143,21 @@ class DashboardUserCreate(BaseModel):
     password: str
     name: str
 
+class SignupInitiate(BaseModel):
+    email: str
+    password: str
+    name: str
+
+class LoginInitiate(BaseModel):
+    email: str
+
+class VerifyOTP(BaseModel):
+    email: str
+    otp: str
+
+class ResendOTP(BaseModel):
+    email: str
+
 class DashboardUserLogin(BaseModel):
     email: str
     password: str
@@ -1169,6 +1192,310 @@ async def dashboard_signup(user: DashboardUserCreate):
     response = serialize_doc(user_doc)
     del response['password_hash']
     return {"success": True, "user": response, "message": "Account created successfully"}
+
+@api_router.post("/dashboard/auth/signup/initiate")
+async def signup_initiate(user: SignupInitiate):
+    """Initiate signup by sending OTP to email"""
+    import hashlib
+    
+    existing = await db.dashboard_users.find_one({"email": user.email.lower()})
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    password_hash = hashlib.sha256(user.password.encode()).hexdigest()
+    
+    pending_user = {
+        "email": user.email.lower(),
+        "password_hash": password_hash,
+        "name": user.name,
+        "otp": otp,
+        "otp_expiry": otp_expiry,
+        "created_at": datetime.utcnow()
+    }
+    
+    await db.pending_signups.update_one(
+        {"email": user.email.lower()},
+        {"$set": pending_user},
+        upsert=True
+    )
+    
+    if not resend_api_key:
+        raise HTTPException(
+            status_code=500, 
+            detail="Email service not configured. Please set RESEND_API_KEY in environment variables."
+        )
+    
+    params = {
+        "from": otp_from_email,
+        "to": [user.email],
+        "subject": "Your XoW Signup OTP",
+        "html": f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">Welcome to XoW!</h2>
+            <p>Hi {user.name},</p>
+            <p>Thank you for signing up. Your One-Time Password (OTP) is:</p>
+            <div style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
+                {otp}
+            </div>
+            <p>This OTP will expire in 10 minutes.</p>
+            <p>If you didn't request this, please ignore this email.</p>
+            <p>Best regards,<br>The XoW Team</p>
+        </div>
+        """
+    }
+    
+    try:
+        email_response = resend.Emails.send(params)
+        logger.info(f"OTP email sent to {user.email}, response: {email_response}")
+        
+        return {
+            "success": True,
+            "message": "OTP sent to your email. Please check your inbox.",
+            "email": user.email.lower()
+        }
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to send OTP email: {error_msg}")
+        await db.pending_signups.delete_one({"email": user.email.lower()})
+        
+        if "domain is not verified" in error_msg or "testing emails" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Domain not verified. Please verify your domain at https://resend.com/domains to enable signup functionality."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to send OTP email. Please try again later.")
+
+@api_router.post("/dashboard/auth/signup/verify")
+async def signup_verify(verify: VerifyOTP):
+    """Verify OTP and complete signup"""
+    
+    pending = await db.pending_signups.find_one({"email": verify.email.lower()})
+    if not pending:
+        raise HTTPException(status_code=404, detail="No pending signup found for this email")
+    
+    if pending.get('otp') != verify.otp:
+        raise HTTPException(status_code=401, detail="Invalid OTP")
+    
+    if pending.get('otp_expiry') and pending['otp_expiry'] < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="OTP has expired. Please request a new one.")
+    
+    user_doc = {
+        "email": pending['email'],
+        "password_hash": pending['password_hash'],
+        "name": pending['name'],
+        "created_at": datetime.utcnow(),
+        "devices": [],
+        "is_active": True
+    }
+    
+    result = await db.dashboard_users.insert_one(user_doc)
+    user_doc['_id'] = result.inserted_id
+    
+    await db.pending_signups.delete_one({"email": verify.email.lower()})
+    
+    response = serialize_doc(user_doc)
+    del response['password_hash']
+    return {"success": True, "user": response, "message": "Account created successfully"}
+
+@api_router.post("/dashboard/auth/signup/resend-otp")
+async def resend_signup_otp(resend_req: ResendOTP):
+    """Resend OTP for pending signup"""
+    
+    pending = await db.pending_signups.find_one({"email": resend_req.email.lower()})
+    if not pending:
+        raise HTTPException(status_code=404, detail="No pending signup found for this email")
+    
+    otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    
+    await db.pending_signups.update_one(
+        {"email": resend_req.email.lower()},
+        {"$set": {
+            "otp": otp,
+            "otp_expiry": otp_expiry
+        }}
+    )
+    
+    try:
+        params = {
+            "from": otp_from_email,
+            "to": [resend_req.email],
+            "subject": "Your XoW Signup OTP (Resent)",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">XoW OTP Resent</h2>
+                <p>Hi {pending['name']},</p>
+                <p>You requested a new OTP. Your One-Time Password is:</p>
+                <div style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
+                    {otp}
+                </div>
+                <p>This OTP will expire in 10 minutes.</p>
+                <p>If you didn't request this, please ignore this email.</p>
+                <p>Best regards,<br>The XoW Team</p>
+            </div>
+            """
+        }
+        
+        email_response = resend.Emails.send(params)
+        logger.info(f"OTP resent to {resend_req.email}, response: {email_response}")
+        
+        return {
+            "success": True,
+            "message": "New OTP sent to your email."
+        }
+    except Exception as e:
+        logger.error(f"Failed to resend OTP email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send OTP email: {str(e)}")
+
+@api_router.post("/dashboard/auth/login/initiate")
+async def login_initiate(login: LoginInitiate):
+    """Initiate login by sending OTP to email"""
+    
+    user = await db.dashboard_users.find_one({"email": login.email.lower()})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this email")
+    
+    otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    
+    await db.pending_logins.update_one(
+        {"email": login.email.lower()},
+        {"$set": {
+            "email": login.email.lower(),
+            "otp": otp,
+            "otp_expiry": otp_expiry,
+            "created_at": datetime.utcnow()
+        }},
+        upsert=True
+    )
+    
+    if not resend_api_key:
+        raise HTTPException(
+            status_code=500, 
+            detail="Email service not configured. Please set RESEND_API_KEY in environment variables."
+        )
+    
+    params = {
+        "from": otp_from_email,
+        "to": [login.email],
+        "subject": "Your XoW Login OTP",
+        "html": f"""
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #333;">XoW Login Verification</h2>
+            <p>Hi {user.get('name', 'there')},</p>
+            <p>Someone is trying to log in to your account. Your One-Time Password (OTP) is:</p>
+            <div style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
+                {otp}
+            </div>
+            <p>This OTP will expire in 10 minutes.</p>
+            <p>If you didn't request this, please ignore this email and consider changing your password.</p>
+            <p>Best regards,<br>The XoW Team</p>
+        </div>
+        """
+    }
+    
+    try:
+        email_response = resend.Emails.send(params)
+        logger.info(f"Login OTP email sent to {login.email}, response: {email_response}")
+        
+        return {
+            "success": True,
+            "message": "OTP sent to your email. Please check your inbox.",
+            "email": login.email.lower()
+        }
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Failed to send login OTP email: {error_msg}")
+        await db.pending_logins.delete_one({"email": login.email.lower()})
+        
+        if "domain is not verified" in error_msg or "testing emails" in error_msg:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Domain not verified. Please verify your domain at https://resend.com/domains to enable login functionality."
+            )
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to send OTP email. Please try again later.")
+
+@api_router.post("/dashboard/auth/login/verify")
+async def login_verify(verify: VerifyOTP):
+    """Verify OTP and complete login"""
+    
+    pending = await db.pending_logins.find_one({"email": verify.email.lower()})
+    if not pending:
+        raise HTTPException(status_code=404, detail="No pending login found for this email")
+    
+    if pending.get('otp') != verify.otp:
+        raise HTTPException(status_code=401, detail="Invalid OTP")
+    
+    if pending.get('otp_expiry') and pending['otp_expiry'] < datetime.utcnow():
+        raise HTTPException(status_code=401, detail="OTP has expired. Please request a new one.")
+    
+    user = await db.dashboard_users.find_one({"email": verify.email.lower()})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.pending_logins.delete_one({"email": verify.email.lower()})
+    
+    response = serialize_doc(user)
+    del response['password_hash']
+    return {"success": True, "user": response, "message": "Login successful"}
+
+@api_router.post("/dashboard/auth/login/resend-otp")
+async def resend_login_otp(resend_req: ResendOTP):
+    """Resend OTP for pending login"""
+    
+    pending = await db.pending_logins.find_one({"email": resend_req.email.lower()})
+    if not pending:
+        raise HTTPException(status_code=404, detail="No pending login found for this email")
+    
+    user = await db.dashboard_users.find_one({"email": resend_req.email.lower()})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    otp_expiry = datetime.utcnow() + timedelta(minutes=10)
+    
+    await db.pending_logins.update_one(
+        {"email": resend_req.email.lower()},
+        {"$set": {
+            "otp": otp,
+            "otp_expiry": otp_expiry
+        }}
+    )
+    
+    try:
+        params = {
+            "from": otp_from_email,
+            "to": [resend_req.email],
+            "subject": "Your XoW Login OTP (Resent)",
+            "html": f"""
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #333;">XoW Login OTP Resent</h2>
+                <p>Hi {user.get('name', 'there')},</p>
+                <p>You requested a new login OTP. Your One-Time Password is:</p>
+                <div style="background-color: #f4f4f4; padding: 20px; text-align: center; font-size: 32px; font-weight: bold; letter-spacing: 5px; margin: 20px 0;">
+                    {otp}
+                </div>
+                <p>This OTP will expire in 10 minutes.</p>
+                <p>If you didn't request this, please ignore this email.</p>
+                <p>Best regards,<br>The XoW Team</p>
+            </div>
+            """
+        }
+        
+        email_response = resend.Emails.send(params)
+        logger.info(f"Login OTP resent to {resend_req.email}, response: {email_response}")
+        
+        return {
+            "success": True,
+            "message": "New OTP sent to your email."
+        }
+    except Exception as e:
+        logger.error(f"Failed to resend login OTP email: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to send OTP email: {str(e)}")
 
 @api_router.post("/dashboard/auth/login")
 async def dashboard_login(login: DashboardUserLogin):
