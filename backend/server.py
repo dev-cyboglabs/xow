@@ -2153,7 +2153,15 @@ async def process_transcription_with_diarization(recording_id: str):
                 )
                 transcript = response.text if hasattr(response, 'text') else str(response)
                 detected_language = response.language if hasattr(response, 'language') else None
-                logger.info(f"Transcription completed: {len(transcript)} chars, detected language: {detected_language}")
+                # Extract per-segment timestamps from Whisper for accurate diarization
+                whisper_segments = []
+                if hasattr(response, 'segments') and response.segments:
+                    whisper_segments = [
+                        {"start": float(seg.start), "end": float(seg.end), "text": seg.text.strip()}
+                        for seg in response.segments
+                        if seg.text.strip()
+                    ]
+                logger.info(f"Transcription completed: {len(transcript)} chars, {len(whisper_segments)} segments, detected language: {detected_language}")
             except Exception as e:
                 logger.error(f"Whisper transcription error: {e}")
                 transcript = ""
@@ -2169,7 +2177,7 @@ async def process_transcription_with_diarization(recording_id: str):
 
             # Process with GPT for diarization and visitor extraction
             logger.info(f"Performing speaker diarization for recording {recording_id}")
-            await perform_advanced_diarization(recording_id, transcript, recording.get('duration', 0), detected_language)
+            await perform_advanced_diarization(recording_id, transcript, recording.get('duration', 0), detected_language, whisper_segments)
         else:
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
@@ -2200,7 +2208,7 @@ async def process_diarization_only(recording_id: str, transcript: str):
             {"$set": {"status": "error", "error": str(e)}}
         )
 
-async def perform_advanced_diarization(recording_id: str, transcript: str, duration: float, detected_language: str = None):
+async def perform_advanced_diarization(recording_id: str, transcript: str, duration: float, detected_language: str = None, whisper_segments: list = None):
     """Use GPT to perform advanced speaker diarization and create visitor badges"""
     if not openai_client:
         await db.recordings.update_one(
@@ -2254,7 +2262,59 @@ Provide a JSON response with:
         analysis = json.loads(analysis_response.choices[0].message.content)
         
         # Step 2: Get speaker segments and visitor badges
-        diarization_prompt = f"""Analyze this expo booth conversation and identify distinct speakers/visitors.
+        # Build input for diarization - use Whisper timestamps if available for accuracy
+        if whisper_segments and len(whisper_segments) > 0:
+            segments_text = "\n".join(
+                f"[{seg['start']:.1f}s-{seg['end']:.1f}s] {seg['text']}"
+                for seg in whisper_segments
+            )
+            diarization_prompt = f"""You are analyzing an expo booth conversation. Each line below has the EXACT start and end time (in seconds) from speech recognition — use these times directly, do NOT invent or estimate times.
+{lang_instruction}
+
+TIMESTAMPED TRANSCRIPT (start_time - end_time: text):
+{segments_text}
+{barcode_info}
+
+Total recording duration: {duration:.1f} seconds
+
+Assign each transcript line to a speaker. The HOST is the booth staff who is present throughout. Each distinct visitor is a separate non-host speaker.
+
+Return JSON:
+{{
+    "speakers": [
+        {{
+            "speaker_id": "unique_id",
+            "is_host": true/false,
+            "label": "Host" or visitor name if mentioned or barcode if matched,
+            "company": "company name if mentioned or null",
+            "role": "role if mentioned or null",
+            "sentiment": "positive/interested/neutral/skeptical/negative",
+            "topics_discussed": ["topic1", "topic2"],
+            "key_points": ["point1", "point2"],
+            "questions_asked": ["question1", "question2"],
+            "dialogue_segments": [
+                {{"content": "exact text from transcript line", "start_time": 0.0, "end_time": 3.5}}
+            ]
+        }}
+    ],
+    "conversations": [
+        {{
+            "title": "Topic discussed",
+            "start_time": 45.0,
+            "summary": "Brief summary"
+        }}
+    ]
+}}
+
+Rules:
+- Use the EXACT start_time and end_time values from the timestamped lines above
+- First/recurring speaker throughout is usually the HOST
+- Each new visitor arriving is a separate non-host speaker
+- Link barcodes to speakers whose time range overlaps the barcode scan time
+- Separate adjacent same-speaker lines into individual dialogue_segments"""
+        else:
+            # Fallback when no Whisper segments: estimate from transcript position
+            diarization_prompt = f"""Analyze this expo booth conversation and identify distinct speakers/visitors.
 For each visitor interaction, create a visitor badge.
 {lang_instruction}
 
@@ -2319,8 +2379,14 @@ Rules:
                 # Check if barcode was scanned for this visitor
                 is_barcode = any(b['barcode_data'] == badge_id for b in barcode_scans)
                 
-                start_time = (speaker.get('start_percent', 0) / 100) * duration
-                end_time = (speaker.get('end_percent', 100) / 100) * duration
+                # Use real timestamps if available (from Whisper segments), else fall back to percent
+                if whisper_segments and speaker.get('dialogue_segments'):
+                    segs = speaker['dialogue_segments']
+                    start_time = segs[0].get('start_time', 0)
+                    end_time = segs[-1].get('end_time', duration)
+                else:
+                    start_time = (speaker.get('start_percent', 0) / 100) * duration
+                    end_time = (speaker.get('end_percent', 100) / 100) * duration
                 
                 visitor_badge = {
                     "badge_id": badge_id,
@@ -2348,22 +2414,35 @@ Rules:
         
         # Add timestamp information to speakers
         for speaker in diarization.get('speakers', []):
-            start_pct = speaker.get('start_percent', 0)
-            end_pct = speaker.get('end_percent', 100)
-            speaker['start_time'] = (start_pct / 100) * duration
-            speaker['end_time'] = (end_pct / 100) * duration
-            
-            for seg in speaker.get('dialogue_segments', []):
-                seg_start = seg.get('start_percent', 0)
-                seg_end = seg.get('end_percent', 100)
-                seg['start_time'] = (seg_start / 100) * duration
-                seg['end_time'] = (seg_end / 100) * duration
-                seg['timestamp_label'] = f"{int(seg['start_time']//60)}:{int(seg['start_time']%60):02d}"
-        
+            if whisper_segments:
+                # Real timestamps already present in dialogue_segments from GPT
+                segs = speaker.get('dialogue_segments', [])
+                speaker['start_time'] = segs[0].get('start_time', 0) if segs else 0
+                speaker['end_time'] = segs[-1].get('end_time', duration) if segs else duration
+                for seg in segs:
+                    st = seg.get('start_time', 0)
+                    seg['timestamp_label'] = f"{int(st//60)}:{int(st%60):02d}"
+            else:
+                # Fallback: convert percentages to seconds
+                start_pct = speaker.get('start_percent', 0)
+                end_pct = speaker.get('end_percent', 100)
+                speaker['start_time'] = (start_pct / 100) * duration
+                speaker['end_time'] = (end_pct / 100) * duration
+                for seg in speaker.get('dialogue_segments', []):
+                    seg_start = seg.get('start_percent', 0)
+                    seg_end = seg.get('end_percent', 100)
+                    seg['start_time'] = (seg_start / 100) * duration
+                    seg['end_time'] = (seg_end / 100) * duration
+                    seg['timestamp_label'] = f"{int(seg['start_time']//60)}:{int(seg['start_time']%60):02d}"
+
         # Add timestamp info to conversations
         for conv in diarization.get('conversations', []):
-            start_pct = conv.get('start_percent', 0)
-            conv['start_time'] = (start_pct / 100) * duration
+            if whisper_segments:
+                # GPT should have given real start_time already; ensure it's a float
+                conv['start_time'] = float(conv.get('start_time', 0))
+            else:
+                start_pct = conv.get('start_percent', 0)
+                conv['start_time'] = (start_pct / 100) * duration
         
         # Update recording with all data
         await db.recordings.update_one(

@@ -1045,22 +1045,51 @@
                 sidebar.classList.remove('hidden');
                 let html = '';
                 
-                // Add speaker segments to sidebar
+                // Add speaker segments to sidebar — show every dialogue segment per person
                 if (speakers.length > 0) {
+                    const sentimentColors = {
+                        positive: 'text-emerald-600', interested: 'text-blue-600',
+                        neutral: 'text-gray-400', skeptical: 'text-amber-600', negative: 'text-red-500'
+                    };
+                    const sentimentLabels = {
+                        positive: '▲ Positive', interested: '● Interested',
+                        neutral: '— Neutral', skeptical: '~ Skeptical', negative: '▼ Negative'
+                    };
                     html += '<div class="mb-4"><div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Speakers</div>';
                     speakers.forEach((speaker, idx) => {
-                        const seg = speaker.dialogue_segments?.[0];
-                        const segTime = seg ? (seg.start_time || ((seg.start_percent || 0) / 100 * duration)) : 0;
-                        html += `
-                            <div class="p-3 mb-2 bg-white rounded-lg border border-gray-200 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors" onclick="seekTo(${segTime})" data-testid="sidebar-speaker">
-                                <div class="flex items-center gap-2">
-                                    <div class="w-6 h-6 rounded-full ${speaker.is_host ? 'bg-orange-500' : 'bg-gray-300'} flex items-center justify-center">
-                                        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-                                    </div>
-                                    <span class="text-sm font-medium text-gray-900">${speaker.label || `Speaker ${idx + 1}`}</span>
-                                </div>
-                                <div class="text-xs text-orange-600 mt-1">${fmtDur(segTime)}</div>
+                        const segs = speaker.dialogue_segments || [];
+                        const firstTime = segs.length > 0
+                            ? (segs[0].start_time ?? ((segs[0].start_percent || 0) / 100 * duration))
+                            : (speaker.start_time || 0);
+                        const avatarColor = speaker.is_host ? 'bg-orange-500' : 'bg-blue-400';
+                        const sentiment = speaker.sentiment || 'neutral';
+                        const sentColor = sentimentColors[sentiment] || 'text-gray-400';
+                        const sentLabel = sentimentLabels[sentiment] || '— Neutral';
+
+                        // Speaker header — click to jump to their first word
+                        html += `<div class="mb-3" data-testid="sidebar-speaker">
+                            <div class="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-100 cursor-pointer hover:bg-orange-50 transition-colors" onclick="seekTo(${firstTime})">
+                                <div class="w-6 h-6 rounded-full ${avatarColor} flex items-center justify-center text-white text-xs font-bold flex-shrink-0">${idx + 1}</div>
+                                <span class="text-sm font-semibold text-gray-800 flex-1 truncate">${speaker.label || `Speaker ${idx + 1}`}</span>
+                                <span class="text-xs ${sentColor} flex-shrink-0">${sentLabel}</span>
                             </div>`;
+
+                        // Each individual dialogue segment — clickable to jump to that moment
+                        if (segs.length > 0) {
+                            segs.forEach(seg => {
+                                const t = seg.start_time ?? ((seg.start_percent || 0) / 100 * duration);
+                                const preview = (seg.content || '').slice(0, 45) + ((seg.content || '').length > 45 ? '…' : '');
+                                html += `<div class="ml-4 pl-2 border-l-2 border-gray-200 mt-1 cursor-pointer hover:border-orange-400 hover:bg-orange-50 rounded-r py-1 px-2 transition-colors" onclick="seekTo(${t})">
+                                    <div class="text-xs text-orange-600 font-mono">${fmtDur(t)}</div>
+                                    <div class="text-xs text-gray-500 truncate">${preview}</div>
+                                </div>`;
+                            });
+                        } else {
+                            html += `<div class="ml-4 pl-2 border-l-2 border-gray-200 mt-1 cursor-pointer hover:border-orange-400 hover:bg-orange-50 rounded-r py-1 px-2 transition-colors" onclick="seekTo(${firstTime})">
+                                <div class="text-xs text-orange-600 font-mono">${fmtDur(firstTime)}</div>
+                            </div>`;
+                        }
+                        html += '</div>';
                     });
                     html += '</div>';
                 }
