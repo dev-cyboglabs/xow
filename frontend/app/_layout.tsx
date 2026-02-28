@@ -5,8 +5,35 @@ import { View, StyleSheet, AppState, Platform, StatusBar as RNStatusBar } from '
 import * as ScreenOrientation from 'expo-screen-orientation';
 import * as NavigationBar from 'expo-navigation-bar';
 import * as SystemUI from 'expo-system-ui';
+import * as SplashScreen from 'expo-splash-screen';
+
+// Keep splash screen visible while app loads
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
+  const [appIsReady, setAppIsReady] = React.useState(false);
+
+  React.useEffect(() => {
+    async function prepare() {
+      try {
+        // Perform any initialization here
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (e) {
+        console.warn(e);
+      } finally {
+        setAppIsReady(true);
+      }
+    }
+
+    prepare();
+  }, []);
+
+  React.useEffect(() => {
+    if (appIsReady) {
+      SplashScreen.hideAsync();
+    }
+  }, [appIsReady]);
+
   React.useEffect(() => {
     // For web App, skip native-only APIs
     // if (Platform.OS === 'web') {

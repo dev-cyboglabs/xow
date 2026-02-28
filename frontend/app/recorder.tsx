@@ -17,7 +17,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -73,6 +72,7 @@ export default function RecorderScreen() {
   const [autoUpload, setAutoUpload] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [exitConfirmText, setExitConfirmText] = useState('');
+  const [storageLocation, setStorageLocation] = useState<'Internal' | 'External'>('Internal');
   const toastAnim = useRef(new Animated.Value(0)).current;
   
   const cameraRef = useRef<CameraView>(null);
@@ -84,6 +84,8 @@ export default function RecorderScreen() {
   const latestFpsRef = useRef(0);
   const fpsSamplesRef = useRef<number[]>([]);
   const clockRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const storageWatchRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastExternalRef = useRef<string | null>(null);
   const recordingStartTime = useRef<number>(0);
   const barcodeInputRef = useRef<TextInput>(null);
   const videoUriRef = useRef<string | null>(null);
@@ -97,12 +99,21 @@ export default function RecorderScreen() {
     checkConnection();
     clockRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
     const connInterval = setInterval(checkConnection, 10000);
+
+    // Initial external storage check
+    detectExternalStorage().then(ext => {
+      if (ext) { lastExternalRef.current = ext; setStorageLocation('External'); }
+    });
+    // Start watching for USB/SD plug-unplug events every 3s
+    startStorageWatcher();
+
     return () => {
       clearInterval(connInterval);
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
       if (clockRef.current) clearInterval(clockRef.current);
+      if (storageWatchRef.current) clearInterval(storageWatchRef.current);
     };
   }, []);
 
@@ -138,134 +149,87 @@ export default function RecorderScreen() {
     }
   };
 
-  const getStorageDirectory = async (): Promise<string> => {
+  const APP_PACKAGE = 'com.devcyboglabs.xowrecorder';
+
+  /**
+   * Detect external storage (SD card / USB OTG) by parsing /proc/mounts.
+   * Looks for non-emulated /storage/* mount points with removable FS types.
+   * Uses app-specific path which Android auto-grants write on all API levels.
+   */
+  const detectExternalStorage = async (): Promise<string | null> => {
+    if (Platform.OS !== 'android') return null;
     try {
-      const saved = await AsyncStorage.getItem('xow_settings');
-      const settings = saved ? JSON.parse(saved) : { storageLocation: 'internal' };
-      const storageLocation = settings.storageLocation || 'internal';
-
-      if (Platform.OS === 'android') {
-        // On Android, use public directories so files are visible in file manager
-        // Internal: /storage/emulated/0/Movies/XoW/
-        // External: SD card or USB (if available)
-        
-        if (storageLocation === 'external') {
-          // Try to use external storage (SD card/USB)
+      const mounts = await FileSystem.readAsStringAsync('file:///proc/mounts');
+      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat']);
+      for (const line of mounts.split('\n')) {
+        const parts = line.split(' ');
+        if (parts.length < 3) continue;
+        const mountPoint = parts[1];
+        const fsType = parts[2];
+        if (
+          mountPoint.startsWith('/storage/') &&
+          !mountPoint.includes('emulated') &&
+          REMOVABLE_FS.has(fsType)
+        ) {
+          const targetDir = `file://${mountPoint}/Android/data/${APP_PACKAGE}/files/XoW`;
           try {
-            const externalDir = FileSystem.StorageAccessFramework?.getUriForDirectoryInRoot('Movies/XoW');
-            if (externalDir) {
-              console.log('Using external storage:', externalDir);
-              return externalDir;
-            }
+            await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
+            const test = `${targetDir}/.wtest`;
+            await FileSystem.writeAsStringAsync(test, '1', { encoding: FileSystem.EncodingType.UTF8 });
+            await FileSystem.deleteAsync(test, { idempotent: true });
+            console.log('External storage confirmed:', targetDir);
+            return targetDir;
           } catch (e) {
-            console.log('External storage not available:', e);
-          }
-        }
-
-        // Use public Movies directory - accessible via file manager
-        // This is /storage/emulated/0/Movies/XoW/
-        const publicMoviesDir = `${FileSystem.cacheDirectory}../../../Movies/XoW/`;
-        
-        try {
-          // Normalize the path
-          const normalizedPath = publicMoviesDir.replace(/\/+/g, '/');
-          const dirInfo = await FileSystem.getInfoAsync(normalizedPath);
-          
-          if (!dirInfo.exists) {
-            await FileSystem.makeDirectoryAsync(normalizedPath, { intermediates: true });
-            console.log('Created public Movies directory:', normalizedPath);
-          }
-          
-          console.log('Using public Movies directory:', normalizedPath);
-          return normalizedPath;
-        } catch (e) {
-          console.log('Could not create public Movies directory:', e);
-          
-          // Try Downloads folder as alternative
-          try {
-            const downloadsDir = `${FileSystem.cacheDirectory}../../../Download/XoW/`;
-            const normalizedDownloads = downloadsDir.replace(/\/+/g, '/');
-            const downloadInfo = await FileSystem.getInfoAsync(normalizedDownloads);
-            
-            if (!downloadInfo.exists) {
-              await FileSystem.makeDirectoryAsync(normalizedDownloads, { intermediates: true });
-              console.log('Created Downloads directory:', normalizedDownloads);
-            }
-            
-            console.log('Using Downloads directory:', normalizedDownloads);
-            return normalizedDownloads;
-          } catch (downloadErr) {
-            console.log('Could not create Downloads directory:', downloadErr);
+            console.log('Mount not writable:', mountPoint, e);
           }
         }
       }
-
-      // Fallback to app's document directory (iOS or if public dir fails)
-      const internalDir = `${FileSystem.documentDirectory}XoW_Recordings/`;
-      
-      const dirInfo = await FileSystem.getInfoAsync(internalDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(internalDir, { intermediates: true });
-        console.log('Created app storage directory:', internalDir);
-      }
-      
-      return internalDir;
     } catch (e) {
-      console.log('Get storage directory error:', e);
-      // Final fallback to document directory
-      return `${FileSystem.documentDirectory}XoW_Recordings/`;
+      console.log('/proc/mounts error:', e);
     }
+    return null;
   };
 
-  const saveToMediaLibrary = async (sourceUri: string, isVideo: boolean): Promise<string | null> => {
-    try {
-      console.log('--- Saving to Media Library ---');
-      console.log('Source:', sourceUri);
-      console.log('Type:', isVideo ? 'Video' : 'Audio');
-      
-      // Request media library permissions
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
-        console.error('Media library permission denied');
-        showToast('Storage permission denied');
-        return null;
+  /** Watch for USB/SD card plug-unplug events and show toast on change. */
+  const startStorageWatcher = () => {
+    if (storageWatchRef.current) clearInterval(storageWatchRef.current);
+    storageWatchRef.current = setInterval(async () => {
+      const external = await detectExternalStorage();
+      const prev = lastExternalRef.current;
+      if (external && !prev) {
+        lastExternalRef.current = external;
+        setStorageLocation('External');
+        showToast('External storage connected');
+      } else if (!external && prev) {
+        lastExternalRef.current = null;
+        setStorageLocation('Internal');
+        showToast('External storage removed');
+      } else if (external) {
+        lastExternalRef.current = external;
       }
-      
-      // Check if source file exists
-      const sourceInfo = await FileSystem.getInfoAsync(sourceUri);
-      console.log('Source exists:', sourceInfo.exists);
-      if (sourceInfo.exists && 'size' in sourceInfo) {
-        console.log('Source size:', sourceInfo.size, 'bytes');
+    }, 3000);
+  };
+
+  /**
+   * Returns the best available storage directory and a human-readable label.
+   * Priority: external (SD/USB, cached from watcher) → internal (file manager visible).
+   */
+  const getStorageDir = async (): Promise<{ dir: string; label: string }> => {
+    if (Platform.OS === 'android') {
+      // Use cached value from watcher first; do a fresh scan as fallback
+      const external = lastExternalRef.current || await detectExternalStorage();
+      if (external) {
+        lastExternalRef.current = external;
+        return { dir: external, label: 'External Storage' };
       }
-      
-      if (!sourceInfo.exists) {
-        console.error('Source file does not exist');
-        return null;
-      }
-      
-      // Save to media library (this puts it in gallery/camera roll)
-      const asset = await MediaLibrary.createAssetAsync(sourceUri);
-      console.log('Asset created:', asset.uri);
-      
-      // Create or get XoW album
-      let album = await MediaLibrary.getAlbumAsync('XoW');
-      if (!album) {
-        console.log('Creating XoW album...');
-        album = await MediaLibrary.createAlbumAsync('XoW', asset, false);
-        console.log('Album created');
-      } else {
-        console.log('Adding to existing XoW album...');
-        await MediaLibrary.addAssetsToAlbumAsync([asset], album, false);
-      }
-      
-      console.log('✓ File saved to gallery in XoW album');
-      console.log('Asset URI:', asset.uri);
-      return asset.uri;
-    } catch (e: any) {
-      console.error('✗ Save to media library error:', e?.message || e);
-      console.error('Error details:', JSON.stringify(e, null, 2));
-      return null;
+      const internal = `file:///storage/emulated/0/Android/data/${APP_PACKAGE}/files/XoW`;
+      await FileSystem.makeDirectoryAsync(internal, { intermediates: true }).catch(() => {});
+      return { dir: internal, label: 'Internal Storage' };
     }
+    // iOS
+    const iosDir = `${FileSystem.documentDirectory}XoW`;
+    await FileSystem.makeDirectoryAsync(iosDir, { intermediates: true }).catch(() => {});
+    return { dir: iosDir, label: 'Internal Storage' };
   };
 
   const checkPermissions = async () => {
@@ -425,60 +389,42 @@ export default function RecorderScreen() {
 
       setSaveProgress(30);
 
-      // Copy files from cache to permanent storage
+      // Auto-detect storage: external (SD/USB) first, then internal
+      const { dir: storageDir, label: storageLabel } = await getStorageDir();
+      console.log(`Saving to ${storageLabel}: ${storageDir}`);
+
       let savedVideoPath: string | null = null;
       let savedAudioPath: string | null = null;
-
       const timestamp = Date.now();
-      
-      console.log('=== SAVING FILES ===');
-      
-      // Save to app's document directory (accessible via file sharing/ADB)
-      const storageDir = `${FileSystem.documentDirectory}XoW_Recordings/`;
-      
-      // Create directory if needed
-      const dirInfo = await FileSystem.getInfoAsync(storageDir);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(storageDir, { intermediates: true });
-      }
-      
+
       if (videoUri) {
-        console.log('=== VIDEO SAVE ===');
-        const videoExt = videoUri.toLowerCase().endsWith('.mov') ? '.mov' : '.mp4';
-        const videoFileName = `video_${timestamp}${videoExt}`;
-        const videoDestPath = `${storageDir}${videoFileName}`;
-        
         try {
-          await FileSystem.copyAsync({ from: videoUri, to: videoDestPath });
-          savedVideoPath = videoDestPath;
-          console.log('✓ Video saved:', videoDestPath);
-        } catch (e) {
-          console.log('Video copy failed, using cache:', e);
-          savedVideoPath = videoUri;
+          const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+          const dest = `${storageDir}/XoW_${timestamp}.${ext}`;
+          await FileSystem.copyAsync({ from: videoUri, to: dest });
+          savedVideoPath = dest;
+          console.log('✓ Video saved:', dest);
+        } catch (e: any) {
+          console.log('Video copy error:', e?.message || e);
+          savedVideoPath = videoUri; // fallback — keep in cache
         }
       }
 
       setSaveProgress(50);
 
       if (audioUri) {
-        console.log('=== AUDIO SAVE ===');
-        const audioExt = audioUri.toLowerCase().endsWith('.m4a') ? '.m4a' : '.mp3';
-        const audioFileName = `audio_${timestamp}${audioExt}`;
-        const audioDestPath = `${storageDir}${audioFileName}`;
-        
         try {
-          await FileSystem.copyAsync({ from: audioUri, to: audioDestPath });
-          savedAudioPath = audioDestPath;
-          console.log('✓ Audio saved:', audioDestPath);
-        } catch (e) {
-          console.log('Audio copy failed, using cache:', e);
+          const dest = `${storageDir}/XoW_${timestamp}.m4a`;
+          await FileSystem.copyAsync({ from: audioUri, to: dest });
+          savedAudioPath = dest;
+          console.log('✓ Audio saved:', dest);
+        } catch (e: any) {
+          console.log('Audio copy error:', e?.message || e);
           savedAudioPath = audioUri;
         }
       }
-      
-      // Show user where files are saved
-      console.log('📁 FILES SAVED TO:', storageDir);
-      showToast(`Saved to: ${storageDir}`);
+
+      showToast(`Saved to ${storageLabel}`);
 
       setSaveProgress(60);
 
@@ -812,6 +758,16 @@ export default function RecorderScreen() {
               {autoUpload ? 'Auto Upload' : 'Local Save'}
             </Text>
           </View>
+          <View style={styles.storageBadge}>
+            <Ionicons
+              name={storageLocation === 'External' ? 'save' : 'phone-portrait'}
+              size={10}
+              color={storageLocation === 'External' ? '#10B981' : '#8B5CF6'}
+            />
+            <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#10B981' : '#8B5CF6' }]}>
+              {storageLocation}
+            </Text>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -978,6 +934,8 @@ const styles = StyleSheet.create({
   boothSub: { color: '#666', fontSize: 9, textAlign: 'center', marginTop: 2 },
   uploadModeBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 6, paddingVertical: 4, paddingHorizontal: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4 },
   uploadModeText: { fontSize: 9, fontWeight: '600' },
+  storageBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 4, paddingVertical: 3, paddingHorizontal: 8, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 4 },
+  storageBadgeText: { fontSize: 9, fontWeight: '600' },
   
   section: { marginTop: 16 },
   secLabel: { color: '#555', fontSize: 8, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },

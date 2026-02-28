@@ -20,15 +20,6 @@
       "bundleIdentifier": "com.devcyboglabs.xowrecorder"
     },
     "android": {
-      "navigationBar": { "visible": false },
-      "statusBar": { "hidden": true }
-    },
-    "androidNavigationBar": {
-      "visible": false,
-      "barStyle": "dark-content",
-      "backgroundColor": "#00000000"
-    },
-    "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#000"
@@ -37,9 +28,19 @@
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_EXTERNAL_STORAGE"
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
       ],
       "package": "com.devcyboglabs.xowrecorder"
+    },
+    "androidNavigationBar": {
+      "visible": false,
+      "barStyle": "dark-content",
+      "backgroundColor": "#00000000"
     },
     "web": {
       "bundler": "metro",
@@ -76,6 +77,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "7760fb69-8c0b-46d9-a4de-63dc370964fd"
+      }
     }
   }
 }
