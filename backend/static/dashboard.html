@@ -200,15 +200,6 @@
                     <div id="video-conversations"></div>
                 </div>
             </div>
-            <!-- Speaker Timeline Bar (YouTube-style) -->
-            <div id="speaker-timeline" class="hidden border-t border-gray-200">
-                <div id="speaker-bar" class="relative h-8 w-full bg-gray-200 cursor-pointer overflow-hidden" onclick="seekFromBar(event)" title="Click to jump to any moment">
-                    <div id="speaker-bar-segments" class="absolute inset-0"></div>
-                    <div id="speaker-playhead" class="absolute top-0 h-full w-0.5 bg-white/90 shadow z-10 pointer-events-none" style="left:0%"></div>
-                </div>
-                <div id="speaker-legend" class="flex flex-wrap gap-x-4 gap-y-1 px-3 py-1.5 bg-gray-50 text-xs border-t border-gray-100"></div>
-            </div>
-
             <div id="modal-transcript" class="border-t border-gray-100 p-4 max-h-48 overflow-y-auto hidden bg-gray-50">
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-xs font-semibold text-gray-500 uppercase tracking-wide">Transcript</span>
@@ -1049,15 +1040,28 @@
                 return;
             }
             
-            // ── Build YouTube-style chronological speaker timeline ──
+            // ── Build chronological speaker timeline (sidebar only) ──
             const speakers = rec.speakers || [];
             const duration = rec.duration || 0;
             currentDuration = duration;
 
-            // Flatten all dialogue segments across all speakers, sorted by time
+            // Helper: clean label — Host stays "Host", unknowns become "Visitor N"
+            function resolveLabel(speaker, visitorNum) {
+                if (speaker.is_host) return 'Host';
+                const raw = (speaker.label || '').trim();
+                // Generic placeholders get replaced with "Visitor N"
+                if (!raw || /^(speaker|visitor|person)[\s_\-]?\d*$/i.test(raw)) {
+                    return `Visitor ${visitorNum}`;
+                }
+                return raw;
+            }
+
+            // Flatten all dialogue segments, sorted by time
             speakerSegmentsFlat = [];
-            speakers.forEach((speaker, idx) => {
-                const color = SPEAKER_COLORS[idx % SPEAKER_COLORS.length];
+            let visitorCount = 0;
+            speakers.forEach((speaker) => {
+                if (!speaker.is_host) visitorCount++;
+                const label = resolveLabel(speaker, visitorCount);
                 const segs = speaker.dialogue_segments || [];
                 if (segs.length > 0) {
                     segs.forEach(seg => {
@@ -1065,21 +1069,16 @@
                             time: seg.start_time ?? ((seg.start_percent || 0) / 100 * duration),
                             end:  seg.end_time  ?? ((seg.end_percent  || 100) / 100 * duration),
                             content: seg.content || '',
-                            label: speaker.label || `Speaker ${idx + 1}`,
-                            color,
-                            speakerIdx: idx,
+                            label,
                             isHost: !!speaker.is_host
                         });
                     });
                 } else {
-                    // Speaker has no segments — use speaker-level times as a single block
                     speakerSegmentsFlat.push({
                         time: speaker.start_time ?? ((speaker.start_percent || 0) / 100 * duration),
                         end:  speaker.end_time  ?? ((speaker.end_percent  || 100) / 100 * duration),
                         content: '',
-                        label: speaker.label || `Speaker ${idx + 1}`,
-                        color,
-                        speakerIdx: idx,
+                        label,
                         isHost: !!speaker.is_host
                     });
                 }
@@ -1087,57 +1086,26 @@
             speakerSegmentsFlat.sort((a, b) => a.time - b.time);
 
             if (speakerSegmentsFlat.length > 0) {
-                // ── Sidebar: chronological list ──
                 sidebar.classList.remove('hidden');
-                let html = '<div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Timeline</div>';
+                let html = '<div class="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3 px-1">Timeline</div>';
                 speakerSegmentsFlat.forEach((seg, i) => {
-                    const preview = seg.content.slice(0, 48) + (seg.content.length > 48 ? '…' : '');
-                    html += `<div id="seg-${i}" class="flex items-start gap-2 px-2 py-2 mb-0.5 rounded-lg cursor-pointer hover:bg-orange-50 transition-colors" onclick="seekTo(${seg.time})" data-testid="sidebar-speaker">
-                        <div class="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0" style="background:${seg.color}"></div>
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-1.5">
-                                <span class="text-xs font-mono font-semibold text-orange-600">${fmtDur(seg.time)}</span>
-                                <span class="text-xs font-medium text-gray-700 truncate">${seg.label}</span>
+                    const preview = seg.content.slice(0, 60) + (seg.content.length > 60 ? '…' : '');
+                    const hostBadge = seg.isHost
+                        ? `<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">Host</span>`
+                        : '';
+                    html += `<div id="seg-${i}" class="px-3 py-2.5 mb-1 rounded-xl cursor-pointer border border-transparent hover:border-orange-200 hover:bg-orange-50 transition-all" onclick="seekTo(${seg.time})" data-testid="sidebar-speaker">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <div class="flex items-center min-w-0">
+                                <span class="text-sm font-semibold text-gray-900 truncate">${seg.label}</span>${hostBadge}
                             </div>
-                            ${preview ? `<div class="text-xs text-gray-400 truncate mt-0.5">${preview}</div>` : ''}
+                            <span class="text-sm font-mono font-bold text-orange-500 flex-shrink-0">${fmtDur(seg.time)}</span>
                         </div>
+                        ${preview ? `<p class="text-xs text-gray-400 leading-relaxed line-clamp-2 mt-0.5">${preview}</p>` : ''}
                     </div>`;
                 });
                 convContainer.innerHTML = html;
 
-                // ── Visual speaker bar (YouTube chapters style) ──
-                const timelineEl = document.getElementById('speaker-timeline');
-                const barSegsEl  = document.getElementById('speaker-bar-segments');
-                const legendEl   = document.getElementById('speaker-legend');
-                timelineEl.classList.remove('hidden');
-
-                let barHtml = '';
-                speakerSegmentsFlat.forEach(seg => {
-                    const left  = duration > 0 ? (seg.time / duration * 100) : 0;
-                    const width = duration > 0 ? Math.max((seg.end - seg.time) / duration * 100, 0.4) : 0.4;
-                    barHtml += `<div class="absolute h-full hover:brightness-125 transition-all cursor-pointer"
-                        style="left:${left}%;width:${width}%;background:${seg.color}"
-                        onclick="event.stopPropagation();seekTo(${seg.time})"
-                        title="${seg.label} — ${fmtDur(seg.time)}"></div>`;
-                });
-                barSegsEl.innerHTML = barHtml;
-
-                // Legend — one entry per unique speaker
-                const seenIdx = new Set();
-                let legendHtml = '';
-                speakers.forEach((sp, idx) => {
-                    if (!seenIdx.has(idx)) {
-                        seenIdx.add(idx);
-                        const color = SPEAKER_COLORS[idx % SPEAKER_COLORS.length];
-                        legendHtml += `<div class="flex items-center gap-1.5">
-                            <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background:${color}"></div>
-                            <span class="text-gray-600">${sp.label || `Speaker ${idx + 1}`}</span>
-                        </div>`;
-                    }
-                });
-                legendEl.innerHTML = legendHtml;
-
-                // ── Playhead: update as media plays, highlight active sidebar row ──
+                // ── Highlight active segment as media plays ──
                 const videoEl2 = document.getElementById('video');
                 const audioEl2 = document.getElementById('audio');
                 if (timeUpdateHandler) {
@@ -1146,23 +1114,17 @@
                 }
                 timeUpdateHandler = function() {
                     const ct = !videoEl2.classList.contains('hidden') ? videoEl2.currentTime : audioEl2.currentTime;
-                    const dur = currentDuration;
-                    // Move playhead
-                    if (dur > 0) {
-                        document.getElementById('speaker-playhead').style.left = (ct / dur * 100) + '%';
-                    }
-                    // Highlight active segment in sidebar
                     let activeIdx = -1;
                     speakerSegmentsFlat.forEach((s, i) => { if (ct >= s.time && ct < s.end) activeIdx = i; });
                     speakerSegmentsFlat.forEach((s, i) => {
                         const el = document.getElementById(`seg-${i}`);
                         if (!el) return;
                         if (i === activeIdx) {
-                            el.style.background = s.color + '22';
-                            el.style.borderLeft = `3px solid ${s.color}`;
+                            el.style.background = '#FFF7ED';
+                            el.style.borderColor = '#FDBA74';
                         } else {
                             el.style.background = '';
-                            el.style.borderLeft = '';
+                            el.style.borderColor = 'transparent';
                         }
                     });
                 };
@@ -1170,7 +1132,6 @@
                 audioEl2.addEventListener('timeupdate', timeUpdateHandler);
             } else {
                 sidebar.classList.add('hidden');
-                document.getElementById('speaker-timeline').classList.add('hidden');
             }
             
             // Show transcript
@@ -1197,12 +1158,6 @@
             }
         }
 
-        function seekFromBar(event) {
-            const bar = document.getElementById('speaker-bar');
-            const rect = bar.getBoundingClientRect();
-            const pct = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
-            seekTo(pct * currentDuration);
-        }
 
         async function translateTranscript() {
             if (!currentRecordingId) return;
@@ -1250,7 +1205,6 @@
                 audioEl.removeEventListener('timeupdate', timeUpdateHandler);
                 timeUpdateHandler = null;
             }
-            document.getElementById('speaker-timeline').classList.add('hidden');
             document.getElementById('video-sidebar').classList.add('hidden');
             document.getElementById('modal').classList.add('hidden');
             document.getElementById('modal').classList.remove('flex');
