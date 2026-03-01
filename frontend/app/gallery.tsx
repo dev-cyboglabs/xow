@@ -152,12 +152,10 @@ export default function GalleryScreen() {
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
       if (localRec.videoPath) {
-        // Check if file exists
         const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
         if (fileInfo.exists) {
           setPreviewUri(localRec.videoPath);
           setPreviewTitle(fmtDate(localRec.createdAt));
-          // Set the actual FPS from the recording metadata
           setVideoFps(localRec.fps || 30);
           setPreviewFpsTimeline(localRec.fpsTimeline || []);
           setPreviewVisible(true);
@@ -168,8 +166,17 @@ export default function GalleryScreen() {
         Alert.alert('No Video', 'This recording does not have a video.');
       }
     } else {
-      // For cloud recordings, open in dashboard or show message
-      Alert.alert('Cloud Recording', 'View this recording on the web dashboard.');
+      const cloudRec = recording as CloudRecording;
+      if (cloudRec.has_video) {
+        const videoUrl = `${API_URL}/api/recordings/${cloudRec.id}/video`;
+        setPreviewUri(videoUrl);
+        setPreviewTitle(fmtDate(cloudRec.start_time));
+        setVideoFps(30);
+        setPreviewFpsTimeline([]);
+        setPreviewVisible(true);
+      } else {
+        Alert.alert('No Video', 'This cloud recording does not have a video.');
+      }
     }
   };
 
@@ -548,8 +555,8 @@ export default function GalleryScreen() {
             <Text style={styles.cardDuration}>{fmtDur(duration)}</Text>
           </View>
           <View style={styles.cardActions}>
-            {/* Preview Button (local only with video) */}
-            {isLocal && hasVideo && (
+            {/* Preview Button — local videos + uploaded cloud videos */}
+            {(isLocal && hasVideo) || (!isLocal && cloudItem.has_video) ? (
               <TouchableOpacity
                 style={styles.previewBtn}
                 onPress={() => openPreview(item)}
@@ -557,7 +564,7 @@ export default function GalleryScreen() {
                 <Ionicons name="play-circle" size={16} color="#E54B2A" />
                 <Text style={styles.previewBtnText}>Preview</Text>
               </TouchableOpacity>
-            )}
+            ) : null}
             {!isLocal && cloudItem.status === 'error' && (
               <TouchableOpacity style={styles.reprocessBtn} onPress={() => handleReprocess(cloudItem)}>
                 <Ionicons name="refresh" size={12} color="#F59E0B" />

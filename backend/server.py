@@ -2277,15 +2277,30 @@ TIMESTAMPED TRANSCRIPT (start_time - end_time: text):
 
 Total recording duration: {duration:.1f} seconds
 
-Assign each transcript line to a speaker. The HOST is the booth staff who is present throughout. Each distinct visitor is a separate non-host speaker.
+CRITICAL INSTRUCTIONS FOR VISITOR DETECTION:
+1. The HOST is the booth staff member who:
+   - Appears at the beginning and throughout the recording
+   - Explains products/services
+   - Answers questions
+   - Uses phrases like "we offer", "our product", "let me show you"
+   
+2. VISITORS are people who:
+   - Ask questions about the product/service
+   - Express interest or concerns
+   - Introduce themselves or their company
+   - Each NEW person who arrives is a SEPARATE visitor (Visitor_1, Visitor_2, etc.)
+   - Look for conversation breaks, topic changes, or re-introductions to identify new visitors
+   
+3. When multiple people talk, create SEPARATE speaker entries for each distinct person
+4. If you detect a conversation ending and a new one starting, that's a NEW visitor
 
 Return JSON:
 {{
     "speakers": [
         {{
-            "speaker_id": "unique_id",
+            "speaker_id": "host_1" or "visitor_1", "visitor_2", etc.,
             "is_host": true/false,
-            "label": "Host" or visitor name if mentioned or barcode if matched,
+            "label": "Host" or "Visitor_1" or actual name if mentioned or barcode if matched,
             "company": "company name if mentioned or null",
             "role": "role if mentioned or null",
             "sentiment": "positive/interested/neutral/skeptical/negative",
@@ -2308,40 +2323,57 @@ Return JSON:
 
 Rules:
 - Use the EXACT start_time and end_time values from the timestamped lines above
-- First/recurring speaker throughout is usually the HOST
-- Each new visitor arriving is a separate non-host speaker
+- Create ONE speaker entry for the host (is_host: true)
+- Create SEPARATE speaker entries for EACH visitor (is_host: false)
+- If you see phrases like "Hi, I'm...", "Hello, my name is...", that's likely a NEW visitor
+- If there's a gap in conversation or topic shift, consider it a new visitor
 - Link barcodes to speakers whose time range overlaps the barcode scan time
-- Separate adjacent same-speaker lines into individual dialogue_segments"""
+- Assign EVERY transcript line to a speaker
+- Each speaker's dialogue_segments must use exact timestamps from the transcript lines"""
         else:
             # Fallback when no Whisper segments: estimate from transcript position
             diarization_prompt = f"""Analyze this expo booth conversation and identify distinct speakers/visitors.
-For each visitor interaction, create a visitor badge.
 {lang_instruction}
 
 TRANSCRIPT:
 {transcript}
 {barcode_info}
 
-Recording duration: {duration:.1f} seconds
+CRITICAL INSTRUCTIONS FOR VISITOR DETECTION:
+1. The HOST is the booth staff member who:
+   - Appears at the beginning and throughout the recording
+   - Explains products/services
+   - Answers questions
+   - Uses phrases like "we offer", "our product", "let me show you"
+   
+2. VISITORS are people who:
+   - Ask questions about the product/service
+   - Express interest or concerns
+   - Introduce themselves or their company
+   - Each NEW person who arrives is a SEPARATE visitor (Visitor_1, Visitor_2, etc.)
+   - Look for conversation breaks, topic changes, or re-introductions to identify new visitors
+   
+3. When multiple people talk, create SEPARATE speaker entries for each distinct person
+4. If you detect a conversation ending and a new one starting, that's a NEW visitor
 
-Create a JSON response:
+Return JSON:
 {{
     "speakers": [
         {{
-            "speaker_id": "unique_id",
+            "speaker_id": "host_1" or "visitor_1", "visitor_2", etc.,
             "is_host": true/false,
-            "label": "Host" or visitor name if mentioned or barcode if provided,
-            "company": "company name if mentioned",
-            "role": "role if mentioned",
+            "label": "Host" or "Visitor_1" or actual name if mentioned or barcode if matched,
+            "company": "company name if mentioned or null",
+            "role": "role if mentioned or null",
             "sentiment": "positive/interested/neutral/skeptical/negative",
             "topics_discussed": ["topic1", "topic2"],
-            "key_points": ["main point 1", "main point 2"],
-            "questions_asked": ["question 1", "question 2"],
-            "start_percent": 0-100,
-            "end_percent": 0-100,
+            "key_points": ["point1", "point2"],
+            "questions_asked": ["question1", "question2"],
             "dialogue_segments": [
-                {{"content": "what they said", "start_percent": 0-100, "end_percent": 0-100}}
-            ]
+                {{"content": "text snippet", "start_percent": 0-100, "end_percent": 0-100}}
+            ],
+            "start_percent": 0-100,
+            "end_percent": 0-100
         }}
     ],
     "conversations": [
@@ -2354,10 +2386,13 @@ Create a JSON response:
 }}
 
 Rules:
-- First speaker is usually the HOST (booth staff)
-- Each visitor is a separate speaker
+- Create ONE speaker entry for the host (is_host: true)
+- Create SEPARATE speaker entries for EACH visitor (is_host: false)
+- If you see phrases like "Hi, I'm...", "Hello, my name is...", that's likely a NEW visitor
+- If there's a gap in conversation or topic shift, consider it a new visitor
 - Link barcodes to speakers if scanned during their segment
-- Estimate time percentages based on transcript position"""
+- Estimate time percentages based on transcript position (0=start, 100=end)
+- Assign EVERY part of the transcript to a speaker"""
 
         diarization_response = openai_client.chat.completions.create(
             model="gpt-4o",
@@ -2367,11 +2402,18 @@ Rules:
         
         diarization = json.loads(diarization_response.choices[0].message.content)
         
+        # Log speaker detection results
+        total_speakers = len(diarization.get('speakers', []))
+        host_count = sum(1 for s in diarization.get('speakers', []) if s.get('is_host', False))
+        visitor_count = total_speakers - host_count
+        logger.info(f"Diarization detected {total_speakers} speakers: {host_count} host(s), {visitor_count} visitor(s)")
+        
         # Step 3: Create visitor badges from non-host speakers
         visitors = []
         visitor_badges = []
         
         for speaker in diarization.get('speakers', []):
+            logger.info(f"Processing speaker: {speaker.get('speaker_id')} - is_host: {speaker.get('is_host', False)} - label: {speaker.get('label')}")
             if not speaker.get('is_host', False):
                 # Create visitor badge
                 badge_id = speaker.get('label', f"Visitor_{len(visitors)+1}")
@@ -2407,10 +2449,14 @@ Rules:
                 
                 visitor_badges.append(visitor_badge)
                 visitors.append(visitor_badge)
+                logger.info(f"Created visitor badge for: {badge_id}")
         
         # Store visitor badges in separate collection
         if visitor_badges:
             await db.visitor_badges.insert_many(visitor_badges)
+            logger.info(f"Stored {len(visitor_badges)} visitor badges in database")
+        else:
+            logger.warning(f"No visitor badges created for recording {recording_id}")
         
         # Add timestamp information to speakers
         for speaker in diarization.get('speakers', []):
@@ -2445,6 +2491,9 @@ Rules:
                 conv['start_time'] = (start_pct / 100) * duration
         
         # Update recording with all data
+        visitor_count_final = len(visitors)
+        total_speakers_final = len(diarization.get('speakers', []))
+        
         await db.recordings.update_one(
             {"_id": ObjectId(recording_id)},
             {"$set": {
@@ -2455,15 +2504,16 @@ Rules:
                 "top_topics": analysis.get('top_topics', []),
                 "overall_sentiment": analysis.get('overall_sentiment', 'neutral'),
                 "key_insights": analysis.get('key_insights', []),
-                "visitor_count": len(visitors),
+                "visitor_count": visitor_count_final,
                 "visitors": visitors,
                 "speakers": diarization.get('speakers', []),
                 "conversations": diarization.get('conversations', []),
-                "total_speakers": len(diarization.get('speakers', [])),
+                "total_speakers": total_speakers_final,
                 "host_identified": any(s.get('is_host') for s in diarization.get('speakers', []))
             }}
         )
         
+        logger.info(f"Recording {recording_id} processed: {visitor_count_final} visitors, {total_speakers_final} total speakers")
         logger.info(f"Transcription with diarization completed for recording {recording_id}")
         
     except Exception as e:
