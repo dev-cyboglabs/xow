@@ -1587,6 +1587,11 @@
             const processed = data.recordings.filter(r => r.status === 'processed' || r.overall_summary || r.speakers?.length > 0);
             // Show ALL cards — just re-render with highlights (like browser Ctrl+F)
             listEl.innerHTML = processed.map(r => renderAnalyticsCard(r)).join('');
+            // Auto-scroll to first highlighted match
+            if (analyticsQuery) {
+                const firstMark = listEl.querySelector('mark');
+                if (firstMark) firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
         }
 
         function downloadAnalyticsPdf() {
