@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import { Video, ResizeMode } from 'expo-av';
 import axios from 'axios';
 
@@ -152,15 +153,21 @@ export default function GalleryScreen() {
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
       if (localRec.videoPath) {
-        const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
-        if (fileInfo.exists) {
-          setPreviewUri(localRec.videoPath);
-          setPreviewTitle(fmtDate(localRec.createdAt));
-          setVideoFps(localRec.fps || 30);
-          setPreviewFpsTimeline(localRec.fpsTimeline || []);
-          setPreviewVisible(true);
-        } else {
-          Alert.alert('File Not Found', 'The video file could not be found.');
+        // Check if file exists (works for file:// URIs and cache paths)
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
+          if (fileInfo.exists) {
+            setPreviewUri(localRec.videoPath);
+            setPreviewTitle(fmtDate(localRec.createdAt));
+            setVideoFps(localRec.fps || 30);
+            setPreviewFpsTimeline(localRec.fpsTimeline || []);
+            setPreviewVisible(true);
+          } else {
+            Alert.alert('File Not Found', 'The video file could not be found. It may have been deleted from cache.');
+          }
+        } catch (e) {
+          console.log('Error checking video file:', e);
+          Alert.alert('Error', 'Could not access the video file.');
         }
       } else {
         Alert.alert('No Video', 'This recording does not have a video.');

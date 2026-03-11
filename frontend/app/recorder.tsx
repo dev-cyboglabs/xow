@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
@@ -63,6 +64,7 @@ export default function RecorderScreen() {
   const [barcodeCount, setBarcodeCount] = useState(0);
   const [barcodeScans, setBarcodeScans] = useState<BarcodeData[]>([]);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState(0);
@@ -211,17 +213,36 @@ export default function RecorderScreen() {
   };
 
   /**
-   * Returns the best available storage directory and a human-readable label.
-   * Priority: external (SD/USB, cached from watcher) → internal (file manager visible).
+   * Returns the storage directory based on user preference in settings.
+   * Falls back to auto-detection if preference not set or external storage unavailable.
    */
   const getStorageDir = async (): Promise<{ dir: string; label: string }> => {
     if (Platform.OS === 'android') {
-      // Use cached value from watcher first; do a fresh scan as fallback
-      const external = lastExternalRef.current || await detectExternalStorage();
-      if (external) {
-        lastExternalRef.current = external;
-        return { dir: external, label: 'External Storage' };
+      // Load user's storage preference from settings
+      let preferredLocation: 'internal' | 'external' = 'internal';
+      try {
+        const saved = await AsyncStorage.getItem('xow_settings');
+        if (saved) {
+          const settings = JSON.parse(saved);
+          preferredLocation = settings.storageLocation || 'internal';
+        }
+      } catch (e) {
+        console.log('Failed to load storage preference:', e);
       }
+
+      // If user prefers external storage, try to use it
+      if (preferredLocation === 'external') {
+        const external = lastExternalRef.current || await detectExternalStorage();
+        if (external) {
+          lastExternalRef.current = external;
+          return { dir: external, label: 'External Storage' };
+        }
+        // External not available, fall back to internal with warning
+        console.log('External storage preferred but not available, using internal');
+        showToast('External storage not found, using internal');
+      }
+
+      // Use internal storage (either preferred or fallback)
       const internal = `file:///storage/emulated/0/Android/data/${APP_PACKAGE}/files/XoW`;
       await FileSystem.makeDirectoryAsync(internal, { intermediates: true }).catch(() => {});
       return { dir: internal, label: 'Internal Storage' };
@@ -237,6 +258,12 @@ export default function RecorderScreen() {
     const audioStatus = await AudioModule.requestRecordingPermissionsAsync();
     if (!audioStatus.granted) {
       Alert.alert('Permission Required', 'Microphone access is needed for recording.');
+    }
+    if (!mediaLibraryPermission?.granted) {
+      const result = await requestMediaLibraryPermission();
+      if (!result.granted) {
+        Alert.alert('Permission Required', 'Media library access is needed to save videos to your gallery.');
+      }
     }
   };
 
@@ -389,31 +416,49 @@ export default function RecorderScreen() {
 
       setSaveProgress(30);
 
-      // Auto-detect storage: external (SD/USB) first, then internal
-      const { dir: storageDir, label: storageLabel } = await getStorageDir();
-      console.log(`Saving to ${storageLabel}: ${storageDir}`);
-
       let savedVideoPath: string | null = null;
       let savedAudioPath: string | null = null;
       const timestamp = Date.now();
 
+      // Save video to public gallery (DCIM/Movies) using MediaLibrary
       if (videoUri) {
         try {
+          // First, copy to app cache for reliable playback and upload
           const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
-          const dest = `${storageDir}/XoW_${timestamp}.${ext}`;
-          await FileSystem.copyAsync({ from: videoUri, to: dest });
-          savedVideoPath = dest;
-          console.log('✓ Video saved:', dest);
+          const cachedPath = `${FileSystem.cacheDirectory}XoW_${timestamp}.${ext}`;
+          await FileSystem.copyAsync({ from: videoUri, to: cachedPath });
+          savedVideoPath = cachedPath;
+          console.log('✓ Video cached for app use:', cachedPath);
+          
+          // Then, also save to gallery for user access
+          const asset = await MediaLibrary.createAssetAsync(videoUri);
+          await MediaLibrary.createAlbumAsync('XoW Recordings', asset, false);
+          console.log('✓ Video also saved to gallery');
+          showToast('Video saved to Gallery');
         } catch (e: any) {
-          console.log('Video copy error:', e?.message || e);
-          savedVideoPath = videoUri; // fallback — keep in cache
+          console.log('Video save error:', e?.message || e);
+          // Fallback: save to app directory if cache/gallery fails
+          try {
+            const { dir: storageDir } = await getStorageDir();
+            const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+            const dest = `${storageDir}/XoW_${timestamp}.${ext}`;
+            await FileSystem.copyAsync({ from: videoUri, to: dest });
+            savedVideoPath = dest;
+            console.log('✓ Video saved to app storage (fallback):', dest);
+            showToast('Video saved to app storage');
+          } catch (fallbackErr: any) {
+            console.log('Fallback save error:', fallbackErr?.message || fallbackErr);
+            savedVideoPath = videoUri;
+          }
         }
       }
 
       setSaveProgress(50);
 
+      // Save audio to app directory (audio doesn't need to be in gallery)
       if (audioUri) {
         try {
+          const { dir: storageDir } = await getStorageDir();
           const dest = `${storageDir}/XoW_${timestamp}.m4a`;
           await FileSystem.copyAsync({ from: audioUri, to: dest });
           savedAudioPath = dest;
@@ -423,8 +468,6 @@ export default function RecorderScreen() {
           savedAudioPath = audioUri;
         }
       }
-
-      showToast(`Saved to ${storageLabel}`);
 
       setSaveProgress(60);
 

@@ -8,10 +8,12 @@ import {
   ScrollView,
   useWindowDimensions,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
 
 interface StorageSettings {
   autoUpload: boolean;
@@ -27,11 +29,41 @@ export default function SettingsScreen() {
   });
   const [deviceName, setDeviceName] = useState('');
   const [deviceId, setDeviceId] = useState('');
+  const [externalAvailable, setExternalAvailable] = useState(false);
 
   useEffect(() => {
     loadSettings();
     loadDevice();
+    checkExternalStorage();
   }, []);
+
+  const checkExternalStorage = async () => {
+    if (Platform.OS !== 'android') {
+      setExternalAvailable(false);
+      return;
+    }
+    try {
+      const mounts = await FileSystem.readAsStringAsync('file:///proc/mounts');
+      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat']);
+      for (const line of mounts.split('\n')) {
+        const parts = line.split(' ');
+        if (parts.length < 3) continue;
+        const mountPoint = parts[1];
+        const fsType = parts[2];
+        if (
+          mountPoint.startsWith('/storage/') &&
+          !mountPoint.includes('emulated') &&
+          REMOVABLE_FS.has(fsType)
+        ) {
+          setExternalAvailable(true);
+          return;
+        }
+      }
+      setExternalAvailable(false);
+    } catch (e) {
+      setExternalAvailable(false);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -164,7 +196,7 @@ export default function SettingsScreen() {
                   <Text style={[styles.locationTitle, settings.storageLocation === 'internal' && styles.locationTitleActive]}>
                     Internal Storage
                   </Text>
-                  <Text style={styles.locationDesc}>Device internal memory (recommended)</Text>
+                  <Text style={styles.locationDesc}>Audio files saved to device memory</Text>
                 </View>
                 {settings.storageLocation === 'internal' && (
                   <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
@@ -172,17 +204,49 @@ export default function SettingsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.locationOption, settings.storageLocation === 'external' && styles.locationActive]}
-                onPress={() => setStorageLocation('external')}
+                style={[
+                  styles.locationOption,
+                  settings.storageLocation === 'external' && styles.locationActive,
+                  !externalAvailable && styles.locationDisabled
+                ]}
+                onPress={() => {
+                  if (!externalAvailable) {
+                    Alert.alert(
+                      'External Storage Not Available',
+                      'No SD card or USB drive detected. Please insert external storage and try again.',
+                      [{ text: 'OK' }]
+                    );
+                  } else {
+                    setStorageLocation('external');
+                  }
+                }}
+                disabled={!externalAvailable}
               >
-                <Ionicons name="save" size={18} color={settings.storageLocation === 'external' ? '#E54B2A' : '#666'} />
+                <Ionicons name="save" size={18} color={!externalAvailable ? '#444' : settings.storageLocation === 'external' ? '#E54B2A' : '#666'} />
                 <View style={styles.locationInfo}>
-                  <Text style={[styles.locationTitle, settings.storageLocation === 'external' && styles.locationTitleActive]}>
-                    External Storage
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Text style={[
+                      styles.locationTitle,
+                      settings.storageLocation === 'external' && styles.locationTitleActive,
+                      !externalAvailable && styles.locationTitleDisabled
+                    ]}>
+                      External Storage
+                    </Text>
+                    {externalAvailable ? (
+                      <View style={styles.availableBadge}>
+                        <Text style={styles.availableBadgeText}>Available</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.unavailableBadge}>
+                        <Text style={styles.unavailableBadgeText}>Not Detected</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={[styles.locationDesc, !externalAvailable && { color: '#444' }]}>
+                    Audio files saved to SD Card / USB {!externalAvailable && '(not connected)'}
                   </Text>
-                  <Text style={styles.locationDesc}>SD Card / USB drive (if available)</Text>
                 </View>
-                {settings.storageLocation === 'external' && (
+                {settings.storageLocation === 'external' && externalAvailable && (
                   <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
                 )}
               </TouchableOpacity>
@@ -194,8 +258,9 @@ export default function SettingsScreen() {
             <View style={styles.infoCard}>
               <Ionicons name="information-circle" size={18} color="#F59E0B" />
               <Text style={styles.infoText}>
-                Recordings are saved locally and can be uploaded to the cloud from the Gallery tab.
-                When Auto Upload is off, you have full control over when and which recordings to upload.
+                Videos are saved to your device's Gallery (DCIM/Movies) and are accessible from your phone's Photos/Gallery app.
+                Audio files are saved to the selected storage location for processing.
+                All recordings can be uploaded to the cloud from the Gallery tab.
               </Text>
             </View>
           </View>
@@ -243,10 +308,18 @@ const styles = StyleSheet.create({
   // Location Options
   locationOption: { flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 8, borderRadius: 8, backgroundColor: '#111', borderWidth: 1, borderColor: '#222' },
   locationActive: { borderColor: '#E54B2A', backgroundColor: 'rgba(229,75,42,0.1)' },
+  locationDisabled: { opacity: 0.5, borderColor: '#1a1a1a' },
   locationInfo: { flex: 1, marginLeft: 12 },
   locationTitle: { color: '#888', fontSize: 13, fontWeight: '500' },
   locationTitleActive: { color: '#fff' },
+  locationTitleDisabled: { color: '#444' },
   locationDesc: { color: '#555', fontSize: 10, marginTop: 2 },
+
+  // Storage Availability Badges
+  availableBadge: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: 'rgba(16,185,129,0.2)', borderRadius: 4 },
+  availableBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '600' },
+  unavailableBadge: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: 'rgba(239,68,68,0.2)', borderRadius: 4 },
+  unavailableBadgeText: { color: '#EF4444', fontSize: 9, fontWeight: '600' },
 
   // Info Card
   infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, gap: 10 },

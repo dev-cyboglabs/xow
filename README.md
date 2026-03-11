@@ -7,4 +7,8 @@ apk build steps
 1. cd android && ./gradlew clean
 2. npx expo prebuild --clean --platform android
 3. cd android && ./gradlew assembleRelease
-4. 
+  
+
+1. adb reverse --list
+2. adb reverse tcp:8000 tcp:8000
+3. adb shell am force-stop com.devcyboglabs.xowrecorder && adb shell am start -n com.devcyboglabs.xowrecorder/.MainActivity
