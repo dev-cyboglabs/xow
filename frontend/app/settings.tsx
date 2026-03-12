@@ -9,6 +9,8 @@ import {
   useWindowDimensions,
   Alert,
   Platform,
+  NativeModules,
+  NativeEventEmitter,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -23,6 +25,7 @@ interface StorageSettings {
 export default function SettingsScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
+  const usbStorageModule = Platform.OS === 'android' ? NativeModules.UsbStorage : null;
   const [settings, setSettings] = useState<StorageSettings>({
     autoUpload: false,
     storageLocation: 'internal',
@@ -35,6 +38,38 @@ export default function SettingsScreen() {
     loadSettings();
     loadDevice();
     checkExternalStorage();
+
+    if (usbStorageModule?.startListening) {
+      usbStorageModule.startListening();
+    }
+
+    const eventEmitter = usbStorageModule ? new NativeEventEmitter(usbStorageModule) : null;
+    const subscription = eventEmitter?.addListener('usbStorageChanged', async () => {
+      await checkExternalStorage();
+    });
+
+    if (usbStorageModule?.isUsbDeviceAttached) {
+      usbStorageModule.isUsbDeviceAttached()
+        .then((attached: boolean) => {
+          if (attached) {
+            checkExternalStorage();
+          }
+        })
+        .catch(() => {});
+    }
+    
+    // Check for external storage every 3 seconds to detect when device is plugged in
+    const interval = setInterval(() => {
+      checkExternalStorage();
+    }, 3000);
+    
+    return () => {
+      subscription?.remove();
+      if (usbStorageModule?.stopListening) {
+        usbStorageModule.stopListening();
+      }
+      clearInterval(interval);
+    };
   }, []);
 
   const checkExternalStorage = async () => {
@@ -44,23 +79,40 @@ export default function SettingsScreen() {
     }
     try {
       const mounts = await FileSystem.readAsStringAsync('file:///proc/mounts');
-      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat']);
+      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat', 'ext4', 'ext3', 'ext2']);
+      
+      console.log('Checking for external storage...');
+      let foundExternal = false;
+      
       for (const line of mounts.split('\n')) {
         const parts = line.split(' ');
         if (parts.length < 3) continue;
         const mountPoint = parts[1];
         const fsType = parts[2];
-        if (
-          mountPoint.startsWith('/storage/') &&
-          !mountPoint.includes('emulated') &&
-          REMOVABLE_FS.has(fsType)
-        ) {
-          setExternalAvailable(true);
-          return;
+        
+        // Check for external storage in various common locations
+        const isExternalPath = (
+          (mountPoint.startsWith('/storage/') && !mountPoint.includes('emulated')) ||
+          mountPoint.startsWith('/mnt/media_rw/') ||
+          mountPoint.startsWith('/mnt/usb') ||
+          (mountPoint.startsWith('/mnt/') && !mountPoint.includes('emulated'))
+        );
+        
+        if (isExternalPath && REMOVABLE_FS.has(fsType)) {
+          console.log('External storage found:', mountPoint, fsType);
+          foundExternal = true;
+          break;
         }
       }
-      setExternalAvailable(false);
+      
+      setExternalAvailable(foundExternal);
+      if (foundExternal) {
+        console.log('✓ External storage available');
+      } else {
+        console.log('✗ No external storage detected');
+      }
     } catch (e) {
+      console.log('Error checking external storage:', e);
       setExternalAvailable(false);
     }
   };
