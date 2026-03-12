@@ -7,6 +7,9 @@ import {
   TextInput,
   Modal,
   Platform,
+  KeyboardAvoidingView,
+  Pressable,
+  NativeModules,
   useWindowDimensions,
   Animated,
   Alert,
@@ -21,6 +24,7 @@ import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
+const EXTERNAL_STORAGE_URI_KEY = 'xow_external_storage_uri';
 
 interface Device {
   id: string;
@@ -152,44 +156,41 @@ export default function RecorderScreen() {
   };
 
   const APP_PACKAGE = 'com.devcyboglabs.xowrecorder';
+  const usbStorageModule = Platform.OS === 'android' ? NativeModules.UsbStorage : null;
 
   /**
-   * Detect external storage (SD card / USB OTG) by parsing /proc/mounts.
-   * Looks for non-emulated /storage/* mount points with removable FS types.
-   * Uses app-specific path which Android auto-grants write on all API levels.
+   * Detect external storage (USB OTG / SD card).
+   * Uses StorageManager.getStorageVolumes() as the single gate —
+   * if no removable volume is mounted, returns null immediately.
    */
   const detectExternalStorage = async (): Promise<string | null> => {
     if (Platform.OS !== 'android') return null;
     try {
-      const mounts = await FileSystem.readAsStringAsync('file:///proc/mounts');
-      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat']);
-      for (const line of mounts.split('\n')) {
-        const parts = line.split(' ');
-        if (parts.length < 3) continue;
-        const mountPoint = parts[1];
-        const fsType = parts[2];
-        if (
-          mountPoint.startsWith('/storage/') &&
-          !mountPoint.includes('emulated') &&
-          REMOVABLE_FS.has(fsType)
-        ) {
-          const targetDir = `file://${mountPoint}/Android/data/${APP_PACKAGE}/files/XoW`;
-          try {
-            await FileSystem.makeDirectoryAsync(targetDir, { intermediates: true });
-            const test = `${targetDir}/.wtest`;
-            await FileSystem.writeAsStringAsync(test, '1', { encoding: FileSystem.EncodingType.UTF8 });
-            await FileSystem.deleteAsync(test, { idempotent: true });
-            console.log('External storage confirmed:', targetDir);
-            return targetDir;
-          } catch (e) {
-            console.log('Mount not writable:', mountPoint, e);
-          }
+      // Gate: confirm a removable volume is physically present
+      let volumes: Array<{ description: string }> = [];
+      if (usbStorageModule?.getRemovableVolumes) {
+        volumes = await usbStorageModule.getRemovableVolumes();
+      }
+      if (volumes.length === 0) return null;
+
+      // Prefer SAF-granted URI if one was stored while this volume was connected
+      const grantedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
+      if (grantedUri) return grantedUri;
+
+      // Try app-specific writable path on the removable volume
+      if (usbStorageModule?.getWritableExternalStoragePath) {
+        const nativePath = await usbStorageModule.getWritableExternalStoragePath();
+        if (nativePath) {
+          console.log('External storage confirmed via native API:', nativePath);
+          return nativePath;
         }
       }
+
+      return null;
     } catch (e) {
-      console.log('/proc/mounts error:', e);
+      console.log('detectExternalStorage error:', e);
+      return null;
     }
-    return null;
   };
 
   /** Watch for USB/SD card plug-unplug events and show toast on change. */
@@ -232,11 +233,12 @@ export default function RecorderScreen() {
 
       // If user prefers external storage, try to use it
       if (preferredLocation === 'external') {
-        const external = lastExternalRef.current || await detectExternalStorage();
+        const external = await detectExternalStorage();
         if (external) {
           lastExternalRef.current = external;
           return { dir: external, label: 'External Storage' };
         }
+        lastExternalRef.current = null;
         // External not available, fall back to internal with warning
         console.log('External storage preferred but not available, using internal');
         showToast('External storage not found, using internal');
@@ -251,6 +253,19 @@ export default function RecorderScreen() {
     const iosDir = `${FileSystem.documentDirectory}XoW`;
     await FileSystem.makeDirectoryAsync(iosDir, { intermediates: true }).catch(() => {});
     return { dir: iosDir, label: 'Internal Storage' };
+  };
+
+  const copyIntoStorage = async (sourceUri: string, targetDir: string, fileName: string, mimeType: string): Promise<string> => {
+    if (targetDir.startsWith('content://')) {
+      const targetFileUri = await FileSystem.StorageAccessFramework.createFileAsync(targetDir, fileName, mimeType);
+      const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
+      await FileSystem.writeAsStringAsync(targetFileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+      return targetFileUri;
+    }
+
+    const destination = `${targetDir}/${fileName}`;
+    await FileSystem.copyAsync({ from: sourceUri, to: destination });
+    return destination;
   };
 
   const checkPermissions = async () => {
@@ -441,8 +456,8 @@ export default function RecorderScreen() {
           try {
             const { dir: storageDir } = await getStorageDir();
             const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
-            const dest = `${storageDir}/XoW_${timestamp}.${ext}`;
-            await FileSystem.copyAsync({ from: videoUri, to: dest });
+            const fileName = `XoW_${timestamp}.${ext}`;
+            const dest = await copyIntoStorage(videoUri, storageDir, fileName, ext === 'mov' ? 'video/quicktime' : 'video/mp4');
             savedVideoPath = dest;
             console.log('✓ Video saved to app storage (fallback):', dest);
             showToast('Video saved to app storage');
@@ -459,8 +474,7 @@ export default function RecorderScreen() {
       if (audioUri) {
         try {
           const { dir: storageDir } = await getStorageDir();
-          const dest = `${storageDir}/XoW_${timestamp}.m4a`;
-          await FileSystem.copyAsync({ from: audioUri, to: dest });
+          const dest = await copyIntoStorage(audioUri, storageDir, `XoW_${timestamp}.m4a`, 'audio/mp4');
           savedAudioPath = dest;
           console.log('✓ Audio saved:', dest);
         } catch (e: any) {

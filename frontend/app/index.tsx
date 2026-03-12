@@ -141,6 +141,10 @@ export default function SetupScreen() {
     }
   };
 
+  const skipToApp = () => {
+    router.replace('/recorder');
+  };
+
   useEffect(() => {
     if (status !== 'ready') return;
     const interval = setInterval(pollPairingStatus, 3000);
@@ -168,7 +172,7 @@ export default function SetupScreen() {
   // ── Error ──────────────────────────────────────────────────────────────────
   if (status === 'error') {
     return (
-      <View style={[styles.center, { width, height }]}>
+      <View style={[styles.center, { width, height }]}> 
         <View style={styles.logo}>
           <Ionicons name="videocam" size={28} color="#fff" />
         </View>
@@ -177,6 +181,9 @@ export default function SetupScreen() {
         <Text style={styles.errorText}>{errorMsg}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={init}>
           <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.skipBtn} onPress={skipToApp}>
+          <Text style={styles.skipText}>Skip for Testing</Text>
         </TouchableOpacity>
       </View>
     );
@@ -236,6 +243,10 @@ export default function SetupScreen() {
             <ActivityIndicator color="#8B5CF6" size="small" />
             <Text style={styles.waitingText}>Waiting for connection</Text>
           </View>
+
+          <TouchableOpacity style={styles.skipBtn} onPress={skipToApp}>
+            <Text style={styles.skipText}>Skip for Testing</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
@@ -254,6 +265,8 @@ const styles = StyleSheet.create({
   errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginTop: 12, paddingHorizontal: 32 },
   retryBtn: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: '#E54B2A', borderRadius: 8 },
   retryText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  skipBtn: { marginTop: 14, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111' },
+  skipText: { color: '#fff', fontWeight: '600', fontSize: 14 },
 
   leftPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#1a1a1a', padding: 20 },
   features: { gap: 8 },

@@ -15,7 +15,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
+
+const EXTERNAL_STORAGE_URI_KEY = 'xow_external_storage_uri';
 
 interface StorageSettings {
   autoUpload: boolean;
@@ -33,6 +35,9 @@ export default function SettingsScreen() {
   const [deviceName, setDeviceName] = useState('');
   const [deviceId, setDeviceId] = useState('');
   const [externalAvailable, setExternalAvailable] = useState(false);
+  const [usbAttached, setUsbAttached] = useState(false);
+  const [needsUsbAccess, setNeedsUsbAccess] = useState(false);
+  const [volumeLabel, setVolumeLabel] = useState('');
 
   useEffect(() => {
     loadSettings();
@@ -44,13 +49,15 @@ export default function SettingsScreen() {
     }
 
     const eventEmitter = usbStorageModule ? new NativeEventEmitter(usbStorageModule) : null;
-    const subscription = eventEmitter?.addListener('usbStorageChanged', async () => {
+    const subscription = eventEmitter?.addListener('usbStorageChanged', async (event?: { connected?: boolean }) => {
+      setUsbAttached(Boolean(event?.connected));
       await checkExternalStorage();
     });
 
     if (usbStorageModule?.isUsbDeviceAttached) {
       usbStorageModule.isUsbDeviceAttached()
         .then((attached: boolean) => {
+          setUsbAttached(attached);
           if (attached) {
             checkExternalStorage();
           }
@@ -75,45 +82,83 @@ export default function SettingsScreen() {
   const checkExternalStorage = async () => {
     if (Platform.OS !== 'android') {
       setExternalAvailable(false);
+      setNeedsUsbAccess(false);
       return;
     }
+
     try {
-      const mounts = await FileSystem.readAsStringAsync('file:///proc/mounts');
-      const REMOVABLE_FS = new Set(['vfat', 'exfat', 'fuse', 'fuseblk', 'ntfs', 'sdcardfs', 'sdfat', 'texfat', 'ext4', 'ext3', 'ext2']);
-      
-      console.log('Checking for external storage...');
-      let foundExternal = false;
-      
-      for (const line of mounts.split('\n')) {
-        const parts = line.split(' ');
-        if (parts.length < 3) continue;
-        const mountPoint = parts[1];
-        const fsType = parts[2];
-        
-        // Check for external storage in various common locations
-        const isExternalPath = (
-          (mountPoint.startsWith('/storage/') && !mountPoint.includes('emulated')) ||
-          mountPoint.startsWith('/mnt/media_rw/') ||
-          mountPoint.startsWith('/mnt/usb') ||
-          (mountPoint.startsWith('/mnt/') && !mountPoint.includes('emulated'))
-        );
-        
-        if (isExternalPath && REMOVABLE_FS.has(fsType)) {
-          console.log('External storage found:', mountPoint, fsType);
-          foundExternal = true;
-          break;
+      // Primary source of truth: StorageManager removable volumes
+      let volumes: Array<{ description: string; state: string; isRemovable: boolean }> = [];
+      if (usbStorageModule?.getRemovableVolumes) {
+        volumes = await usbStorageModule.getRemovableVolumes();
+      }
+
+      const physicallyPresent = volumes.length > 0;
+      setUsbAttached(physicallyPresent);
+
+      if (!physicallyPresent) {
+        // Nothing plugged in — clear everything
+        setExternalAvailable(false);
+        setNeedsUsbAccess(false);
+        setVolumeLabel('');
+        const stale = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
+        if (stale) await AsyncStorage.removeItem(EXTERNAL_STORAGE_URI_KEY);
+        console.log('✗ No removable storage mounted');
+        return;
+      }
+
+      // Something is mounted — try to get a writable path
+      const label = volumes[0]?.description || 'USB Drive';
+      setVolumeLabel(label);
+      console.log(`✓ Removable volume detected: ${label}`);
+
+      // Check for a previously granted SAF URI first
+      const storedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
+      if (storedUri) {
+        setExternalAvailable(true);
+        setNeedsUsbAccess(false);
+        console.log('✓ External storage available (SAF permission stored)');
+        return;
+      }
+
+      // Try to get a writable app-specific path directly
+      if (usbStorageModule?.getWritableExternalStoragePath) {
+        const nativePath = await usbStorageModule.getWritableExternalStoragePath();
+        if (nativePath) {
+          setExternalAvailable(true);
+          setNeedsUsbAccess(false);
+          console.log('✓ External storage writable via native path:', nativePath);
+          return;
         }
       }
-      
-      setExternalAvailable(foundExternal);
-      if (foundExternal) {
-        console.log('✓ External storage available');
-      } else {
-        console.log('✗ No external storage detected');
-      }
-    } catch (e) {
-      console.log('Error checking external storage:', e);
+
+      // Volume is mounted but app cannot write directly — user must grant SAF access
       setExternalAvailable(false);
+      setNeedsUsbAccess(true);
+      console.log('⚠ Volume mounted but needs SAF access grant');
+    } catch (e) {
+      console.log('External storage check error:', e);
+      setExternalAvailable(false);
+      setNeedsUsbAccess(false);
+    }
+  };
+
+  const requestUsbAccess = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const permission = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (!permission.granted || !permission.directoryUri) {
+        return;
+      }
+      await AsyncStorage.setItem(EXTERNAL_STORAGE_URI_KEY, permission.directoryUri);
+      if (settings.storageLocation !== 'external') {
+        await saveSettings({ ...settings, storageLocation: 'external' });
+      }
+      await checkExternalStorage();
+      Alert.alert('USB Access Granted', 'External storage is now available to the app.');
+    } catch (e) {
+      console.log('USB access grant error:', e);
+      Alert.alert('Access Failed', 'Could not grant access to the USB storage.');
     }
   };
 
@@ -286,7 +331,11 @@ export default function SettingsScreen() {
                     </Text>
                     {externalAvailable ? (
                       <View style={styles.availableBadge}>
-                        <Text style={styles.availableBadgeText}>Available</Text>
+                        <Text style={styles.availableBadgeText}>{volumeLabel ? `✓ ${volumeLabel}` : 'Available'}</Text>
+                      </View>
+                    ) : usbAttached && needsUsbAccess ? (
+                      <View style={styles.needsAccessBadge}>
+                        <Text style={styles.needsAccessBadgeText}>Connected – tap Grant</Text>
                       </View>
                     ) : (
                       <View style={styles.unavailableBadge}>
@@ -294,14 +343,21 @@ export default function SettingsScreen() {
                       </View>
                     )}
                   </View>
-                  <Text style={[styles.locationDesc, !externalAvailable && { color: '#444' }]}>
-                    Audio files saved to SD Card / USB {!externalAvailable && '(not connected)'}
+                  <Text style={[styles.locationDesc, !externalAvailable && { color: '#444' }]}> 
+                    Audio files saved to SD Card / USB {needsUsbAccess ? '(connected - access required)' : !externalAvailable ? '(not connected)' : ''}
                   </Text>
                 </View>
                 {settings.storageLocation === 'external' && externalAvailable && (
                   <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
                 )}
               </TouchableOpacity>
+
+              {needsUsbAccess && (
+                <TouchableOpacity style={styles.accessBtn} onPress={requestUsbAccess}>
+                  <Ionicons name="key" size={16} color="#fff" />
+                  <Text style={styles.accessBtnText}>Grant USB Access</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -365,13 +421,19 @@ const styles = StyleSheet.create({
   locationTitle: { color: '#888', fontSize: 13, fontWeight: '500' },
   locationTitleActive: { color: '#fff' },
   locationTitleDisabled: { color: '#444' },
-  locationDesc: { color: '#555', fontSize: 10, marginTop: 2 },
+  locationDesc: { color: '#666', fontSize: 11, marginTop: 2 },
 
   // Storage Availability Badges
-  availableBadge: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: 'rgba(16,185,129,0.2)', borderRadius: 4 },
-  availableBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '600' },
-  unavailableBadge: { paddingHorizontal: 6, paddingVertical: 2, backgroundColor: 'rgba(239,68,68,0.2)', borderRadius: 4 },
+  availableBadge: { backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  availableBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '700' },
+  unavailableBadge: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
   unavailableBadgeText: { color: '#EF4444', fontSize: 9, fontWeight: '600' },
+
+  // Access Button
+  accessBtn: { marginTop: 12, height: 42, borderRadius: 10, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
+  accessBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  needsAccessBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.4)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
+  needsAccessBadgeText: { color: '#F59E0B', fontSize: 9, fontWeight: '700' },
 
   // Info Card
   infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, gap: 10 },
