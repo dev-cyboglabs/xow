@@ -435,36 +435,45 @@ export default function RecorderScreen() {
       let savedAudioPath: string | null = null;
       const timestamp = Date.now();
 
-      // Save video to public gallery (DCIM/Movies) using MediaLibrary
+      // Save video to persistent storage (not cache — cache is cleared between sessions)
       if (videoUri) {
         try {
-          // First, copy to app cache for reliable playback and upload
           const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
-          const cachedPath = `${FileSystem.cacheDirectory}XoW_${timestamp}.${ext}`;
-          await FileSystem.copyAsync({ from: videoUri, to: cachedPath });
-          savedVideoPath = cachedPath;
-          console.log('✓ Video cached for app use:', cachedPath);
-          
-          // Then, also save to gallery for user access
-          const asset = await MediaLibrary.createAssetAsync(videoUri);
-          await MediaLibrary.createAlbumAsync('XoW Recordings', asset, false);
-          console.log('✓ Video also saved to gallery');
-          showToast('Video saved to Gallery');
+          const fileName = `XoW_${timestamp}.${ext}`;
+          const mimeType = ext === 'mov' ? 'video/quicktime' : 'video/mp4';
+
+          // Always write to a persistent internal file:// dir first (needed for preview & upload)
+          const internalDir = `file:///storage/emulated/0/Android/data/${APP_PACKAGE}/files/XoW`;
+          await FileSystem.makeDirectoryAsync(internalDir, { intermediates: true }).catch(() => {});
+          const persistentPath = `${internalDir}/${fileName}`;
+          await FileSystem.copyAsync({ from: videoUri, to: persistentPath });
+          savedVideoPath = persistentPath;
+          console.log('✓ Video saved (persistent):', persistentPath);
+
+          // If user selected external storage, also copy there
+          const { dir: storageDir, label } = await getStorageDir();
+          if (storageDir !== internalDir) {
+            try {
+              await copyIntoStorage(videoUri, storageDir, fileName, mimeType);
+              console.log('✓ Video also copied to', label);
+              showToast(`Video saved to ${label}`);
+            } catch (extErr: any) {
+              console.log('External video copy failed (non-critical):', extErr?.message);
+              showToast('Video saved locally');
+            }
+          } else {
+            showToast('Video saved');
+          }
+
+          // Also save to gallery for user-facing access in Photos app
+          try {
+            const asset = await MediaLibrary.createAssetAsync(videoUri);
+            await MediaLibrary.createAlbumAsync('XoW Recordings', asset, false);
+            console.log('✓ Video also saved to gallery');
+          } catch (_) {}
         } catch (e: any) {
           console.log('Video save error:', e?.message || e);
-          // Fallback: save to app directory if cache/gallery fails
-          try {
-            const { dir: storageDir } = await getStorageDir();
-            const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
-            const fileName = `XoW_${timestamp}.${ext}`;
-            const dest = await copyIntoStorage(videoUri, storageDir, fileName, ext === 'mov' ? 'video/quicktime' : 'video/mp4');
-            savedVideoPath = dest;
-            console.log('✓ Video saved to app storage (fallback):', dest);
-            showToast('Video saved to app storage');
-          } catch (fallbackErr: any) {
-            console.log('Fallback save error:', fallbackErr?.message || fallbackErr);
-            savedVideoPath = videoUri;
-          }
+          savedVideoPath = videoUri; // last resort: original temp path
         }
       }
 

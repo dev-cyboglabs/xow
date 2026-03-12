@@ -153,17 +153,25 @@ export default function GalleryScreen() {
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
       if (localRec.videoPath) {
-        // Check if file exists (works for file:// URIs and cache paths)
         try {
-          const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
-          if (fileInfo.exists) {
+          // content:// SAF URIs cannot be checked with getInfoAsync — play directly
+          if (localRec.videoPath.startsWith('content://')) {
             setPreviewUri(localRec.videoPath);
             setPreviewTitle(fmtDate(localRec.createdAt));
             setVideoFps(localRec.fps || 30);
             setPreviewFpsTimeline(localRec.fpsTimeline || []);
             setPreviewVisible(true);
           } else {
-            Alert.alert('File Not Found', 'The video file could not be found. It may have been deleted from cache.');
+            const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
+            if (fileInfo.exists) {
+              setPreviewUri(localRec.videoPath);
+              setPreviewTitle(fmtDate(localRec.createdAt));
+              setVideoFps(localRec.fps || 30);
+              setPreviewFpsTimeline(localRec.fpsTimeline || []);
+              setPreviewVisible(true);
+            } else {
+              Alert.alert('File Not Found', 'The video file could not be found. It may have been moved or deleted.');
+            }
           }
         } catch (e) {
           console.log('Error checking video file:', e);
@@ -285,10 +293,20 @@ export default function GalleryScreen() {
 
       // ── Chunked video upload ──────────────────────────────────────────────
       if (recording.videoPath) {
-        const fileInfo = await FileSystem.getInfoAsync(recording.videoPath);
+        // content:// SAF URIs need to be copied to a temp file:// path first
+        let uploadVideoPath = recording.videoPath;
+        let tempVideoPath: string | null = null;
+        if (recording.videoPath.startsWith('content://')) {
+          const ext = recording.videoPath.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
+          tempVideoPath = `${FileSystem.cacheDirectory}xow_upload_tmp.${ext}`;
+          await FileSystem.copyAsync({ from: recording.videoPath, to: tempVideoPath });
+          uploadVideoPath = tempVideoPath;
+        }
+
+        const fileInfo = await FileSystem.getInfoAsync(uploadVideoPath);
         if (fileInfo.exists) {
           const fileSize = (fileInfo as any).size as number;
-          const isMovFile = recording.videoPath.toLowerCase().endsWith('.mov');
+          const isMovFile = uploadVideoPath.toLowerCase().endsWith('.mov');
           const mimeType = isMovFile ? 'video/quicktime' : 'video/mp4';
           const totalChunks = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
 
@@ -299,7 +317,7 @@ export default function GalleryScreen() {
             const length = Math.min(CHUNK_SIZE, fileSize - start);
 
             // Read chunk as base64
-            const chunkBase64 = await FileSystem.readAsStringAsync(recording.videoPath, {
+            const chunkBase64 = await FileSystem.readAsStringAsync(uploadVideoPath, {
               encoding: FileSystem.EncodingType.Base64,
               position: start,
               length,
@@ -346,15 +364,26 @@ export default function GalleryScreen() {
             console.log(`Chunk ${i + 1}/${totalChunks} uploaded (${Math.round(progress * 100)}%)`);
           }
         }
+        // Clean up temp video file if we created one
+        if (tempVideoPath) {
+          await FileSystem.deleteAsync(tempVideoPath, { idempotent: true }).catch(() => {});
+        }
       }
 
-      // ── Audio upload (small file — single request is fine) ────────────────
+      // ── Audio upload (small file — single request is fine) ────────────────────
       if (recording.audioPath) {
-        const fileInfo = await FileSystem.getInfoAsync(recording.audioPath);
+        let uploadAudioPath = recording.audioPath;
+        let tempAudioPath: string | null = null;
+        if (recording.audioPath.startsWith('content://')) {
+          tempAudioPath = `${FileSystem.cacheDirectory}xow_upload_audio.m4a`;
+          await FileSystem.copyAsync({ from: recording.audioPath, to: tempAudioPath });
+          uploadAudioPath = tempAudioPath;
+        }
+        const fileInfo = await FileSystem.getInfoAsync(uploadAudioPath);
         if (fileInfo.exists) {
           const uploadResult = await FileSystem.uploadAsync(
             `${API_URL}/api/recordings/${recordingId}/upload-audio`,
-            recording.audioPath,
+            uploadAudioPath,
             {
               fieldName: 'audio',
               httpMethod: 'POST',
@@ -365,6 +394,9 @@ export default function GalleryScreen() {
           if (uploadResult.status < 200 || uploadResult.status >= 300) {
             throw new Error(`Audio upload failed (HTTP ${uploadResult.status})`);
           }
+        }
+        if (tempAudioPath) {
+          await FileSystem.deleteAsync(tempAudioPath, { idempotent: true }).catch(() => {});
         }
       }
 
