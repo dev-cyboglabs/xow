@@ -173,18 +173,18 @@ export default function RecorderScreen() {
       }
       if (volumes.length === 0) return null;
 
-      // Prefer SAF-granted URI if one was stored while this volume was connected
-      const grantedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
-      if (grantedUri) return grantedUri;
-
-      // Try app-specific writable path on the removable volume
+      // Prefer native file:// path — supports direct FileSystem.copyAsync (no base64 OOM for large files)
       if (usbStorageModule?.getWritableExternalStoragePath) {
         const nativePath = await usbStorageModule.getWritableExternalStoragePath();
         if (nativePath) {
-          console.log('External storage confirmed via native API:', nativePath);
+          console.log('External storage: native file:// path', nativePath);
           return nativePath;
         }
       }
+
+      // Fall back to SAF content:// URI only if native path unavailable
+      const grantedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
+      if (grantedUri) return grantedUri;
 
       return null;
     } catch (e) {
@@ -257,12 +257,13 @@ export default function RecorderScreen() {
 
   const copyIntoStorage = async (sourceUri: string, targetDir: string, fileName: string, mimeType: string): Promise<string> => {
     if (targetDir.startsWith('content://')) {
+      // SAF path — read whole file as base64 and write (only suitable for small files like audio)
       const targetFileUri = await FileSystem.StorageAccessFramework.createFileAsync(targetDir, fileName, mimeType);
       const base64 = await FileSystem.readAsStringAsync(sourceUri, { encoding: FileSystem.EncodingType.Base64 });
       await FileSystem.writeAsStringAsync(targetFileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
       return targetFileUri;
     }
-
+    // Native file:// path — zero-copy, works for any file size
     const destination = `${targetDir}/${fileName}`;
     await FileSystem.copyAsync({ from: sourceUri, to: destination });
     return destination;
@@ -451,11 +452,12 @@ export default function RecorderScreen() {
           console.log('✓ Video saved (persistent):', persistentPath);
 
           // If user selected external storage, also copy there
+          // Use persistentPath as source (guaranteed to exist) not raw videoUri
           const { dir: storageDir, label } = await getStorageDir();
           if (storageDir !== internalDir) {
             try {
-              await copyIntoStorage(videoUri, storageDir, fileName, mimeType);
-              console.log('✓ Video also copied to', label);
+              await copyIntoStorage(persistentPath, storageDir, fileName, mimeType);
+              console.log('✓ Video copied to external:', label);
               showToast(`Video saved to ${label}`);
             } catch (extErr: any) {
               console.log('External video copy failed (non-critical):', extErr?.message);
