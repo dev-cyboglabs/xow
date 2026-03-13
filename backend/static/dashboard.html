@@ -1313,6 +1313,58 @@
             </div>`;
         }
 
+        function playClip(recId, time, label) {
+            const rec = data.recordings.find(r => r.id === recId);
+            if (!rec) return;
+            const modal = document.getElementById('clip-modal');
+            const videoEl = document.getElementById('clip-video');
+            const audioEl = document.getElementById('clip-audio');
+            const audioWrap = document.getElementById('clip-audio-wrap');
+            document.getElementById('clip-modal-label').textContent = label || rec.booth_name || 'Clip';
+            document.getElementById('clip-modal-time').textContent = '@ ' + fmtDur(time);
+            if (rec.has_video) {
+                videoEl.classList.remove('hidden');
+                audioWrap.classList.add('hidden');
+                videoEl.src = `${API}/recordings/${recId}/video`;
+                videoEl.onloadedmetadata = () => { if (time > 0) videoEl.currentTime = time; };
+                videoEl.oncanplay = () => { videoEl.play().catch(() => {}); };
+            } else if (rec.has_audio) {
+                videoEl.classList.add('hidden');
+                audioWrap.classList.remove('hidden');
+                audioEl.src = `${API}/recordings/${recId}/audio`;
+                audioEl.onloadedmetadata = () => { if (time > 0) audioEl.currentTime = time; };
+                audioEl.oncanplay = () => { audioEl.play().catch(() => {}); };
+            } else {
+                alert('No media available for this recording'); return;
+            }
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeClipModal() {
+            const videoEl = document.getElementById('clip-video');
+            const audioEl = document.getElementById('clip-audio');
+            videoEl.pause(); videoEl.src = '';
+            audioEl.pause(); audioEl.src = '';
+            const modal = document.getElementById('clip-modal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function filterClips(recId, query) {
+            const q = (query || '').toLowerCase().trim();
+            const container = document.getElementById('clips-' + recId);
+            if (!container) return;
+            let visible = 0;
+            container.querySelectorAll('.clip-row').forEach(row => {
+                const match = !q || (row.dataset.label || '').includes(q) || (row.dataset.content || '').includes(q);
+                row.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            const noRes = document.getElementById('clips-nores-' + recId);
+            if (noRes) noRes.style.display = (q && visible === 0) ? '' : 'none';
+        }
+
         function seekTo(time) {
             const videoEl = document.getElementById('video');
             const audioEl = document.getElementById('audio');
@@ -1699,6 +1751,42 @@
                         </div>`).join('')}
                     </div>
                 </div>` : ''}
+
+                <!-- Conversation Clips — play any segment directly from its start time -->
+                ${(r.has_video || r.has_audio) && convLines.length > 0 ? (() => {
+                    const safeBooth = (r.booth_name || '').replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+                    return `<div class="px-6 py-4 border-b border-gray-100">
+                    <div class="flex items-center justify-between gap-3 mb-3">
+                        ${secHd('<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>', '#7c3aed', 'Conversation Clips')}
+                        <div class="relative flex-shrink-0 w-48">
+                            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z"/></svg>
+                            <input type="text" placeholder="Search name or text…" oninput="filterClips('${r.id}',this.value)" class="w-full pl-7 pr-2 py-1 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-300 text-gray-700 placeholder-gray-400">
+                        </div>
+                    </div>
+                    <div id="clips-${r.id}" class="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+                        ${convLines.map((line, ci) => `
+                        <div class="clip-row flex items-center gap-3 px-3 py-2.5 rounded-xl border border-transparent hover:border-violet-200 hover:bg-violet-50 transition-all group" data-label="${line.label.toLowerCase().replace(/"/g,'&quot;')}" data-content="${line.content.toLowerCase().slice(0,200).replace(/"/g,'&quot;')}">
+                            <div class="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center ${line.isHost ? 'bg-orange-100' : 'bg-violet-100'}">
+                                <svg class="w-4 h-4 ${line.isHost ? 'text-orange-500' : 'text-violet-500'}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-0.5">
+                                    <span class="text-xs font-bold ${line.isHost ? 'text-orange-600' : 'text-gray-700'}">${hlText(line.label)}</span>
+                                    ${line.isHost ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">Host</span>' : ''}
+                                    <span class="text-xs font-mono font-bold text-violet-500">${fmtDur(line.time)}</span>
+                                </div>
+                                ${line.content ? `<p class="text-xs text-gray-400 truncate">${line.content.slice(0,90)}${line.content.length > 90 ? '…' : ''}</p>` : ''}
+                            </div>
+                            <button data-rec="${r.id}" data-time="${line.time}" data-label="${line.label.replace(/"/g,'&quot;')}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.label)"
+                                class="flex-shrink-0 w-8 h-8 flex items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 hover:from-violet-600 hover:to-purple-700 text-white shadow-sm shadow-violet-200 transition-all opacity-0 group-hover:opacity-100 hover:scale-110"
+                                title="Play from ${fmtDur(line.time)}">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                            </button>
+                        </div>`).join('')}
+                        <p id="clips-nores-${r.id}" class="text-xs text-gray-400 text-center py-3" style="display:none">No matching clips</p>
+                    </div>
+                </div>`;
+                })() : ''}
 
                 <!-- Questions Asked — grouped by person -->
                 ${qBySpk.length > 0 ? `
@@ -2138,7 +2226,9 @@
         // Keyboard shortcut to close modals
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                if (!document.getElementById('contact-modal').classList.contains('hidden')) {
+                if (!document.getElementById('clip-modal').classList.contains('hidden')) {
+                    closeClipModal();
+                } else if (!document.getElementById('contact-modal').classList.contains('hidden')) {
                     closeContactModal();
                 } else if (!document.getElementById('disconnect-modal').classList.contains('hidden')) {
                     closeDisconnectModal();
@@ -2148,6 +2238,30 @@
             }
         });
     </script>
+
+    <!-- Clip Popup Modal -->
+    <div id="clip-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50" onclick="closeClipModal()">
+        <div class="bg-gray-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl mx-4" onclick="event.stopPropagation()">
+            <div class="flex items-center justify-between px-4 py-3 bg-gray-800">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>
+                    <span id="clip-modal-label" class="text-sm text-white font-semibold truncate max-w-[200px]"></span>
+                    <span id="clip-modal-time" class="text-xs font-mono text-violet-400 font-bold"></span>
+                </div>
+                <button onclick="closeClipModal()" class="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-700 text-gray-400 hover:text-white transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <video id="clip-video" class="w-full max-h-80 bg-black" controls></video>
+            <div id="clip-audio-wrap" class="hidden px-6 py-8 bg-gray-800 flex items-center justify-center">
+                <audio id="clip-audio" class="w-full" controls></audio>
+            </div>
+            <div class="px-4 py-2.5 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
+                <p class="text-xs text-gray-500">Playing from marked timestamp &bull; Close to stop</p>
+                <button onclick="closeClipModal()" class="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg transition-colors">Close</button>
+            </div>
+        </div>
+    </div>
 
     <!-- Contact Detail Modal -->
     <div id="contact-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm hidden items-center justify-center z-50" onclick="closeContactModal()">
