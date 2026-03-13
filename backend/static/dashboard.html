@@ -200,9 +200,15 @@
                         </div>
                     </div>
                 </div>
-                <div id="video-sidebar" class="w-72 border-l border-gray-100 p-4 max-h-[60vh] overflow-y-auto hidden bg-gray-50">
-                    <h3 class="text-sm font-semibold mb-3 text-gray-700">Jump to Segment</h3>
-                    <div id="video-conversations"></div>
+                <div id="video-sidebar" class="w-72 border-l border-gray-100 flex flex-col max-h-[60vh] hidden bg-gray-50">
+                    <div class="p-4 pb-3 border-b border-gray-100 bg-gray-50">
+                        <h3 class="text-sm font-semibold mb-2 text-gray-700">Jump to Segment</h3>
+                        <div class="relative">
+                            <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M17 11A6 6 0 111 11a6 6 0 0116 0z"/></svg>
+                            <input id="segment-search" type="text" placeholder="Search speakers or text…" oninput="filterSegments(this.value)" class="w-full pl-8 pr-3 py-1.5 text-xs bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-orange-200 focus:border-orange-300 text-gray-700 placeholder-gray-400">
+                        </div>
+                    </div>
+                    <div id="video-conversations" class="flex-1 overflow-y-auto p-4 pt-2"></div>
                 </div>
             </div>
             <div id="modal-transcript" class="border-t border-gray-100 p-4 max-h-48 overflow-y-auto hidden bg-gray-50">
@@ -1101,7 +1107,7 @@
                     const hostBadge = seg.isHost
                         ? `<span class="ml-1.5 text-[10px] px-1.5 py-0.5 rounded bg-orange-100 text-orange-600 font-semibold">Host</span>`
                         : '';
-                    html += `<div id="seg-${i}" class="px-3 py-2.5 mb-1 rounded-xl cursor-pointer border border-transparent hover:border-orange-200 hover:bg-orange-50 transition-all" onclick="seekTo(${seg.time})" data-testid="sidebar-speaker">
+                    html += `<div id="seg-${i}" class="px-3 py-2.5 mb-1 rounded-xl cursor-pointer border border-transparent hover:border-orange-200 hover:bg-orange-50 transition-all" onclick="seekTo(${seg.time})" data-testid="sidebar-speaker" data-label="${seg.label.toLowerCase().replace(/"/g,'&quot;')}" data-content="${seg.content.toLowerCase().slice(0,200).replace(/"/g,'&quot;')}">
                         <div class="flex items-center justify-between gap-2 mb-1">
                             <div class="flex items-center min-w-0">
                                 <span class="text-sm font-semibold text-gray-900 truncate">${seg.label}</span>${hostBadge}
@@ -1152,6 +1158,30 @@
             
             document.getElementById('modal').classList.remove('hidden');
             document.getElementById('modal').classList.add('flex');
+        }
+
+        function filterSegments(query) {
+            const q = (query || '').toLowerCase().trim();
+            const items = document.querySelectorAll('#video-conversations [id^="seg-"]');
+            let visibleCount = 0;
+            items.forEach(item => {
+                const label = (item.dataset.label || '');
+                const content = (item.dataset.content || '');
+                const match = !q || label.includes(q) || content.includes(q);
+                item.style.display = match ? '' : 'none';
+                if (match) visibleCount++;
+            });
+            // Show/hide "no results" message
+            let noRes = document.getElementById('seg-no-results');
+            if (!noRes) {
+                noRes = document.createElement('p');
+                noRes.id = 'seg-no-results';
+                noRes.className = 'text-xs text-gray-400 text-center py-4';
+                noRes.textContent = 'No matching segments';
+                const container = document.getElementById('video-conversations');
+                if (container) container.appendChild(noRes);
+            }
+            noRes.style.display = (q && visibleCount === 0) ? '' : 'none';
         }
 
         function seekTo(time) {
@@ -1214,6 +1244,8 @@
                 timeUpdateHandler = null;
             }
             document.getElementById('video-sidebar').classList.add('hidden');
+            const segSearch = document.getElementById('segment-search');
+            if (segSearch) { segSearch.value = ''; filterSegments(''); }
             document.getElementById('modal').classList.add('hidden');
             document.getElementById('modal').classList.remove('flex');
             currentRecordingId = null;
