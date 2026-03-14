@@ -63,10 +63,6 @@
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
                     <span class="text-sm">Home</span>
                 </a>
-                <button onclick="setView('overview')" id="nav-overview" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-gray-600" data-testid="nav-overview">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
-                    <span class="text-sm">Overview</span>
-                </button>
                 <button onclick="setView('sessions')" id="nav-sessions" class="nav-btn w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left text-gray-600" data-testid="nav-sessions">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                     <span class="text-sm">Sessions</span>
@@ -300,7 +296,7 @@
             if (!session && !legacyUser) {
                 showPairOverlay();
             } else {
-                setView('overview');
+                setView('sessions');
                 refresh();
             }
         });
@@ -372,7 +368,7 @@
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             const navEl = document.getElementById(`nav-${v}`);
             if (navEl) navEl.classList.add('active');
-            const titles = { overview:'Overview', sessions:'Sessions', visitors:'Visitors & Followups', devices:'Devices', analytics:'Analytics', wishlist:'Wishlist' };
+            const titles = { sessions:'Sessions', visitors:'Visitors & Followups', devices:'Devices', analytics:'Analytics', wishlist:'Wishlist' };
             document.getElementById('page-title').textContent = titles[v] || (v.charAt(0).toUpperCase() + v.slice(1));
             if (v === 'devices') {
                 loadDevices().then(() => render());
@@ -387,8 +383,7 @@
 
         function render() {
             const c = document.getElementById('content');
-            if (view === 'overview') c.innerHTML = renderOverview();
-            else if (view === 'sessions') c.innerHTML = renderSessions();
+            if (view === 'sessions') c.innerHTML = renderSessions();
             else if (view === 'devices') c.innerHTML = renderDevices();
             else if (view === 'analytics') c.innerHTML = renderAnalytics();
             else if (view === 'wishlist') c.innerHTML = renderWishlist();
