@@ -479,9 +479,78 @@
 
         function renderSessionCard(r) {
             const speakers = r.speakers || [];
-            const hasSpeakers = speakers.length > 0;
+            const conversations = r.conversations || [];
             const headCount = r.head_count || 0;
-            const visitorDisplay = headCount > 0 ? `${headCount} people detected` : (r.visitor_count ? `${r.visitor_count} visitors` : '');
+            
+            // Build context-based conversation groups from GPT's conversations array
+            const conversationGroups = [];
+            
+            if (conversations.length > 0) {
+                // Use GPT-generated context-based conversations
+                conversations.forEach((conv, convIdx) => {
+                    const convStartTime = conv.start_time || 0;
+                    const convEndTime = conv.end_time || (convStartTime + 120); // Default 2min if not specified
+                    
+                    // Find all speaker segments that fall within this conversation's time range
+                    const contextSegments = [];
+                    const contextSpeakers = [];
+                    
+                    speakers.forEach((speaker, spkIdx) => {
+                        const segments = speaker.dialogue_segments || [];
+                        const relevantSegs = segments.filter(seg => {
+                            const segStart = seg.start_time || 0;
+                            const segEnd = seg.end_time || segStart;
+                            // Segment overlaps with conversation time range
+                            return (segStart >= convStartTime && segStart <= convEndTime) ||
+                                   (segEnd >= convStartTime && segEnd <= convEndTime) ||
+                                   (segStart <= convStartTime && segEnd >= convEndTime);
+                        });
+                        
+                        if (relevantSegs.length > 0) {
+                            contextSegments.push(...relevantSegs);
+                            if (!contextSpeakers.find(s => s.speaker_id === speaker.speaker_id)) {
+                                contextSpeakers.push(speaker);
+                            }
+                        }
+                    });
+                    
+                    // Sort segments by time
+                    contextSegments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+                    
+                    if (contextSegments.length > 0) {
+                        conversationGroups.push({
+                            contextTitle: conv.title || `Context ${convIdx + 1}`,
+                            contextSummary: conv.summary || '',
+                            speakers: contextSpeakers,
+                            segments: contextSegments,
+                            startTime: convStartTime,
+                            endTime: contextSegments[contextSegments.length - 1].end_time || convEndTime,
+                            isContextBased: true
+                        });
+                    }
+                });
+            } else {
+                // Fallback: group by speaker if no conversations array
+                speakers.forEach((speaker, spkIdx) => {
+                    const segments = speaker.dialogue_segments || [];
+                    if (segments.length > 0) {
+                        conversationGroups.push({
+                            contextTitle: speaker.label || `Speaker ${spkIdx + 1}`,
+                            contextSummary: `Topics: ${(speaker.topics_discussed || []).join(', ')}`,
+                            speakers: [speaker],
+                            segments: segments,
+                            startTime: segments[0].start_time || 0,
+                            endTime: segments[segments.length - 1].end_time || 0,
+                            isContextBased: false
+                        });
+                    }
+                });
+            }
+            
+            // Sort groups by start time
+            conversationGroups.sort((a, b) => a.startTime - b.startTime);
+            
+            const safeName = (r.booth_name || '').replace(/'/g, "\\'");
             
             return `
             <div class="card rounded-2xl overflow-hidden" id="recording-${r.id}" data-testid="session-card">
@@ -493,97 +562,140 @@
                         </div>
                         <div>
                             <div class="font-semibold text-lg text-gray-900">${r.booth_name}</div>
-                            <div class="text-sm text-gray-500">${fmtDate(r.start_time)} &bull; Duration: ${fmtDur(r.duration)}${visitorDisplay ? ` &bull; ${visitorDisplay}` : ''}</div>
+                            <div class="text-sm text-gray-500">${fmtDate(r.start_time)} &bull; ${fmtDur(r.duration)}${headCount > 0 ? ` &bull; ${headCount} visitors` : ''}</div>
                         </div>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="text-xs px-3 py-1.5 rounded-full font-medium ${statusClass(r.status)}">${r.status}</span>
-                        ${r.status === 'error' ? `<button onclick="reprocessRecording('${r.id}')" class="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-xl text-white text-sm font-medium transition-colors" data-testid="retry-btn">
+                        ${r.status === 'error' ? `<button onclick="reprocessRecording('${r.id}')" class="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 rounded-xl text-white text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                             Retry
                         </button>` : ''}
-                        ${(r.has_video || r.has_audio) ? `<button onclick="playMedia('${r.id}','${r.booth_name}')" class="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 rounded-xl text-white text-sm font-medium transition-all shadow-lg shadow-orange-200" data-testid="play-video-btn">
-                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-                            ${r.has_video ? 'Play Video' : 'Play Audio'}
-                        </button>` : ''}
-                        <button onclick="deleteRecording('${r.id}','${r.booth_name}')" class="flex items-center gap-2 px-3 py-2.5 bg-red-50 hover:bg-red-100 rounded-xl text-red-600 text-sm font-medium transition-colors" data-testid="delete-btn">
+                        <button onclick="deleteRecording('${r.id}','${safeName}')" class="flex items-center gap-2 px-3 py-2.5 bg-red-50 hover:bg-red-100 rounded-xl text-red-600 text-sm font-medium transition-colors">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
                 </div>
                 
-                <!-- Overall AI Summary - Only show summary, not speaker details -->
-                ${r.overall_summary || r.summary ? `
-                <div class="p-5 bg-gradient-to-r from-orange-50 to-red-50">
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center">
-                            <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                        </div>
-                        <span class="text-sm font-semibold text-orange-700">AI Insights</span>
-                        ${r.host_identified ? `<span class="text-xs px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium ml-2">Host Identified</span>` : ''}
-                        ${headCount > 0 ? `<span class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium ml-2">${headCount} People Detected</span>` : ''}
-                    </div>
-                    <p class="text-gray-700 leading-relaxed">${r.overall_summary || r.summary}</p>
-                    
-                    <!-- Key Topics -->
-                    ${r.top_topics && r.top_topics.length > 0 ? `
-                    <div class="flex flex-wrap gap-2 mt-4">
-                        ${r.top_topics.slice(0, 6).map(t => `<span class="text-xs px-3 py-1.5 bg-white rounded-full text-gray-600 font-medium border border-gray-200">${t}</span>`).join('')}
-                    </div>` : ''}
-                    
-                    <!-- Key Insights -->
-                    ${r.key_insights && r.key_insights.length > 0 ? `
-                    <div class="mt-4 pt-4 border-t border-orange-100">
-                        <div class="text-xs text-orange-600 font-semibold mb-2">Key Insights</div>
-                        <ul class="text-sm text-gray-600 space-y-1">
-                            ${r.key_insights.slice(0, 3).map(i => `<li class="flex items-start gap-2"><span class="text-orange-500 mt-1">&#8226;</span>${i}</li>`).join('')}
-                        </ul>
-                    </div>` : ''}
-                </div>` : r.status === 'processing' || r.status === 'uploaded' ? `
+                ${r.status === 'processing' || r.status === 'uploaded' ? `
                 <div class="p-5 bg-blue-50">
                     <div class="flex items-center gap-3 text-blue-700">
-                        <div class="loading">
-                            <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                        </div>
+                        <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
                         <span class="text-sm font-medium">Processing audio with AI speaker diarization...</span>
                     </div>
-                </div>` : (!r.transcript && r.status !== 'error') ? `
+                </div>` : conversationGroups.length === 0 ? `
                 <div class="p-5 bg-amber-50">
                     <div class="flex items-center justify-between">
                         <div class="text-sm text-gray-600">
-                            <span class="text-amber-600 font-medium">Note:</span> Audio transcription requires OpenAI API key. You can add a manual transcript for AI analysis.
-                        </div>
-                        <button onclick="showTranscriptInput('${r.id}')" class="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-sm text-white font-medium transition-colors">
-                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
-                            Add Transcript
-                        </button>
-                    </div>
-                    <div id="transcript-input-${r.id}" class="hidden mt-4">
-                        <textarea id="transcript-text-${r.id}" class="w-full h-32 bg-white border border-gray-200 rounded-xl p-4 text-sm text-gray-900 resize-none focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none" placeholder="Paste or type the transcript here..."></textarea>
-                        <div class="flex justify-end gap-2 mt-3">
-                            <button onclick="hideTranscriptInput('${r.id}')" class="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 font-medium">Cancel</button>
-                            <button onclick="submitManualTranscript('${r.id}')" class="px-5 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-sm text-white font-medium transition-colors">Analyze with AI</button>
+                            <span class="text-amber-600 font-medium">Note:</span> No conversations detected yet. Upload recording for AI analysis.
                         </div>
                     </div>
-                </div>` : ''}
-                
-                <!-- Barcode Scans -->
-                ${r.barcode_scans && r.barcode_scans.length > 0 ? `
-                <div class="p-5 border-t border-gray-100">
-                    <div class="text-xs text-gray-500 mb-3 flex items-center gap-2 font-medium">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
-                        Visitor Scans (${r.barcode_scans.length})
+                </div>` : `
+                <!-- Conversation Badges (Context-Based) -->
+                <div class="p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="text-xs text-gray-500 font-semibold flex items-center gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"/></svg>
+                            ${conversationGroups[0]?.isContextBased ? 'CONVERSATION CONTEXTS' : 'VISITOR CONVERSATIONS'} (<span id="context-count-${r.id}">${conversationGroups.length}</span> ${conversationGroups[0]?.isContextBased ? 'contexts' : 'segments'})
+                        </div>
+                        <div class="relative">
+                            <input type="text" id="context-search-${r.id}" placeholder="Search contexts..." oninput="filterSessionContexts('${r.id}')" class="w-64 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
+                            <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </div>
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                        ${r.barcode_scans.map(s => `
-                            <div class="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl cursor-pointer hover:bg-emerald-100 transition-colors ${r.has_audio ? '' : 'pointer-events-none opacity-60'}" onclick="playMedia('${r.id}','${r.booth_name}',${s.video_timestamp||0})" data-testid="barcode-scan">
-                                <svg class="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                <span class="text-sm font-medium text-gray-700">${s.barcode_data}</span>
-                                ${s.video_timestamp ? `<span class="text-xs text-gray-500">@ ${fmtDur(s.video_timestamp)}</span>` : ''}
-                            </div>
-                        `).join('')}
+                    <div class="space-y-3" id="context-badges-${r.id}">
+                        ${conversationGroups.map((group, gIdx) => {
+                            const fullText = group.segments.map(s => s.content || '').join(' ');
+                            const preview = fullText.slice(0, 150) + (fullText.length > 150 ? '…' : '');
+                            const groupKey = `${r.id}-grp-${gIdx}`;
+                            
+                            // Get all unique topics from all speakers in this context
+                            const allTopics = [...new Set(group.speakers.flatMap(s => s.topics_discussed || []))];
+                            
+                            // Get primary sentiment (most common or first non-neutral)
+                            const sentiments = group.speakers.map(s => s.sentiment || 'neutral').filter(s => s !== 'neutral');
+                            const primarySentiment = sentiments[0] || 'neutral';
+                            
+                            // Build speaker labels
+                            const speakerLabels = group.speakers.map(s => {
+                                const isHost = s.is_host || false;
+                                return isHost ? 'Host' : (s.label || 'Visitor');
+                            }).join(' + ');
+                            
+                            const hasHost = group.speakers.some(s => s.is_host);
+                            
+                            return `
+                            <div class="context-badge border border-gray-200 rounded-xl overflow-hidden hover:border-orange-300 transition-colors" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}">
+                                <!-- Badge Header -->
+                                <div class="px-4 py-3 bg-gradient-to-r from-orange-50 to-red-50 flex items-center justify-between">
+                                    <div class="flex items-center gap-3">
+                                        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-sm">
+                                            <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                                        </div>
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <span class="font-semibold text-gray-900 text-sm">${group.contextTitle}</span>
+                                                ${group.isContextBased ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 font-bold">CONTEXT</span>' : ''}
+                                                ${primarySentiment !== 'neutral' ? `<span class="text-[10px] px-1.5 py-0.5 rounded-full ${sentimentClass(primarySentiment)}">${primarySentiment}</span>` : ''}
+                                            </div>
+                                            <div class="text-xs text-gray-500">${fmtDur(group.startTime)} - ${fmtDur(group.endTime)} &bull; ${group.speakers.length} speaker${group.speakers.length > 1 ? 's' : ''} &bull; ${group.segments.length} lines</div>
+                                            ${group.contextSummary ? `<div class="text-xs text-orange-600 mt-1 italic">${group.contextSummary}</div>` : ''}
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="addToWishlist('${r.id}', '${groupKey}', ${gIdx})" class="flex items-center justify-center w-8 h-8 rounded-lg bg-white hover:bg-pink-50 border border-gray-200 hover:border-pink-300 text-gray-400 hover:text-pink-500 transition-all" title="Add to Wishlist" id="wishlist-btn-${groupKey}">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                                        </button>
+                                        ${(r.has_video || r.has_audio) ? `<button data-rec="${r.id}" data-time="${group.startTime}" data-name="${safeName}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.name)" class="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-sm transition-all hover:scale-105" title="Play from ${fmtDur(group.startTime)}">
+                                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                        </button>` : ''}
+                                        <button onclick="toggleConvExpand('${groupKey}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 transition-colors" title="Expand">
+                                            <svg class="w-4 h-4 conv-expand-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Preview Text -->
+                                <div class="px-4 py-3 bg-white border-t border-gray-100">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs text-gray-500">Speakers:</span>
+                                        <span class="text-xs font-medium text-gray-700">${speakerLabels}</span>
+                                    </div>
+                                    <p class="text-sm text-gray-600 leading-relaxed">${preview}</p>
+                                    ${allTopics.length > 0 ? `<div class="flex flex-wrap gap-1.5 mt-2">
+                                        ${allTopics.slice(0, 4).map(t => `<span class="text-xs px-2 py-0.5 bg-orange-50 text-orange-700 rounded-full">${t}</span>`).join('')}
+                                    </div>` : ''}
+                                </div>
+                                
+                                <!-- Expanded Content (hidden by default) -->
+                                <div id="conv-${groupKey}" class="hidden border-t border-gray-100">
+                                    <div class="px-4 py-3 bg-gray-50">
+                                        <div class="text-xs font-semibold text-gray-700 mb-2">Full Conversation:</div>
+                                        <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" id="conv-text-${groupKey}">${fullText}</div>
+                                    </div>
+                                    <div class="px-4 py-3 bg-white flex items-center gap-2 border-t border-gray-100">
+                                        <button onclick="summarizeConversation('${groupKey}', '${r.id}')" class="flex items-center gap-1.5 px-3 py-2 bg-violet-50 hover:bg-violet-100 rounded-lg text-violet-700 text-xs font-medium transition-colors">
+                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                            Summary
+                                        </button>
+                                        <select onchange="translateConversation('${groupKey}', this.value)" class="px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 text-xs font-medium border-none outline-none cursor-pointer transition-colors">
+                                            <option value="">Translate</option>
+                                            <option value="en">English</option>
+                                            <option value="ta">Tamil</option>
+                                            <option value="es">Spanish</option>
+                                            <option value="fr">French</option>
+                                            <option value="de">German</option>
+                                            <option value="zh">Chinese</option>
+                                            <option value="ja">Japanese</option>
+                                            <option value="hi">Hindi</option>
+                                            <option value="ar">Arabic</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>`;
+                        }).join('')}
                     </div>
-                </div>` : ''}
+                </div>`}
             </div>`;
         }
 
@@ -1335,14 +1447,14 @@
                 return `<div class="fade">
                     <div class="mb-6">
                         <h2 class="text-xl font-semibold text-gray-900">Wishlist</h2>
-                        <p class="text-sm text-gray-500 mt-1">Save interesting conversation segments using the heart icon in the timeline</p>
+                        <p class="text-sm text-gray-500 mt-1">Save interesting conversation contexts using the heart icon in Sessions</p>
                     </div>
                     <div class="card rounded-2xl p-16 text-center">
                         <div class="w-20 h-20 rounded-2xl bg-rose-100 flex items-center justify-center mx-auto mb-6">
                             <svg class="w-10 h-10 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                         </div>
-                        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Saved Segments Yet</h3>
-                        <p class="text-gray-500 text-sm">Open a session, play a recording, and click the <svg class="w-4 h-4 text-gray-400 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> next to any segment to save it here.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Saved Contexts Yet</h3>
+                        <p class="text-gray-500 text-sm">Go to Sessions tab and click the <svg class="w-4 h-4 text-gray-400 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> on any conversation context to save it here.</p>
                     </div>
                 </div>`;
             }
@@ -1350,7 +1462,7 @@
                 <div class="flex items-center justify-between mb-6">
                     <div>
                         <h2 class="text-xl font-semibold text-gray-900">Wishlist</h2>
-                        <p class="text-sm text-gray-500 mt-1">${wishlist.length} saved segment${wishlist.length !== 1 ? 's' : ''}</p>
+                        <p class="text-sm text-gray-500 mt-1">${wishlist.length} saved context${wishlist.length !== 1 ? 's' : ''}</p>
                     </div>
                     <button onclick="clearWishlist()" class="text-xs px-3 py-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium border border-red-200">
                         Clear all
@@ -1361,27 +1473,70 @@
                         const rec = data.recordings.find(r => r.id === w.recordingId);
                         const canPlay = rec && (rec.has_video || rec.has_audio);
                         const safeName = (w.boothName || 'Recording').replace(/'/g, "\\'");
-                        return `<div class="card rounded-2xl overflow-hidden visitor-badge">
-                            <div class="flex items-start gap-4 p-5">
-                                <div class="w-11 h-11 rounded-xl flex-shrink-0 flex items-center justify-center shadow-md ${w.isHost ? 'bg-gradient-to-br from-orange-500 to-red-600 shadow-orange-100' : 'bg-gradient-to-br from-rose-500 to-pink-600 shadow-rose-100'}">
-                                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2 mb-0.5">
-                                        <span class="font-semibold text-gray-900">${w.label}</span>
-                                        ${w.isHost ? '<span class="text-xs px-2 py-0.5 rounded-full bg-orange-100 text-orange-600 font-medium">Host</span>' : ''}
-                                        <span class="text-xs font-mono font-bold text-rose-500">${fmtDur(w.time)}</span>
+                        const fullText = w.data?.text || w.content || '';
+                        const preview = fullText.substring(0, 150) + (fullText.length > 150 ? '…' : '');
+                        const groupKey = 'wishlist-' + w.id;
+                        
+                        return `<div class="border border-gray-200 rounded-xl overflow-hidden hover:border-orange-300 transition-colors">
+                            <!-- Badge Header -->
+                            <div class="px-4 py-3 bg-gradient-to-r from-orange-50 to-red-50 flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-sm">
+                                        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
                                     </div>
-                                    <div class="text-xs text-gray-400 mb-2">${w.boothName || 'Recording'}${w.recordingDate ? ' &bull; ' + fmtDate(w.recordingDate) : ''}</div>
-                                    ${w.content ? `<p class="text-sm text-gray-700 leading-relaxed line-clamp-3">${w.content}</p>` : ''}
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <span class="font-semibold text-gray-900 text-sm">${w.contextTitle || 'Conversation'}</span>
+                                            <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-pink-100 text-pink-700 font-bold">SAVED</span>
+                                        </div>
+                                        <div class="text-xs text-gray-500">${w.boothName || 'Recording'}${w.recordingDate ? ' &bull; ' + fmtDate(w.recordingDate) : ''}</div>
+                                    </div>
                                 </div>
-                                <div class="flex items-center gap-2 flex-shrink-0">
-                                    ${canPlay ? `<button onclick="playMedia('${w.recordingId}','${safeName}',${w.time})" class="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 rounded-xl text-white text-sm font-medium transition-all shadow-md shadow-orange-100">
-                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>Play
-                                    </button>` : ''}
-                                    <button onclick="removeFromWishlist('${w.id}')" class="w-8 h-8 flex items-center justify-center rounded-lg text-rose-400 hover:text-rose-600 hover:bg-rose-50 transition-all" title="Remove">
+                                <div class="flex items-center gap-2">
+                                    <button onclick="removeFromWishlist('${w.id}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-pink-100 hover:bg-pink-200 border border-pink-300 text-pink-600 transition-all" title="Remove from Wishlist">
                                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                                     </button>
+                                    ${canPlay ? `<button onclick="playClip('${w.recordingId}', 0, '${safeName}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white shadow-sm transition-all hover:scale-105" title="Play recording">
+                                        <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                    </button>` : ''}
+                                    <button onclick="toggleConvExpand('${groupKey}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 transition-colors" title="Expand">
+                                        <svg class="w-4 h-4 conv-expand-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <!-- Preview Text -->
+                            <div class="px-4 py-3 bg-white border-t border-gray-100">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="text-xs text-gray-500">Speakers:</span>
+                                    <span class="text-xs font-medium text-gray-700">${w.speakers || 'Unknown'}</span>
+                                </div>
+                                <p class="text-sm text-gray-600 leading-relaxed">${preview}</p>
+                            </div>
+                            
+                            <!-- Expanded Content (hidden by default) -->
+                            <div id="conv-${groupKey}" class="hidden border-t border-gray-100">
+                                <div class="px-4 py-3 bg-gray-50">
+                                    <div class="text-xs font-semibold text-gray-700 mb-2">Full Conversation:</div>
+                                    <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" id="conv-text-${groupKey}">${fullText}</div>
+                                </div>
+                                <div class="px-4 py-3 bg-white flex items-center gap-2 border-t border-gray-100">
+                                    <button onclick="summarizeConversation('${groupKey}', '${w.recordingId}')" class="flex items-center gap-1.5 px-3 py-2 bg-violet-50 hover:bg-violet-100 rounded-lg text-violet-700 text-xs font-medium transition-colors">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                                        Summary
+                                    </button>
+                                    <select onchange="translateConversation('${groupKey}', this.value)" class="px-3 py-2 bg-blue-50 hover:bg-blue-100 rounded-lg text-blue-700 text-xs font-medium border-none outline-none cursor-pointer transition-colors">
+                                        <option value="">Translate</option>
+                                        <option value="en">English</option>
+                                        <option value="ta">Tamil</option>
+                                        <option value="es">Spanish</option>
+                                        <option value="fr">French</option>
+                                        <option value="de">German</option>
+                                        <option value="zh">Chinese</option>
+                                        <option value="ja">Japanese</option>
+                                        <option value="hi">Hindi</option>
+                                        <option value="ar">Arabic</option>
+                                    </select>
                                 </div>
                             </div>
                         </div>`;
@@ -1426,6 +1581,229 @@
             const modal = document.getElementById('clip-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+
+        function addToWishlist(recordingId, groupKey, groupIndex) {
+            const rec = data.recordings.find(r => r.id === recordingId);
+            if (!rec) return;
+            
+            const badge = document.querySelector(`[data-group="${groupKey}"]`);
+            if (!badge) return;
+            
+            const title = badge.dataset.title || 'Conversation';
+            const text = badge.dataset.text || '';
+            const speakers = badge.dataset.speakers || '';
+            
+            // Extract group data from the badge
+            const titleEl = badge.querySelector('.font-semibold.text-gray-900');
+            const timeEl = badge.querySelector('.text-xs.text-gray-500');
+            const contextTitle = titleEl ? titleEl.textContent : title;
+            
+            // Check if already in wishlist
+            const existingIndex = wishlist.findIndex(w => w.id === groupKey);
+            if (existingIndex !== -1) {
+                // Remove from wishlist
+                wishlist.splice(existingIndex, 1);
+                localStorage.setItem('xow_wishlist', JSON.stringify(wishlist));
+                
+                const btn = document.getElementById('wishlist-btn-' + groupKey);
+                if (btn) {
+                    btn.classList.remove('bg-pink-100', 'border-pink-300', 'text-pink-600');
+                    btn.classList.add('bg-white', 'border-gray-200', 'text-gray-400');
+                    btn.querySelector('svg').setAttribute('fill', 'none');
+                }
+                updateWishlistBadge();
+                return;
+            }
+            
+            // Add to wishlist
+            const wishlistItem = {
+                id: groupKey,
+                recordingId: recordingId,
+                groupIndex: groupIndex,
+                contextTitle: contextTitle,
+                content: text.substring(0, 300),
+                speakers: speakers,
+                boothName: rec.booth_name || 'Recording',
+                recordingDate: rec.created_at,
+                data: {
+                    title: badge.dataset.title,
+                    text: badge.dataset.text,
+                    speakers: badge.dataset.speakers,
+                    hasVideo: rec.has_video,
+                    hasAudio: rec.has_audio
+                }
+            };
+            
+            wishlist.push(wishlistItem);
+            localStorage.setItem('xow_wishlist', JSON.stringify(wishlist));
+            
+            // Update button appearance
+            const btn = document.getElementById('wishlist-btn-' + groupKey);
+            if (btn) {
+                btn.classList.remove('bg-white', 'border-gray-200', 'text-gray-400');
+                btn.classList.add('bg-pink-100', 'border-pink-300', 'text-pink-600');
+                btn.querySelector('svg').setAttribute('fill', 'currentColor');
+            }
+            
+            updateWishlistBadge();
+        }
+
+        function toggleConvExpand(groupKey) {
+            const contentEl = document.getElementById('conv-' + groupKey);
+            if (!contentEl) return;
+            
+            const isHidden = contentEl.classList.contains('hidden');
+            
+            // Find the expand icon - try data-group first, then search by button click context
+            let iconEl = null;
+            const badgeEl = document.querySelector(`[data-group="${groupKey}"]`);
+            if (badgeEl) {
+                iconEl = badgeEl.querySelector('.conv-expand-icon');
+            } else {
+                // For wishlist items without data-group, find icon via event target
+                const btn = event?.target?.closest('button');
+                if (btn) {
+                    iconEl = btn.querySelector('.conv-expand-icon');
+                }
+            }
+            
+            if (isHidden) {
+                contentEl.classList.remove('hidden');
+                if (iconEl) iconEl.setAttribute('style', 'transform: rotate(180deg)');
+            } else {
+                contentEl.classList.add('hidden');
+                if (iconEl) iconEl.setAttribute('style', 'transform: rotate(0deg)');
+            }
+        }
+
+        async function summarizeConversation(groupKey, recordingId) {
+            const textEl = document.getElementById('conv-text-' + groupKey);
+            if (!textEl) return;
+            
+            const btn = event.target.closest('button');
+            
+            // Check if already showing summary (toggle back to original)
+            if (textEl.dataset.showingSummary === 'true') {
+                textEl.textContent = textEl.dataset.originalText || '';
+                textEl.dataset.showingSummary = 'false';
+                btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg> Summary';
+                btn.disabled = false;
+                return;
+            }
+            
+            const text = textEl.textContent;
+            if (!text || text.length < 20) { alert('Not enough text to summarize'); return; }
+            
+            // Store original text
+            if (!textEl.dataset.originalText) {
+                textEl.dataset.originalText = text;
+            }
+            
+            const origHtml = btn.innerHTML;
+            btn.innerHTML = '<svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Summarizing...';
+            btn.disabled = true;
+            
+            try {
+                const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text })
+                });
+                if (!res.ok) throw new Error('Failed to summarize');
+                const result = await res.json();
+                const summary = result.summary || 'No summary available';
+                
+                // Show summary
+                textEl.textContent = summary;
+                textEl.dataset.showingSummary = 'true';
+                btn.innerHTML = '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg> Show Original';
+                btn.disabled = false;
+            } catch (e) {
+                console.error(e);
+                alert('Failed to generate summary. Please try again.');
+                btn.innerHTML = origHtml;
+                btn.disabled = false;
+            }
+        }
+
+        async function translateConversation(groupKey, lang) {
+            if (!lang) {
+                // Reset to original when "Translate" placeholder is selected
+                const textEl = document.getElementById('conv-text-' + groupKey);
+                if (!textEl) return;
+                if (textEl.dataset.originalText) {
+                    textEl.textContent = textEl.dataset.originalText;
+                    textEl.dataset.showingTranslation = 'false';
+                    textEl.dataset.currentLang = '';
+                }
+                return;
+            }
+            
+            const textEl = document.getElementById('conv-text-' + groupKey);
+            if (!textEl) return;
+            
+            const select = event.target;
+            
+            // Store original text on first translation
+            if (!textEl.dataset.originalText) {
+                textEl.dataset.originalText = textEl.textContent;
+            }
+            
+            const originalText = textEl.dataset.originalText;
+            if (!originalText || originalText.length < 5) { 
+                alert('Not enough text to translate'); 
+                select.selectedIndex = 0;
+                return; 
+            }
+            
+            select.disabled = true;
+            textEl.innerHTML = '<div class="text-center py-4"><svg class="w-5 h-5 animate-spin inline-block" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="ml-2 text-sm text-gray-500">Translating...</span></div>';
+            
+            try {
+                const res = await fetch(`${API}/translate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: originalText, target_lang: lang })
+                });
+                if (!res.ok) throw new Error('Translation failed');
+                const result = await res.json();
+                const translated = result.translated_text || originalText;
+                
+                const langNames = { en:'English', ta:'Tamil', es:'Spanish', fr:'French', de:'German', zh:'Chinese', ja:'Japanese', hi:'Hindi', ar:'Arabic' };
+                textEl.textContent = translated;
+                textEl.dataset.showingTranslation = 'true';
+                textEl.dataset.currentLang = lang;
+                select.disabled = false;
+            } catch (e) {
+                console.error(e);
+                alert('Translation failed. Please try again.');
+                textEl.textContent = originalText;
+                select.selectedIndex = 0;
+                select.disabled = false;
+            }
+        }
+
+        function filterSessionContexts(recId) {
+            const searchInput = document.getElementById('context-search-' + recId);
+            const container = document.getElementById('context-badges-' + recId);
+            const countEl = document.getElementById('context-count-' + recId);
+            if (!searchInput || !container) return;
+            
+            const query = searchInput.value.toLowerCase().trim();
+            let visibleCount = 0;
+            
+            container.querySelectorAll('.context-badge').forEach(badge => {
+                const title = badge.dataset.title || '';
+                const text = badge.dataset.text || '';
+                const speakers = badge.dataset.speakers || '';
+                
+                const match = !query || title.includes(query) || text.includes(query) || speakers.includes(query);
+                badge.style.display = match ? '' : 'none';
+                if (match) visibleCount++;
+            });
+            
+            if (countEl) countEl.textContent = visibleCount;
         }
 
         function filterClips(recId, query) {

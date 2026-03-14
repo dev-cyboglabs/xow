@@ -2849,6 +2849,94 @@ LANGUAGE_NAMES = {
     "it": "Italian",
 }
 
+@api_router.post("/translate")
+async def translate_text(request: dict):
+    """Translate arbitrary text to target language"""
+    try:
+        text = request.get('text', '')
+        target_lang = request.get('target_lang', 'es')
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="No text provided")
+        
+        if not openai_client:
+            raise HTTPException(status_code=500, detail="Translation service not available")
+        
+        language_name = LANGUAGE_NAMES.get(target_lang, target_lang)
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"You are a professional translator. Translate the user's text into {language_name}. "
+                        f"Return ONLY the translated text with no explanations, notes, or original text. "
+                        f"Preserve paragraph breaks and punctuation style."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ]
+        )
+        
+        translated = response.choices[0].message.content.strip()
+        
+        return {
+            "success": True,
+            "translated_text": translated,
+            "target_language": target_lang,
+            "language_name": language_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@api_router.post("/recordings/{recording_id}/summarize-text")
+async def summarize_conversation_text(recording_id: str, request: dict):
+    """Summarize a conversation text snippet"""
+    try:
+        text = request.get('text', '')
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="No text provided")
+        
+        if not openai_client:
+            raise HTTPException(status_code=500, detail="Summary service not available")
+        
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert at summarizing conversations. "
+                        "Provide a concise 2-3 sentence summary of the key points discussed. "
+                        "Focus on main topics, decisions, and action items. "
+                        "Return ONLY the summary with no preamble."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": text
+                }
+            ]
+        )
+        
+        summary = response.choices[0].message.content.strip()
+        
+        return {
+            "success": True,
+            "summary": summary
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @api_router.post("/recordings/{recording_id}/translate")
 async def translate_transcript(recording_id: str, target_language: str = "en"):
     """Translate a recording's transcript to another language"""
