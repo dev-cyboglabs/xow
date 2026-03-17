@@ -90,6 +90,19 @@ class BarcodeCreate(BaseModel):
     video_timestamp: Optional[float] = None
     frame_code: Optional[int] = None
 
+class BarcodeScanData(BaseModel):
+    """Visitor data from barcode JSON"""
+    name: str
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    email: Optional[str] = None
+
+class BarcodeScanCreate(BaseModel):
+    """Barcode scan with JSON visitor data during live recording"""
+    recording_id: str
+    barcode_json: str  # JSON string with visitor data
+    video_timestamp: float  # Seconds from recording start
+
 # Visitor Badge Model
 class VisitorBadge(BaseModel):
     badge_id: str
@@ -2574,6 +2587,83 @@ async def create_barcode_scan(barcode: BarcodeCreate):
     
     barcode_doc['_id'] = result.inserted_id
     return serialize_doc(barcode_doc)
+
+@api_router.post("/barcodes/scan")
+async def process_barcode_scan(scan: BarcodeScanCreate):
+    """Process barcode scan with JSON visitor data and create visitor context"""
+    try:
+        # Parse JSON barcode data
+        visitor_data = json.loads(scan.barcode_json)
+        
+        # Validate recording exists
+        recording = await db.recordings.find_one({"_id": ObjectId(scan.recording_id)})
+        if not recording:
+            raise HTTPException(status_code=404, detail="Recording not found")
+        
+        # Update end_time of previous visitor if exists (auto-segment on new scan)
+        await db.visitor_badges.update_many(
+            {
+                "recording_id": scan.recording_id,
+                "end_time": None
+            },
+            {"$set": {"end_time": scan.video_timestamp}}
+        )
+        
+        # Create visitor badge with barcode data
+        visitor_doc = {
+            "badge_id": str(uuid.uuid4()),
+            "recording_id": scan.recording_id,
+            "visitor_label": visitor_data.get("name", "Unknown Visitor"),
+            "start_time": scan.video_timestamp,
+            "end_time": None,  # Will be set by AI or next scan
+            "is_barcode_linked": True,
+            "barcode_data": {
+                "name": visitor_data.get("name", ""),
+                "phone": visitor_data.get("phone", ""),
+                "company": visitor_data.get("company", ""),
+                "email": visitor_data.get("email", "")
+            },
+            "summary": f"Conversation with {visitor_data.get('name', 'visitor')}",
+            "topics": [],
+            "questions_asked": [],
+            "sentiment": "neutral",
+            "key_points": [],
+            "scan_timestamp": datetime.utcnow(),
+            "created_at": datetime.utcnow()
+        }
+        
+        # Insert visitor badge
+        result = await db.visitor_badges.insert_one(visitor_doc)
+        visitor_doc['_id'] = result.inserted_id
+        
+        # Also store in barcode_scans collection for reference
+        barcode_scan_doc = {
+            "recording_id": scan.recording_id,
+            "visitor_badge_id": str(result.inserted_id),
+            "barcode_json": scan.barcode_json,
+            "video_timestamp": scan.video_timestamp,
+            "scan_time": datetime.utcnow()
+        }
+        await db.barcode_scans.insert_one(barcode_scan_doc)
+        
+        # Update recording document with visitor reference
+        await db.recordings.update_one(
+            {"_id": ObjectId(scan.recording_id)},
+            {
+                "$push": {"visitors": visitor_doc},
+                "$inc": {"visitor_count": 1}
+            }
+        )
+        
+        logger.info(f"Barcode scan processed: {visitor_data.get('name')} at {scan.video_timestamp}s")
+        
+        return serialize_doc(visitor_doc)
+        
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Invalid JSON in barcode data")
+    except Exception as e:
+        logger.error(f"Error processing barcode scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== DASHBOARD DATA ENDPOINTS ====================
 

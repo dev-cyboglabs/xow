@@ -401,6 +401,28 @@
                             dialogue_segments: [
                                 { start_time: 500, end_time: 560, content: 'Very interested in this product. Want to discuss further in our office next week.' }
                             ]
+                        },
+                        {
+                            speaker_id: 'sp4',
+                            label: 'Kabilan',
+                            is_host: false,
+                            sentiment: 'positive',
+                            topics_discussed: ['Technology', 'Implementation'],
+                            questions_asked: ['How does the integration work?'],
+                            dialogue_segments: [
+                                { start_time: 650, end_time: 710, content: 'This technology looks promising. Can we schedule a follow-up call to discuss implementation?' }
+                            ]
+                        },
+                        {
+                            speaker_id: 'sp5',
+                            label: 'Akilan',
+                            is_host: false,
+                            sentiment: 'interested',
+                            topics_discussed: ['Development', 'API Integration'],
+                            questions_asked: ['What programming languages do you support?'],
+                            dialogue_segments: [
+                                { start_time: 800, end_time: 860, content: 'We are interested in the API capabilities. Please send us the technical documentation.' }
+                            ]
                         }
                     ]
                 }
@@ -418,6 +440,8 @@
         let analyticsQuery = '';
         let importedContacts = [
             // Sample contacts for demo
+            { name: 'Kabilan', email: 'kabilan@cyboglabs.com', phone: '6384302401', company: 'cyboglabs', designation: 'Developer', address: 'Tamil Nadu' },
+            { name: 'Akilan', email: 'akilan@cyboglabs.com', phone: '9384302401', company: 'cyboglabs', designation: 'Developer', address: 'Tamil Nadu' },
             { name: 'Rajesh Kumar', email: 'rajesh.kumar@techcorp.com', phone: '+91 98765 43210', company: 'TechCorp Solutions', designation: 'CEO', address: 'Mumbai, Maharashtra' },
             { name: 'Priya Sharma', email: 'priya.s@innovate.in', phone: '+91 98123 45678', company: 'Innovate Labs', designation: 'Product Manager', address: 'Bangalore, Karnataka' },
             { name: 'Amit Patel', email: 'amit.patel@startup.io', phone: '+91 97654 32109', company: 'StartUp Ventures', designation: 'CTO', address: 'Pune, Maharashtra' },
@@ -427,6 +451,13 @@
             { name: 'Karthik Menon', email: 'karthik.m@fintech.in', phone: '+91 93210 98765', company: 'FinTech Innovations', designation: 'CFO', address: 'Kochi, Kerala' },
             { name: 'Divya Nair', email: 'divya.nair@ecom.store', phone: '+91 92109 87654', company: 'E-Commerce Hub', designation: 'Operations Manager', address: 'Ahmedabad, Gujarat' }
         ]; // rows from imported Excel/CSV
+        
+        // Barcode scanner state
+        let barcodeBuffer = '';
+        let barcodeTimeout = null;
+        let barcodeScannerActive = false;
+        let activeRecordingId = null;
+        let activeRecordingStartTime = null;
         let wishlist = JSON.parse(localStorage.getItem('xow_wishlist') || '[]');
         let segmentDataMap = {}; // key: recId_segIdx → segment data for wishlist
         let followupsDismissed = JSON.parse(localStorage.getItem('xow_followups_dismissed') || '[]');
@@ -497,9 +528,8 @@
             } catch(e) { console.error(e); alert('Connection failed. Please try again.'); }
         }
 
-        async function refresh() {
-            const icon = document.getElementById('refresh-icon');
-            icon.classList.add('animate-spin');
+        async function fetchData() {
+            // Fetch latest data from API without showing spinner
             const sp = sessionParam();
             try {
                 const [i, r, v] = await Promise.all([
@@ -508,13 +538,21 @@
                     fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json())
                 ]);
                 data = { insights: i, recordings: r, visitors: v };
-                render();
-                document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-emerald-500';
-                document.getElementById('status-text').textContent = 'System Online';
             } catch(e) {
-                console.error(e);
-                document.getElementById('status-dot').className = 'w-2 h-2 rounded-full bg-red-500';
-                document.getElementById('status-text').textContent = 'Connection Error';
+                console.error('Failed to fetch data:', e);
+            }
+        }
+
+        async function refresh() {
+            const icon = document.getElementById('refresh-icon');
+            icon.classList.add('animate-spin');
+            await fetchData();
+            render();
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('status-text');
+            if (statusDot && statusText) {
+                statusDot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+                statusText.textContent = 'System Online';
             }
             icon.classList.remove('animate-spin');
         }
@@ -634,70 +672,83 @@
         }
 
         function renderSessionCard(r) {
-            const speakers = r.speakers || [];
-            const conversations = r.conversations || [];
+            const visitors = r.visitor_badges || r.visitors || [];
+            const barcodeScans = r.barcode_scans || [];
             const headCount = r.head_count || 0;
             
-            // Build context-based conversation groups from GPT's conversations array
             const conversationGroups = [];
             
-            if (conversations.length > 0) {
-                // Use GPT-generated context-based conversations
-                conversations.forEach((conv, convIdx) => {
-                    const convStartTime = conv.start_time || 0;
-                    const convEndTime = conv.end_time || (convStartTime + 120); // Default 2min if not specified
-                    
-                    // Find all speaker segments that fall within this conversation's time range
-                    const contextSegments = [];
-                    const contextSpeakers = [];
-                    
-                    speakers.forEach((speaker, spkIdx) => {
-                        const segments = speaker.dialogue_segments || [];
-                        const relevantSegs = segments.filter(seg => {
-                            const segStart = seg.start_time || 0;
-                            const segEnd = seg.end_time || segStart;
-                            // Segment overlaps with conversation time range
-                            return (segStart >= convStartTime && segStart <= convEndTime) ||
-                                   (segEnd >= convStartTime && segEnd <= convEndTime) ||
-                                   (segStart <= convStartTime && segEnd >= convEndTime);
-                        });
-                        
-                        if (relevantSegs.length > 0) {
-                            contextSegments.push(...relevantSegs);
-                            if (!contextSpeakers.find(s => s.speaker_id === speaker.speaker_id)) {
-                                contextSpeakers.push(speaker);
-                            }
-                        }
-                    });
-                    
-                    // Sort segments by time
-                    contextSegments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
-                    
-                    if (contextSegments.length > 0) {
-                        conversationGroups.push({
-                            contextTitle: conv.title || `Context ${convIdx + 1}`,
-                            contextSummary: conv.summary || '',
-                            speakers: contextSpeakers,
-                            segments: contextSegments,
-                            startTime: convStartTime,
-                            endTime: contextSegments[contextSegments.length - 1].end_time || convEndTime,
-                            isContextBased: true
-                        });
+            // First, add each raw barcode scan as its own separate conversation group.
+            // This ensures every scan event shows as a separate badge immediately.
+            barcodeScans.forEach((scan, scanIdx) => {
+                let scanData = scan.barcode_data || scan.barcode_json || {};
+                if (typeof scanData === 'string') {
+                    try {
+                        scanData = JSON.parse(scanData);
+                    } catch (_) {
+                        scanData = {};
                     }
+                }
+                const visitorName = scanData.name || `Visitor ${scanIdx + 1}`;
+                const scanTime = scan.video_timestamp || 0;
+                const scanSpeaker = {
+                    speaker_id: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`,
+                    label: visitorName,
+                    is_host: false,
+                    sentiment: 'neutral',
+                    topics_discussed: [],
+                    questions_asked: [],
+                    is_barcode: true,
+                    barcode_data: scanData
+                };
+                const scanSegment = {
+                    start_time: scanTime,
+                    end_time: scanTime,
+                    content: `Scanned visitor: ${visitorName}`
+                };
+                conversationGroups.push({
+                    contextTitle: visitorName,
+                    contextSummary: scanData.company || '',
+                    speakers: [scanSpeaker],
+                    segments: [scanSegment],
+                    startTime: scanTime,
+                    endTime: scanTime,
+                    isContextBased: true,
+                    isBarcodeLinked: true,
+                    badgeKey: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`
                 });
-            } else {
-                // Fallback: group by speaker if no conversations array
-                speakers.forEach((speaker, spkIdx) => {
-                    const segments = speaker.dialogue_segments || [];
-                    if (segments.length > 0) {
+            });
+
+            // Also add visitor badges created later by processing, but only when there are
+            // no raw scan entries for the same recording. This avoids collapsing/duplicating scans.
+            if (barcodeScans.length === 0) {
+                visitors.forEach((visitor, visIdx) => {
+                    if (visitor.is_barcode_linked) {
+                        const visitorSpeaker = {
+                            speaker_id: visitor.badge_id || `visitor-${visIdx}`,
+                            label: visitor.visitor_label || visitor.barcode_data?.name || 'Visitor',
+                            is_host: false,
+                            sentiment: visitor.sentiment || 'neutral',
+                            topics_discussed: visitor.topics || [],
+                            questions_asked: visitor.questions_asked || [],
+                            is_barcode: true,
+                            barcode_data: visitor.barcode_data
+                        };
+                        const visitorSegment = {
+                            start_time: visitor.start_time || 0,
+                            end_time: visitor.end_time || (visitor.start_time + 60),
+                            content: visitor.summary || `Conversation with ${visitor.visitor_label}`
+                        };
                         conversationGroups.push({
-                            contextTitle: speaker.label || `Speaker ${spkIdx + 1}`,
-                            contextSummary: `Topics: ${(speaker.topics_discussed || []).join(', ')}`,
-                            speakers: [speaker],
-                            segments: segments,
-                            startTime: segments[0].start_time || 0,
-                            endTime: segments[segments.length - 1].end_time || 0,
-                            isContextBased: false
+                            contextTitle: visitor.visitor_label || visitor.barcode_data?.name || 'Visitor',
+                            contextSummary: visitor.summary || '',
+                            speakers: [visitorSpeaker],
+                            segments: [visitorSegment],
+                            startTime: visitor.start_time || 0,
+                            endTime: visitor.end_time || (visitor.start_time + 60),
+                            isContextBased: true,
+                            isBarcodeLinked: true,
+                            badgeKey: visitor.badge_id || `visitor-${visIdx}`
                         });
                     }
                 });
@@ -743,7 +794,7 @@
                 <div class="p-5 bg-amber-50">
                     <div class="flex items-center justify-between">
                         <div class="text-sm text-gray-600">
-                            <span class="text-amber-600 font-medium">Note:</span> No conversations detected yet. Upload recording for AI analysis.
+                            <span class="text-amber-600 font-medium">Note:</span> No scanned visitors detected yet.
                         </div>
                     </div>
                 </div>` : `
@@ -752,10 +803,10 @@
                     <div class="flex items-center justify-between mb-4">
                         <div class="text-xs text-gray-500 font-semibold flex items-center gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"/></svg>
-                            ${conversationGroups[0]?.isContextBased ? 'CONVERSATION CONTEXTS' : 'VISITOR CONVERSATIONS'} (<span id="context-count-${r.id}">${conversationGroups.length}</span> ${conversationGroups[0]?.isContextBased ? 'contexts' : 'segments'})
+                            SCANNED VISITORS (<span id="context-count-${r.id}">${conversationGroups.length}</span>)
                         </div>
                         <div class="relative">
-                            <input type="text" id="context-search-${r.id}" placeholder="Search contexts..." oninput="filterSessionContexts('${r.id}')" class="w-64 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
+                            <input type="text" id="context-search-${r.id}" placeholder="Search visitors..." oninput="filterSessionContexts('${r.id}')" class="w-64 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
                             <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                         </div>
                     </div>
@@ -770,21 +821,35 @@
                                     if (!group) return '';
                                     
                                     const fullText = group.segments.map(s => s.content || '').join(' ');
-                                    const groupKey = `${r.id}-grp-${gIdx}`;
-                                    const speakerLabels = group.speakers.map(s => {
-                                        const isHost = s.is_host || false;
-                                        return isHost ? 'Host' : (s.label || 'Visitor');
-                                    }).join(' + ');
+                                    const groupKey = group.badgeKey ? `${r.id}-${group.badgeKey}` : `${r.id}-grp-${gIdx}`;
+                                    
+                                    // Check if this is a barcode-linked visitor (check speakers array)
+                                    const isBarcodeLinked = group.speakers && group.speakers.some(s => s.is_barcode);
+                                    const barcodeData = isBarcodeLinked ? group.speakers.find(s => s.is_barcode)?.barcode_data : null;
+                                    
+                                    // For barcode visitors, use their actual name; otherwise use speaker labels
+                                    const speakerLabels = isBarcodeLinked && barcodeData?.name 
+                                        ? barcodeData.name 
+                                        : group.speakers.map(s => {
+                                            const isHost = s.is_host || false;
+                                            return isHost ? 'Host' : (s.label || 'Visitor');
+                                        }).join(' + ');
                                     
                                     return `
                                     <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}">
-                                        <div class="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-orange-400 transition-colors">
-                                            <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                                                <svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                                        <div class="flex items-center gap-3 px-4 py-3 bg-white border ${isBarcodeLinked ? 'border-green-300 bg-green-50' : 'border-gray-200'} rounded-xl hover:border-orange-400 transition-colors">
+                                            <div class="w-9 h-9 rounded-lg ${isBarcodeLinked ? 'bg-green-100' : 'bg-orange-100'} flex items-center justify-center flex-shrink-0">
+                                                ${isBarcodeLinked ? 
+                                                    `<svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>` :
+                                                    `<svg class="w-4 h-4 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>`
+                                                }
                                             </div>
                                             <div class="flex-1 min-w-0">
-                                                <div class="font-medium text-gray-900 text-sm truncate">${group.contextTitle}</div>
-                                                <div class="text-xs text-gray-500 truncate">${speakerLabels}</div>
+                                                <div class="flex items-center gap-2">
+                                                    <div class="font-medium text-gray-900 text-sm truncate">${group.contextTitle}</div>
+                                                    ${isBarcodeLinked ? '<span class="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500 text-white font-bold">SCANNED</span>' : ''}
+                                                </div>
+                                                <div class="text-xs text-gray-500 truncate">${isBarcodeLinked && barcodeData?.company ? barcodeData.company + ' • ' + fmtDur(group.startTime) : fmtDur(group.startTime)}</div>
                                             </div>
                                             <div class="flex items-center gap-2 flex-shrink-0">
                                                 <button onclick="showConversationInfo('${r.id}', '${groupKey}', ${gIdx})" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-all" title="Info">
@@ -2016,16 +2081,37 @@
             
             const conversations = recording.conversations || [];
             const speakers = recording.speakers || [];
+            const barcodeScans = recording.barcode_scans || [];
+            const visitorBadges = recording.visitor_badges || recording.visitors || [];
             
             // Find the conversation group
             let conversationGroup = null;
             if (conversations.length > 0 && conversations[groupIdx]) {
                 conversationGroup = conversations[groupIdx];
             }
+
+            const normalizedGroupKey = (groupKey || '').replace(`${recordingId}-`, '');
+            const matchedScan = barcodeScans.find(scan => {
+                const key = scan._id || scan.visitor_badge_id;
+                return key && `${key}` === normalizedGroupKey;
+            });
+            const matchedVisitorBadge = visitorBadges.find(visitor => {
+                const key = visitor.badge_id || visitor._id;
+                return key && `${key}` === normalizedGroupKey;
+            });
             
-            // Get visitor speaker (non-host)
+            let scanData = matchedScan?.barcode_data || matchedScan?.barcode_json || matchedVisitorBadge?.barcode_data || null;
+            if (typeof scanData === 'string') {
+                try {
+                    scanData = JSON.parse(scanData);
+                } catch (_) {
+                    scanData = null;
+                }
+            }
+
+            // Get visitor speaker (non-host) or exact scanned visitor
             const visitor = speakers.find(s => !s.is_host);
-            const visitorLabel = visitor?.label || 'Visitor';
+            const visitorLabel = scanData?.name || matchedVisitorBadge?.visitor_label || visitor?.label || 'Visitor';
             
             // Find contact info from imported contacts
             const contact = importedContacts.find(c => {
@@ -2035,56 +2121,63 @@
             
             // Populate modal
             const modal = document.getElementById('conversation-info-modal');
-            document.getElementById('conv-info-title').textContent = conversationGroup?.title || 'Conversation';
-            document.getElementById('conv-info-name').textContent = contact?.Name || contact?.name || visitorLabel;
-            document.getElementById('conv-info-phone').textContent = contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
-            document.getElementById('conv-info-company').textContent = contact?.Company || contact?.company || '-';
+            document.getElementById('conv-info-title').textContent = scanData?.name || matchedVisitorBadge?.visitor_label || conversationGroup?.title || 'Conversation';
+            document.getElementById('conv-info-name').textContent = scanData?.name || contact?.Name || contact?.name || visitorLabel;
+            document.getElementById('conv-info-phone').textContent = scanData?.phone || contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
+            document.getElementById('conv-info-company').textContent = scanData?.company || contact?.Company || contact?.company || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
             const fullTextEl = document.getElementById('conv-info-full-text');
             
             // Get full conversation text
             const segments = [];
-            speakers.forEach(speaker => {
-                const speakerSegs = speaker.dialogue_segments || [];
-                speakerSegs.forEach(seg => {
-                    if (conversationGroup) {
-                        const segStart = seg.start_time || 0;
-                        const convStart = conversationGroup.start_time || 0;
-                        const convEnd = conversationGroup.end_time || (convStart + 120);
-                        if (segStart >= convStart && segStart <= convEnd) {
+            if (matchedScan || matchedVisitorBadge) {
+                const summaryText = matchedVisitorBadge?.summary || `Scanned visitor: ${visitorLabel}`;
+                fullTextEl.textContent = summaryText;
+                fullTextEl.dataset.originalText = summaryText;
+                summaryEl.textContent = matchedVisitorBadge?.summary || `Visitor scanned at ${fmtDur(matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || 0)}`;
+            } else {
+                speakers.forEach(speaker => {
+                    const speakerSegs = speaker.dialogue_segments || [];
+                    speakerSegs.forEach(seg => {
+                        if (conversationGroup) {
+                            const segStart = seg.start_time || 0;
+                            const convStart = conversationGroup.start_time || 0;
+                            const convEnd = conversationGroup.end_time || (convStart + 120);
+                            if (segStart >= convStart && segStart <= convEnd) {
+                                segments.push(seg);
+                            }
+                        } else {
                             segments.push(seg);
                         }
+                    });
+                });
+
+                segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+                const fullText = segments.map(s => s.content || '').join(' ');
+                
+                fullTextEl.textContent = fullText || 'No conversation content available';
+                fullTextEl.dataset.originalText = fullText;
+                
+                // Generate summary
+                summaryEl.textContent = 'Generating summary...';
+                
+                try {
+                    const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: fullText })
+                    });
+                    if (res.ok) {
+                        const result = await res.json();
+                        summaryEl.textContent = result.summary || conversationGroup?.summary || 'No summary available';
                     } else {
-                        segments.push(seg);
+                        summaryEl.textContent = conversationGroup?.summary || 'Summary not available';
                     }
-                });
-            });
-            
-            segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
-            const fullText = segments.map(s => s.content || '').join(' ');
-            
-            fullTextEl.textContent = fullText || 'No conversation content available';
-            fullTextEl.dataset.originalText = fullText;
-            
-            // Generate summary
-            summaryEl.textContent = 'Generating summary...';
-            
-            try {
-                const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: fullText })
-                });
-                if (res.ok) {
-                    const result = await res.json();
-                    summaryEl.textContent = result.summary || conversationGroup?.summary || 'No summary available';
-                } else {
-                    summaryEl.textContent = conversationGroup?.summary || 'Summary not available';
+                } catch (e) {
+                    console.error(e);
+                    summaryEl.textContent = conversationGroup?.summary || 'Failed to generate summary';
                 }
-            } catch (e) {
-                console.error(e);
-                summaryEl.textContent = conversationGroup?.summary || 'Failed to generate summary';
             }
             
             // Reset translate dropdown
@@ -3323,6 +3416,169 @@
             setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 3500);
         }
 
+        // ==================== BARCODE SCANNER INTEGRATION ====================
+        
+        // Barcode scanner keyboard listener
+        document.addEventListener('keypress', (e) => {
+            // Skip if user is typing in an input field
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') {
+                return;
+            }
+            
+            // Barcode scanners type very fast (< 100ms between characters)
+            clearTimeout(barcodeTimeout);
+            
+            if (e.key === 'Enter') {
+                // Barcode scan complete
+                if (barcodeBuffer.trim().length > 0) {
+                    processBarcodeData(barcodeBuffer.trim());
+                }
+                barcodeBuffer = '';
+            } else {
+                barcodeBuffer += e.key;
+                // Reset buffer if typing too slow (user typing, not scanner)
+                barcodeTimeout = setTimeout(() => {
+                    barcodeBuffer = '';
+                }, 100);
+            }
+        });
+        
+        async function processBarcodeData(jsonString) {
+            try {
+                // Parse JSON barcode data
+                const visitorData = JSON.parse(jsonString);
+                
+                // Validate required fields
+                if (!visitorData.name) {
+                    showToast('Invalid barcode: missing name field', 'error');
+                    return;
+                }
+                
+                // Check if we have an active recording
+                if (!activeRecordingId) {
+                    showToast('No active recording. Please start a recording first.', 'error');
+                    return;
+                }
+                
+                // Calculate current timestamp in the recording
+                const currentTimestamp = activeRecordingStartTime 
+                    ? (Date.now() - activeRecordingStartTime) / 1000 
+                    : 0;
+                
+                // Show scanning indicator
+                showBarcodeScanIndicator(visitorData.name);
+                
+                // Send to backend
+                const response = await fetch(`${API}/barcodes/scan`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        recording_id: activeRecordingId,
+                        barcode_json: jsonString,
+                        video_timestamp: currentTimestamp
+                    })
+                });
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to process barcode scan');
+                }
+                
+                const result = await response.json();
+                
+                // Show success notification
+                showToast(`✓ Scanned: ${visitorData.name} at ${fmtDur(currentTimestamp)}`, 'success');
+                
+                // Refresh dashboard to show new visitor
+                await fetchData();
+                render();
+                
+            } catch (e) {
+                console.error('Barcode scan error:', e);
+                showToast(`Barcode scan failed: ${e.message}`, 'error');
+            }
+        }
+        
+        function showBarcodeScanIndicator(name) {
+            const indicator = document.getElementById('barcode-scan-indicator');
+            if (indicator) {
+                indicator.querySelector('.visitor-name').textContent = name;
+                indicator.classList.remove('hidden');
+                indicator.classList.add('flex');
+                setTimeout(() => {
+                    indicator.classList.add('hidden');
+                    indicator.classList.remove('flex');
+                }, 2000);
+            }
+        }
+        
+        function setActiveRecording(recordingId) {
+            activeRecordingId = recordingId;
+            activeRecordingStartTime = Date.now();
+            barcodeScannerActive = true;
+            updateBarcodeScannerStatus();
+        }
+        
+        function stopActiveRecording() {
+            activeRecordingId = null;
+            activeRecordingStartTime = null;
+            barcodeScannerActive = false;
+            updateBarcodeScannerStatus();
+        }
+        
+        function updateBarcodeScannerStatus() {
+            const statusEl = document.getElementById('barcode-scanner-status');
+            if (statusEl) {
+                if (barcodeScannerActive && activeRecordingId) {
+                    statusEl.classList.remove('hidden');
+                    statusEl.classList.add('flex');
+                } else {
+                    statusEl.classList.add('hidden');
+                    statusEl.classList.remove('flex');
+                }
+            }
+        }
+        
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            if (!toast || !toastMsg) return;
+            
+            toastMsg.textContent = message;
+            toast.className = 'fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 transition-all';
+            
+            if (type === 'success') {
+                toast.classList.add('bg-green-500', 'text-white');
+            } else if (type === 'error') {
+                toast.classList.add('bg-red-500', 'text-white');
+            } else {
+                toast.classList.add('bg-blue-500', 'text-white');
+            }
+            
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('hidden');
+            }, 3000);
+        }
+        
+        // Test function for simulating barcode scans (for testing without physical scanner)
+        window.testBarcodeScan = function(visitorData) {
+            const defaultData = {
+                name: "Test Visitor",
+                phone: "+1234567890",
+                company: "Test Company",
+                email: "test@example.com"
+            };
+            const data = { ...defaultData, ...visitorData };
+            const jsonString = JSON.stringify(data);
+            console.log('Simulating barcode scan:', jsonString);
+            processBarcodeData(jsonString);
+        };
+        
+        // Helper to set active recording for testing
+        window.setActiveRecording = setActiveRecording;
+        window.stopActiveRecording = stopActiveRecording;
+
         window.addEventListener('beforeunload', stopDevicePolling);
 
         // Keyboard shortcut to close modals
@@ -3393,6 +3649,30 @@
     <div id="import-toast" class="fixed bottom-6 right-6 hidden items-center gap-3 bg-gray-900 text-white text-sm px-5 py-3 rounded-xl shadow-xl z-50 transition-all">
         <svg class="w-4 h-4 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
         <span id="import-toast-msg"></span>
+    </div>
+
+    <!-- Barcode Scanner Status Indicator -->
+    <div id="barcode-scanner-status" class="fixed top-6 right-6 hidden items-center gap-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white text-sm px-5 py-3 rounded-xl shadow-xl z-50 animate-pulse">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+        </svg>
+        <span class="font-semibold">Barcode Scanner Active</span>
+    </div>
+
+    <!-- Barcode Scan Indicator (shows briefly when scanning) -->
+    <div id="barcode-scan-indicator" class="fixed top-24 right-6 hidden items-center gap-3 bg-white border-2 border-green-500 text-gray-900 text-sm px-5 py-3 rounded-xl shadow-2xl z-50">
+        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        <div>
+            <div class="font-semibold text-green-600">Barcode Scanned</div>
+            <div class="text-xs text-gray-600 visitor-name"></div>
+        </div>
+    </div>
+
+    <!-- General Toast Notification -->
+    <div id="toast" class="fixed bottom-6 right-6 hidden items-center gap-3 px-5 py-3 rounded-xl shadow-xl z-50 transition-all">
+        <span id="toast-message"></span>
     </div>
 </body>
 </html>
