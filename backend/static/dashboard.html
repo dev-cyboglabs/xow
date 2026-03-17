@@ -672,6 +672,7 @@
         }
 
         function renderSessionCard(r) {
+            const speakers = r.speakers || [];
             const visitors = r.visitor_badges || r.visitors || [];
             const barcodeScans = r.barcode_scans || [];
             const headCount = r.head_count || 0;
@@ -679,7 +680,7 @@
             const conversationGroups = [];
             
             // First, add each raw barcode scan as its own separate conversation group.
-            // This ensures every scan event shows as a separate badge immediately.
+            // Each group spans from this scan timestamp until the next scan timestamp.
             barcodeScans.forEach((scan, scanIdx) => {
                 let scanData = scan.barcode_data || scan.barcode_json || {};
                 if (typeof scanData === 'string') {
@@ -691,6 +692,39 @@
                 }
                 const visitorName = scanData.name || `Visitor ${scanIdx + 1}`;
                 const scanTime = scan.video_timestamp || 0;
+                const nextScan = barcodeScans[scanIdx + 1] || null;
+                const nextScanTime = nextScan ? (nextScan.video_timestamp || scanTime) : null;
+                const windowEndTime = nextScanTime !== null ? nextScanTime : (r.duration || scanTime);
+                const windowSegments = [];
+                const windowSpeakers = [];
+
+                speakers.forEach((speaker) => {
+                    const speakerSegs = speaker.dialogue_segments || [];
+                    const relevantSegs = speakerSegs.filter(seg => {
+                        const segStart = seg.start_time || 0;
+                        const segEnd = seg.end_time || segStart;
+                        if (nextScanTime !== null) {
+                            return segStart >= scanTime && segStart < nextScanTime && segEnd >= scanTime;
+                        }
+                        return segStart >= scanTime || segEnd >= scanTime;
+                    });
+
+                    if (relevantSegs.length > 0) {
+                        windowSegments.push(...relevantSegs.map(seg => ({
+                            ...seg,
+                            speaker_label: speaker.label || (speaker.is_host ? 'Host' : 'Visitor'),
+                            is_host: !!speaker.is_host
+                        })));
+                        if (!windowSpeakers.find(s => s.speaker_id === speaker.speaker_id)) {
+                            windowSpeakers.push(speaker);
+                        }
+                    }
+                });
+
+                windowSegments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+                const scanSummary = windowSegments.length > 0
+                    ? windowSegments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    : `Scanned visitor: ${visitorName}`;
                 const scanSpeaker = {
                     speaker_id: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`,
                     label: visitorName,
@@ -701,21 +735,23 @@
                     is_barcode: true,
                     barcode_data: scanData
                 };
-                const scanSegment = {
-                    start_time: scanTime,
-                    end_time: scanTime,
-                    content: `Scanned visitor: ${visitorName}`
-                };
                 conversationGroups.push({
                     contextTitle: visitorName,
                     contextSummary: scanData.company || '',
-                    speakers: [scanSpeaker],
-                    segments: [scanSegment],
+                    speakers: [scanSpeaker, ...windowSpeakers.filter(s => !s.is_host && s.label !== visitorName)],
+                    segments: windowSegments.length > 0 ? windowSegments : [{
+                        start_time: scanTime,
+                        end_time: windowEndTime,
+                        content: `Scanned visitor: ${visitorName}`,
+                        speaker_label: visitorName,
+                        is_host: false
+                    }],
                     startTime: scanTime,
-                    endTime: scanTime,
+                    endTime: windowEndTime,
                     isContextBased: true,
                     isBarcodeLinked: true,
-                    badgeKey: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`
+                    badgeKey: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`,
+                    fullText: scanSummary
                 });
             });
 
@@ -748,7 +784,8 @@
                             endTime: visitor.end_time || (visitor.start_time + 60),
                             isContextBased: true,
                             isBarcodeLinked: true,
-                            badgeKey: visitor.badge_id || `visitor-${visIdx}`
+                            badgeKey: visitor.badge_id || `visitor-${visIdx}`,
+                            fullText: visitor.summary || `Conversation with ${visitor.visitor_label}`
                         });
                     }
                 });
@@ -820,7 +857,7 @@
                                 const renderBadge = (group, gIdx) => {
                                     if (!group) return '';
                                     
-                                    const fullText = group.segments.map(s => s.content || '').join(' ');
+                                    const fullText = group.fullText || group.segments.map(s => s.content || '').join(' ');
                                     const groupKey = group.badgeKey ? `${r.id}-${group.badgeKey}` : `${r.id}-grp-${gIdx}`;
                                     
                                     // Check if this is a barcode-linked visitor (check speakers array)
@@ -2132,10 +2169,60 @@
             // Get full conversation text
             const segments = [];
             if (matchedScan || matchedVisitorBadge) {
-                const summaryText = matchedVisitorBadge?.summary || `Scanned visitor: ${visitorLabel}`;
-                fullTextEl.textContent = summaryText;
-                fullTextEl.dataset.originalText = summaryText;
-                summaryEl.textContent = matchedVisitorBadge?.summary || `Visitor scanned at ${fmtDur(matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || 0)}`;
+                const scanTime = matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || 0;
+                let nextScanTime = null;
+                if (matchedScan) {
+                    const matchedIndex = barcodeScans.findIndex(scan => {
+                        const key = scan._id || scan.visitor_badge_id;
+                        return key && `${key}` === normalizedGroupKey;
+                    });
+                    if (matchedIndex >= 0 && barcodeScans[matchedIndex + 1]) {
+                        nextScanTime = barcodeScans[matchedIndex + 1].video_timestamp || null;
+                    }
+                }
+
+                speakers.forEach(speaker => {
+                    const speakerSegs = speaker.dialogue_segments || [];
+                    speakerSegs.forEach(seg => {
+                        const segStart = seg.start_time || 0;
+                        const segEnd = seg.end_time || segStart;
+                        const inWindow = nextScanTime !== null
+                            ? segStart >= scanTime && segStart < nextScanTime && segEnd >= scanTime
+                            : (segStart >= scanTime || segEnd >= scanTime);
+                        if (inWindow) {
+                            segments.push({
+                                ...seg,
+                                speaker_label: speaker.label || (speaker.is_host ? 'Host' : 'Visitor')
+                            });
+                        }
+                    });
+                });
+
+                segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+                const fullText = segments.length > 0
+                    ? segments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    : (matchedVisitorBadge?.summary || `Scanned visitor: ${visitorLabel}`);
+
+                fullTextEl.textContent = fullText;
+                fullTextEl.dataset.originalText = fullText;
+                summaryEl.textContent = 'Generating summary...';
+
+                try {
+                    const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: fullText })
+                    });
+                    if (res.ok) {
+                        const result = await res.json();
+                        summaryEl.textContent = result.summary || matchedVisitorBadge?.summary || 'No summary available';
+                    } else {
+                        summaryEl.textContent = matchedVisitorBadge?.summary || `Visitor scanned at ${fmtDur(scanTime)}`;
+                    }
+                } catch (e) {
+                    console.error(e);
+                    summaryEl.textContent = matchedVisitorBadge?.summary || `Visitor scanned at ${fmtDur(scanTime)}`;
+                }
             } else {
                 speakers.forEach(speaker => {
                     const speakerSegs = speaker.dialogue_segments || [];
