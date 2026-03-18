@@ -911,6 +911,55 @@
             if (speakersDiv) speakersDiv.classList.add('hidden');
         }
 
+        function resolveFollowupPlaybackTarget(rec, conv) {
+            if (!rec || !conv) return { time: Number(conv?.start_time || 0), groupKey: '' };
+
+            const barcodeScans = rec.barcode_scans || [];
+            const visitors = rec.visitor_badges || rec.visitors || [];
+            const convTime = Number(conv.start_time || conv.video_timestamp || 0);
+            const convName = `${conv.visitor_label || conv.label || conv.name || ''}`.trim().toLowerCase();
+            const convId = conv.badge_id || conv._id;
+
+            const matchedScanIndex = barcodeScans.findIndex((scan) => {
+                const scanId = scan._id || scan.visitor_badge_id;
+                if (convId && scanId && `${convId}` === `${scanId}`) return true;
+                const scanTime = Number(scan.video_timestamp || scan.start_time || 0);
+                const scanName = `${scan.barcode_data?.name || scan.barcode_json?.name || scan.visitor_name || ''}`.trim().toLowerCase();
+                return Math.abs(scanTime - convTime) < 0.5 && (!convName || !scanName || convName === scanName);
+            });
+
+            if (matchedScanIndex >= 0) {
+                const scan = barcodeScans[matchedScanIndex];
+                const badgeKey = scan._id || scan.visitor_badge_id || `barcode-scan-${matchedScanIndex}`;
+                return {
+                    time: Number(scan.video_timestamp || scan.start_time || convTime || 0),
+                    groupKey: `${rec.id}-${badgeKey}`
+                };
+            }
+
+            if (barcodeScans.length === 0) {
+                const matchedVisitorIndex = visitors.findIndex((visitor) => {
+                    if (!visitor.is_barcode_linked) return false;
+                    const visitorId = visitor.badge_id || visitor._id;
+                    if (convId && visitorId && `${convId}` === `${visitorId}`) return true;
+                    const visitorTime = Number(visitor.start_time || visitor.video_timestamp || 0);
+                    const visitorName = `${visitor.visitor_label || visitor.name || ''}`.trim().toLowerCase();
+                    return Math.abs(visitorTime - convTime) < 0.5 && (!convName || !visitorName || convName === visitorName);
+                });
+
+                if (matchedVisitorIndex >= 0) {
+                    const visitor = visitors[matchedVisitorIndex];
+                    const badgeKey = visitor.badge_id || `visitor-${matchedVisitorIndex}`;
+                    return {
+                        time: Number(visitor.start_time || visitor.video_timestamp || convTime || 0),
+                        groupKey: `${rec.id}-${badgeKey}`
+                    };
+                }
+            }
+
+            return { time: convTime, groupKey: '' };
+        }
+
         function renderVisitors() {
             // Build conversation labels for follow-up detection
             const allConversations = [];
@@ -1158,6 +1207,7 @@
                         ${followupItems.map(item => {
                             const safeName = (item.conv.recording?.booth_name || '').replace(/'/g, "\\'");
                             const canPlay = item.conv.recording && (item.conv.recording.has_video || item.conv.recording.has_audio);
+                            const playbackTarget = resolveFollowupPlaybackTarget(item.conv.recording, item.conv);
                             
                             return `
                             <div class="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-green-400 transition-colors">
@@ -1175,7 +1225,7 @@
                                     <button data-key="${item.key}" onclick="dismissFollowup(this.dataset.key)" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-all" title="Dismiss">
                                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                                     </button>
-                                    ${canPlay ? `<button data-rec="${item.conv.recording_id}" data-time="${item.conv.start_time || 0}" data-name="${safeName}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.name)" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
+                                    ${canPlay ? `<button data-rec="${item.conv.recording_id}" data-time="${playbackTarget.time || 0}" data-name="${safeName}" data-group="${playbackTarget.groupKey || ''}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.name,this.dataset.group)" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
                                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                     </button>` : ''}
                                 </div>
@@ -2166,7 +2216,11 @@
             
             // Populate modal
             const modal = document.getElementById('conversation-info-modal');
-            document.getElementById('conv-info-title').textContent = scanData?.name || matchedVisitorBadge?.visitor_label || conversationGroup?.title || 'Conversation';
+            const resolvedStartTime = Number(matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || badgeStartTime || 0);
+            const resolvedTitle = scanData?.name || matchedVisitorBadge?.visitor_label || conversationGroup?.title || 'Conversation';
+            document.getElementById('conv-info-title').textContent = resolvedStartTime > 0
+                ? `${resolvedTitle} • ${fmtDur(resolvedStartTime)}`
+                : resolvedTitle;
             document.getElementById('conv-info-name').textContent = scanData?.name || contact?.Name || contact?.name || visitorLabel;
             document.getElementById('conv-info-phone').textContent = scanData?.phone || contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
             document.getElementById('conv-info-company').textContent = scanData?.company || contact?.Company || contact?.company || '-';
@@ -2335,11 +2389,13 @@
             if (!recording) return;
             
             const speakers = recording.speakers || [];
+            const barcodeScans = recording.barcode_scans || [];
+            const visitorBadges = recording.visitor_badges || recording.visitors || [];
             
             // Build conversation data
             let conv = null;
-            if (recording.visitors && recording.visitors[convIdx]) {
-                conv = recording.visitors[convIdx];
+            if (visitorBadges[convIdx]) {
+                conv = visitorBadges[convIdx];
             } else if (recording.conversations && recording.conversations[convIdx]) {
                 conv = recording.conversations[convIdx];
             } else if (speakers.filter(s => !s.is_host)[convIdx]) {
@@ -2347,6 +2403,12 @@
             }
             
             if (!conv) return;
+
+            const playbackTarget = resolveFollowupPlaybackTarget(recording, conv);
+            if (playbackTarget.groupKey) {
+                await showConversationInfo(recordingId, playbackTarget.groupKey, convIdx);
+                return;
+            }
             
             // Get visitor speaker (non-host)
             const visitor = speakers.find(s => !s.is_host);
@@ -2360,19 +2422,78 @@
             
             // Populate modal
             const modal = document.getElementById('conversation-info-modal');
-            document.getElementById('conv-info-title').textContent = conv.title || visitorLabel;
+            const fallbackStartTime = Number(conv.start_time || conv.video_timestamp || 0);
+            const fallbackTitle = conv.title || visitorLabel;
+            document.getElementById('conv-info-title').textContent = fallbackStartTime > 0
+                ? `${fallbackTitle} • ${fmtDur(fallbackStartTime)}`
+                : fallbackTitle;
             document.getElementById('conv-info-name').textContent = contact?.Name || contact?.name || visitorLabel;
             document.getElementById('conv-info-phone').textContent = contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
             document.getElementById('conv-info-company').textContent = contact?.Company || contact?.company || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
-            
-            const fullText = conv.summary || conv.topics_discussed?.join(', ') || 'No conversation content available';
-            
-            // Show existing summary or generate new one
-            summaryEl.textContent = conv.summary || 'Generating summary...';
-            
-            if (!conv.summary && fullText.length > 20) {
+
+            const matchedVisitorBadge = visitorBadges.find(visitor => {
+                if (visitor === conv) return true;
+                const convId = conv.badge_id || conv._id;
+                const visitorId = visitor.badge_id || visitor._id;
+                if (convId && visitorId && `${convId}` === `${visitorId}`) return true;
+                const convTime = Number(conv.start_time || conv.video_timestamp || 0);
+                const visitorTime = Number(visitor.start_time || visitor.video_timestamp || 0);
+                const convName = `${conv.visitor_label || conv.label || ''}`.trim().toLowerCase();
+                const visitorName = `${visitor.visitor_label || visitor.name || ''}`.trim().toLowerCase();
+                return Math.abs(convTime - visitorTime) < 0.5 && (!convName || !visitorName || convName === visitorName);
+            });
+
+            const matchedScan = barcodeScans.find(scan => {
+                const visitorId = matchedVisitorBadge?.badge_id || matchedVisitorBadge?._id;
+                const scanId = scan._id || scan.visitor_badge_id;
+                if (visitorId && scanId && `${visitorId}` === `${scanId}`) return true;
+                const scanTime = Number(scan.video_timestamp || scan.start_time || 0);
+                const convTime = Number(matchedVisitorBadge?.start_time || conv.start_time || 0);
+                const scanName = `${scan.barcode_data?.name || scan.barcode_json?.name || scan.visitor_name || ''}`.trim().toLowerCase();
+                const convName = `${matchedVisitorBadge?.visitor_label || conv.visitor_label || conv.label || ''}`.trim().toLowerCase();
+                return Math.abs(scanTime - convTime) < 0.5 && (!convName || !scanName || convName === scanName);
+            });
+
+            const segments = [];
+            if (matchedScan || matchedVisitorBadge) {
+                const scanTime = matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || conv.start_time || 0;
+                let nextScanTime = null;
+                const matchedIndex = barcodeScans.findIndex(scan => {
+                    const scanId = scan._id || scan.visitor_badge_id;
+                    const matchedId = matchedScan?._id || matchedScan?.visitor_badge_id || matchedVisitorBadge?.badge_id || matchedVisitorBadge?._id;
+                    if (scanId && matchedId && `${scanId}` === `${matchedId}`) return true;
+                    const scanTimeValue = Number(scan.video_timestamp || scan.start_time || 0);
+                    return Math.abs(scanTimeValue - Number(scanTime || 0)) < 0.5;
+                });
+                if (matchedIndex >= 0 && barcodeScans[matchedIndex + 1]) {
+                    nextScanTime = barcodeScans[matchedIndex + 1].video_timestamp || null;
+                }
+
+                speakers.forEach(speaker => {
+                    const speakerSegs = speaker.dialogue_segments || [];
+                    speakerSegs.forEach(seg => {
+                        const segStart = seg.start_time || 0;
+                        const segEnd = seg.end_time || segStart;
+                        const inWindow = nextScanTime !== null
+                            ? segStart >= scanTime && segStart < nextScanTime && segEnd >= scanTime
+                            : (segStart >= scanTime || segEnd >= scanTime);
+                        if (inWindow) {
+                            segments.push({
+                                ...seg,
+                                speaker_label: speaker.label || (speaker.is_host ? 'Host' : 'Visitor')
+                            });
+                        }
+                    });
+                });
+
+                segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+                const fullText = segments.length > 0
+                    ? segments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    : (matchedVisitorBadge?.summary || conv.summary || 'No conversation content available');
+
+                summaryEl.textContent = 'Generating summary...';
                 try {
                     const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
                         method: 'POST',
@@ -2381,13 +2502,34 @@
                     });
                     if (res.ok) {
                         const result = await res.json();
-                        summaryEl.textContent = result.summary || 'No summary available';
+                        summaryEl.textContent = result.summary || matchedVisitorBadge?.summary || conv.summary || 'No summary available';
                     } else {
-                        summaryEl.textContent = 'Summary not available';
+                        summaryEl.textContent = matchedVisitorBadge?.summary || conv.summary || 'Summary not available';
                     }
                 } catch (e) {
                     console.error(e);
-                    summaryEl.textContent = 'Failed to generate summary';
+                    summaryEl.textContent = matchedVisitorBadge?.summary || conv.summary || 'Failed to generate summary';
+                }
+            } else {
+                const fullText = conv.summary || conv.topics_discussed?.join(', ') || 'No conversation content available';
+                summaryEl.textContent = conv.summary || 'Generating summary...';
+                if (!conv.summary && fullText.length > 20) {
+                    try {
+                        const res = await fetch(`${API}/recordings/${recordingId}/summarize-text`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ text: fullText })
+                        });
+                        if (res.ok) {
+                            const result = await res.json();
+                            summaryEl.textContent = result.summary || 'No summary available';
+                        } else {
+                            summaryEl.textContent = 'Summary not available';
+                        }
+                    } catch (e) {
+                        console.error(e);
+                        summaryEl.textContent = 'Failed to generate summary';
+                    }
                 }
             }
 
