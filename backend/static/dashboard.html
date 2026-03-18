@@ -2401,6 +2401,47 @@
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
+
+        async function translateClipTranscript(lang) {
+            const textEl = document.getElementById('clip-transcript-text');
+            const select = document.getElementById('clip-translate-lang');
+            if (!textEl || !select) return;
+
+            if (!lang) {
+                if (textEl.dataset.originalText) {
+                    textEl.textContent = textEl.dataset.originalText;
+                }
+                return;
+            }
+
+            const originalText = textEl.dataset.originalText || textEl.textContent;
+            if (!originalText || originalText.length < 5) {
+                alert('Not enough text to translate');
+                select.selectedIndex = 0;
+                return;
+            }
+
+            select.disabled = true;
+            textEl.innerHTML = '<div class="text-center py-4"><svg class="w-5 h-5 animate-spin inline-block" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="ml-2 text-sm text-gray-500">Translating...</span></div>';
+
+            try {
+                const res = await fetch(`${API}/translate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: originalText, target_lang: lang })
+                });
+                if (!res.ok) throw new Error('Translation failed');
+                const result = await res.json();
+                textEl.textContent = result.translated_text || originalText;
+                select.disabled = false;
+            } catch (e) {
+                console.error(e);
+                alert('Translation failed. Please try again.');
+                textEl.textContent = originalText;
+                select.selectedIndex = 0;
+                select.disabled = false;
+            }
+        }
         
         function filterSessionContexts(recId) {
             const searchInput = document.getElementById('context-search-' + recId);
