@@ -301,34 +301,6 @@
                         <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap" id="conv-info-summary">Loading summary...</div>
                     </div>
                 </div>
-                
-                <!-- Full Conversation -->
-                <div>
-                    <h4 class="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
-                        Full Conversation
-                    </h4>
-                    <div class="bg-gray-50 rounded-xl p-4">
-                        <div class="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap mb-4" id="conv-info-full-text">Loading conversation...</div>
-                        
-                        <!-- Translate Option -->
-                        <div class="flex items-center gap-2 pt-3 border-t border-gray-200">
-                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
-                            <select id="conv-info-translate" onchange="translateConversationInfo(this.value)" class="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 cursor-pointer">
-                                <option value="">Translate to...</option>
-                                <option value="en">English</option>
-                                <option value="ta">Tamil</option>
-                                <option value="es">Spanish</option>
-                                <option value="fr">French</option>
-                                <option value="de">German</option>
-                                <option value="zh">Chinese</option>
-                                <option value="ja">Japanese</option>
-                                <option value="hi">Hindi</option>
-                                <option value="ar">Arabic</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     </div>
@@ -873,7 +845,7 @@
                                         }).join(' + ');
                                     
                                     return `
-                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}">
+                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}">
                                         <div class="flex items-center gap-3 px-4 py-3 bg-white border ${isBarcodeLinked ? 'border-green-300 bg-green-50' : 'border-gray-200'} rounded-xl hover:border-orange-400 transition-colors">
                                             <div class="w-9 h-9 rounded-lg ${isBarcodeLinked ? 'bg-green-100' : 'bg-orange-100'} flex items-center justify-center flex-shrink-0">
                                                 ${isBarcodeLinked ? 
@@ -904,7 +876,7 @@
                                                         </button>`;
                                                     }
                                                 })()}
-                                                ${(r.has_video || r.has_audio) ? `<button data-rec="${r.id}" data-time="${group.startTime}" data-name="${safeName}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.name)" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
+                                                ${(r.has_video || r.has_audio) ? `<button data-rec="${r.id}" data-time="${group.startTime}" data-name="${safeName}" onclick="playClip(this.dataset.rec,+this.dataset.time,this.dataset.name,'${groupKey}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
                                                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                                 </button>` : ''}
                                             </div>
@@ -1852,7 +1824,7 @@
                                             <button onclick="removeFromWishlist('${w.id}')" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-pink-50 text-pink-500 hover:text-pink-600 transition-all" title="Remove">
                                                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                                             </button>
-                                            ${canPlay ? `<button onclick="playClip('${w.recordingId}', 0, '${safeName}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
+                                            ${canPlay ? `<button onclick="playClip('${w.recordingId}', ${w.startTime || w.data?.startTime || 0}, '${safeName}', '${w.id}')" class="flex items-center justify-center w-8 h-8 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Play">
                                                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
                                             </button>` : ''}
                                         </div>
@@ -1873,15 +1845,33 @@
             </div>`;
         }
 
-        function playClip(recId, time, label) {
+        function playClip(recId, time, label, groupKey = '') {
             const rec = data.recordings.find(r => r.id === recId);
             if (!rec) return;
             const modal = document.getElementById('clip-modal');
             const videoEl = document.getElementById('clip-video');
             const audioEl = document.getElementById('clip-audio');
             const audioWrap = document.getElementById('clip-audio-wrap');
+            const transcriptWrap = document.getElementById('clip-transcript-wrap');
+            const transcriptText = document.getElementById('clip-transcript-text');
+            const transcriptSelect = document.getElementById('clip-translate-lang');
             document.getElementById('clip-modal-label').textContent = label || rec.booth_name || 'Clip';
             document.getElementById('clip-modal-time').textContent = '@ ' + fmtDur(time);
+            let transcript = '';
+            if (groupKey) {
+                const badge = document.querySelector(`[data-group="${groupKey}"]`);
+                if (badge) transcript = badge.dataset.text || '';
+                if (!transcript) {
+                    const wishlistItem = wishlist.find(w => w.id === groupKey);
+                    if (wishlistItem) transcript = wishlistItem.data?.text || wishlistItem.content || '';
+                }
+            }
+            if (transcriptWrap && transcriptText) {
+                transcriptWrap.classList.remove('hidden');
+                transcriptText.textContent = transcript || 'No conversation available';
+                transcriptText.dataset.originalText = transcript || 'No conversation available';
+            }
+            if (transcriptSelect) transcriptSelect.selectedIndex = 0;
             if (rec.has_video) {
                 videoEl.classList.remove('hidden');
                 audioWrap.classList.add('hidden');
@@ -1904,8 +1894,13 @@
         function closeClipModal() {
             const videoEl = document.getElementById('clip-video');
             const audioEl = document.getElementById('clip-audio');
+            const transcriptText = document.getElementById('clip-transcript-text');
             videoEl.pause(); videoEl.src = '';
             audioEl.pause(); audioEl.src = '';
+            if (transcriptText) {
+                transcriptText.textContent = '';
+                transcriptText.dataset.originalText = '';
+            }
             const modal = document.getElementById('clip-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
@@ -1921,6 +1916,7 @@
             const title = badge.dataset.title || 'Conversation';
             const text = badge.dataset.text || '';
             const speakers = badge.dataset.speakers || '';
+            const startTime = Number(badge.dataset.startTime || 0);
             
             // Extract group data from the badge
             const titleEl = badge.querySelector('.font-semibold.text-gray-900');
@@ -1949,6 +1945,7 @@
                 id: groupKey,
                 recordingId: recordingId,
                 groupIndex: groupIndex,
+                startTime: startTime,
                 contextTitle: contextTitle,
                 content: text.substring(0, 300),
                 speakers: speakers,
@@ -1958,6 +1955,7 @@
                     title: badge.dataset.title,
                     text: badge.dataset.text,
                     speakers: badge.dataset.speakers,
+                    startTime: startTime,
                     hasVideo: rec.has_video,
                     hasAudio: rec.has_audio
                 }
@@ -2120,6 +2118,9 @@
             const speakers = recording.speakers || [];
             const barcodeScans = recording.barcode_scans || [];
             const visitorBadges = recording.visitor_badges || recording.visitors || [];
+            const badgeEl = document.querySelector(`[data-group="${groupKey}"]`);
+            const badgeStartTime = Number(badgeEl?.dataset.startTime || 0);
+            const badgeTitle = (badgeEl?.querySelector('.font-medium.text-gray-900.text-sm')?.textContent || '').trim().toLowerCase();
             
             // Find the conversation group
             let conversationGroup = null;
@@ -2131,10 +2132,18 @@
             const matchedScan = barcodeScans.find(scan => {
                 const key = scan._id || scan.visitor_badge_id;
                 return key && `${key}` === normalizedGroupKey;
+            }) || barcodeScans.find(scan => {
+                const scanTime = Number(scan.video_timestamp || scan.start_time || 0);
+                const scanName = `${scan.barcode_data?.name || scan.barcode_json?.name || scan.visitor_name || ''}`.trim().toLowerCase();
+                return Math.abs(scanTime - badgeStartTime) < 0.5 && (!badgeTitle || !scanName || scanName === badgeTitle);
             });
             const matchedVisitorBadge = visitorBadges.find(visitor => {
                 const key = visitor.badge_id || visitor._id;
                 return key && `${key}` === normalizedGroupKey;
+            }) || visitorBadges.find(visitor => {
+                const visitorTime = Number(visitor.start_time || visitor.video_timestamp || 0);
+                const visitorName = `${visitor.visitor_label || visitor.name || ''}`.trim().toLowerCase();
+                return Math.abs(visitorTime - badgeStartTime) < 0.5 && (!badgeTitle || !visitorName || visitorName === badgeTitle);
             });
             
             let scanData = matchedScan?.barcode_data || matchedScan?.barcode_json || matchedVisitorBadge?.barcode_data || null;
@@ -2164,9 +2173,8 @@
             document.getElementById('conv-info-company').textContent = scanData?.company || contact?.Company || contact?.company || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
-            const fullTextEl = document.getElementById('conv-info-full-text');
             
-            // Get full conversation text
+            // Get summary text for the matched badge window
             const segments = [];
             if (matchedScan || matchedVisitorBadge) {
                 const scanTime = matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || 0;
@@ -2174,7 +2182,9 @@
                 if (matchedScan) {
                     const matchedIndex = barcodeScans.findIndex(scan => {
                         const key = scan._id || scan.visitor_badge_id;
-                        return key && `${key}` === normalizedGroupKey;
+                        if (key && `${key}` === normalizedGroupKey) return true;
+                        const scanTimeValue = Number(scan.video_timestamp || scan.start_time || 0);
+                        return Math.abs(scanTimeValue - Number(scanTime || 0)) < 0.5;
                     });
                     if (matchedIndex >= 0 && barcodeScans[matchedIndex + 1]) {
                         nextScanTime = barcodeScans[matchedIndex + 1].video_timestamp || null;
@@ -2202,9 +2212,6 @@
                 const fullText = segments.length > 0
                     ? segments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
                     : (matchedVisitorBadge?.summary || `Scanned visitor: ${visitorLabel}`);
-
-                fullTextEl.textContent = fullText;
-                fullTextEl.dataset.originalText = fullText;
                 summaryEl.textContent = 'Generating summary...';
 
                 try {
@@ -2242,10 +2249,7 @@
 
                 segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
                 const fullText = segments.map(s => s.content || '').join(' ');
-                
-                fullTextEl.textContent = fullText || 'No conversation content available';
-                fullTextEl.dataset.originalText = fullText;
-                
+
                 // Generate summary
                 summaryEl.textContent = 'Generating summary...';
                 
@@ -2266,10 +2270,7 @@
                     summaryEl.textContent = conversationGroup?.summary || 'Failed to generate summary';
                 }
             }
-            
-            // Reset translate dropdown
-            document.getElementById('conv-info-translate').selectedIndex = 0;
-            
+
             // Show modal
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -2302,12 +2303,8 @@
             document.getElementById('conv-info-company').textContent = contact?.Company || contact?.company || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
-            const fullTextEl = document.getElementById('conv-info-full-text');
             
             const fullText = wishlistItem.data?.text || wishlistItem.content || '';
-            
-            fullTextEl.textContent = fullText || 'No conversation content available';
-            fullTextEl.dataset.originalText = fullText;
             
             // Generate summary
             summaryEl.textContent = 'Generating summary...';
@@ -2328,10 +2325,7 @@
                 console.error(e);
                 summaryEl.textContent = 'Failed to generate summary';
             }
-            
-            // Reset translate dropdown
-            document.getElementById('conv-info-translate').selectedIndex = 0;
-            
+
             // Show modal
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -2373,13 +2367,8 @@
             document.getElementById('conv-info-company').textContent = contact?.Company || contact?.company || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
-            const fullTextEl = document.getElementById('conv-info-full-text');
             
-            // Get full conversation text
             const fullText = conv.summary || conv.topics_discussed?.join(', ') || 'No conversation content available';
-            
-            fullTextEl.textContent = fullText;
-            fullTextEl.dataset.originalText = fullText;
             
             // Show existing summary or generate new one
             summaryEl.textContent = conv.summary || 'Generating summary...';
@@ -2402,10 +2391,7 @@
                     summaryEl.textContent = 'Failed to generate summary';
                 }
             }
-            
-            // Reset translate dropdown
-            document.getElementById('conv-info-translate').selectedIndex = 0;
-            
+
             // Show modal
             modal.classList.remove('hidden');
             modal.classList.add('flex');
@@ -2417,50 +2403,6 @@
             modal.classList.remove('flex');
         }
         
-        async function translateConversationInfo(lang) {
-            if (!lang) {
-                const textEl = document.getElementById('conv-info-full-text');
-                if (textEl && textEl.dataset.originalText) {
-                    textEl.textContent = textEl.dataset.originalText;
-                }
-                return;
-            }
-            
-            const textEl = document.getElementById('conv-info-full-text');
-            const select = document.getElementById('conv-info-translate');
-            if (!textEl) return;
-            
-            const originalText = textEl.dataset.originalText || textEl.textContent;
-            if (!originalText || originalText.length < 5) {
-                alert('Not enough text to translate');
-                select.selectedIndex = 0;
-                return;
-            }
-            
-            select.disabled = true;
-            textEl.innerHTML = '<div class="text-center py-4"><svg class="w-5 h-5 animate-spin inline-block" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg><span class="ml-2 text-sm text-gray-500">Translating...</span></div>';
-            
-            try {
-                const res = await fetch(`${API}/translate`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: originalText, target_lang: lang })
-                });
-                if (!res.ok) throw new Error('Translation failed');
-                const result = await res.json();
-                const translated = result.translated_text || originalText;
-                
-                textEl.textContent = translated;
-                select.disabled = false;
-            } catch (e) {
-                console.error(e);
-                alert('Translation failed. Please try again.');
-                textEl.textContent = originalText;
-                select.selectedIndex = 0;
-                select.disabled = false;
-            }
-        }
-
         function filterSessionContexts(recId) {
             const searchInput = document.getElementById('context-search-' + recId);
             const container = document.getElementById('context-badges-' + recId);
@@ -2472,7 +2414,7 @@
             
             container.querySelectorAll('.context-badge').forEach(badge => {
                 const title = badge.dataset.title || '';
-                const text = badge.dataset.text || '';
+                const text = badge.dataset.searchText || badge.dataset.text || '';
                 const speakers = badge.dataset.speakers || '';
                 
                 const match = !query || title.includes(query) || text.includes(query) || speakers.includes(query);
@@ -3686,7 +3628,7 @@
 
     <!-- Clip Popup Modal -->
     <div id="clip-modal" class="fixed inset-0 bg-black/75 backdrop-blur-sm hidden items-center justify-center z-50" onclick="closeClipModal()">
-        <div class="bg-gray-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-xl mx-4" onclick="event.stopPropagation()">
+        <div class="bg-gray-900 rounded-2xl shadow-2xl overflow-hidden w-full max-w-6xl mx-4" onclick="event.stopPropagation()">
             <div class="flex items-center justify-between px-4 py-3 bg-gray-800">
                 <div class="flex items-center gap-2.5">
                     <div class="w-2 h-2 rounded-full bg-violet-500 animate-pulse"></div>
@@ -3697,9 +3639,38 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
-            <video id="clip-video" class="w-full max-h-80 bg-black" controls></video>
-            <div id="clip-audio-wrap" class="hidden px-6 py-8 bg-gray-800 flex items-center justify-center">
-                <audio id="clip-audio" class="w-full" controls></audio>
+            <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,1fr)] min-h-[560px]">
+                <div class="bg-black flex items-center justify-center">
+                    <video id="clip-video" class="w-full max-h-[560px] bg-black" controls></video>
+                    <div id="clip-audio-wrap" class="hidden w-full h-full px-6 py-8 bg-gray-800 flex items-center justify-center">
+                        <audio id="clip-audio" class="w-full" controls></audio>
+                    </div>
+                </div>
+                <div id="clip-transcript-wrap" class="hidden border-l border-gray-700 bg-gray-50 flex flex-col min-h-0">
+                    <div class="px-5 py-4 border-b border-gray-200 bg-white flex items-center justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-800">Full Conversation</h3>
+                            <p class="text-xs text-gray-500">Transcript from this badge timestamp to the end of its badge window</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <select id="clip-translate-lang" onchange="translateClipTranscript(this.value)" class="bg-white text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700">
+                                <option value="">Translate to...</option>
+                                <option value="en">English</option>
+                                <option value="ta">Tamil</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="hi">Hindi</option>
+                                <option value="ar">Arabic</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="flex-1 overflow-y-auto px-5 py-4">
+                        <div id="clip-transcript-text" class="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed"></div>
+                    </div>
+                </div>
             </div>
             <div class="px-4 py-2.5 bg-gray-800 border-t border-gray-700 flex items-center justify-between">
                 <p class="text-xs text-gray-500">Playing from marked timestamp &bull; Close to stop</p>
