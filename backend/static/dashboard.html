@@ -1054,63 +1054,6 @@
                 }
                 return { conv, idx, key, trigger, isPositive, matchedKw };
             }).filter(Boolean);
-            
-            // Add dummy follow-ups if none exist (for demonstration)
-            if (followupItems.length === 0 && data.recordings.length === 0) {
-                followupItems = [
-                    {
-                        conv: {
-                            type: 'demo',
-                            recording_id: 'demo-1',
-                            recording: { booth_name: 'Product Demo Booth', has_video: true, has_audio: true },
-                            label: 'John Smith',
-                            summary: 'Interested in enterprise pricing and would like to schedule a follow-up call next week',
-                            start_time: 120,
-                            sentiment: 'positive',
-                            topics: ['pricing', 'enterprise', 'demo']
-                        },
-                        idx: 0,
-                        key: 'demo-1|0',
-                        trigger: 'Would like to schedule a follow-up call',
-                        isPositive: true,
-                        matchedKw: 'follow up'
-                    },
-                    {
-                        conv: {
-                            type: 'demo',
-                            recording_id: 'demo-2',
-                            recording: { booth_name: 'Tech Showcase', has_video: true, has_audio: true },
-                            label: 'Sarah Johnson',
-                            summary: 'Asked for detailed proposal and wants to discuss integration options with the team',
-                            start_time: 85,
-                            sentiment: 'interested',
-                            topics: ['proposal', 'integration', 'technical']
-                        },
-                        idx: 1,
-                        key: 'demo-2|1',
-                        trigger: 'Asked for detailed proposal',
-                        isPositive: true,
-                        matchedKw: 'proposal'
-                    },
-                    {
-                        conv: {
-                            type: 'demo',
-                            recording_id: 'demo-3',
-                            recording: { booth_name: 'Innovation Hub', has_video: false, has_audio: true },
-                            label: 'Michael Chen',
-                            summary: 'Very interested in the product features and requested a trial for their organization',
-                            start_time: 200,
-                            sentiment: 'positive',
-                            topics: ['trial', 'features', 'organization']
-                        },
-                        idx: 2,
-                        key: 'demo-3|2',
-                        trigger: 'Requested a trial for their organization',
-                        isPositive: true,
-                        matchedKw: 'trial'
-                    }
-                ];
-            }
 
             return `<div class="fade">
                 <div class="mb-6">
