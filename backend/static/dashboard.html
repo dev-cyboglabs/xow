@@ -2137,7 +2137,8 @@
                 try {
                     scanData = JSON.parse(scanData);
                 } catch (_) {
-                    scanData = null;
+                    // Keep scanData as the raw string (could be a phone number)
+                    // Don't set to null - extractScanPhone will handle it
                 }
             }
 
@@ -2146,20 +2147,28 @@
             const visitorLabel = matchedVisitorBadge?.visitor_label || visitor?.label || 'Visitor';
 
             // Extract phone from scan data or badge attribute, then look up in imported contacts
-            const rawScanPhone = badgeEl?.dataset?.scanPhone
-                || extractScanPhone(scanData)
-                || (() => {
-                    const raw = matchedScan?.barcode_json;
-                    return extractScanPhone(null, typeof raw === 'string' ? raw : JSON.stringify(raw || ''));
-                })()
-                || extractPhoneFromAnyString(visitorLabel);
+            const phone1 = badgeEl?.dataset?.scanPhone;
+            const phone2 = extractScanPhone(scanData);
+            const phone3 = (() => {
+                const raw = matchedScan?.barcode_json;
+                return extractScanPhone(null, typeof raw === 'string' ? raw : JSON.stringify(raw || ''));
+            })();
+            const phone4 = extractPhoneFromAnyString(visitorLabel);
             
             console.log('[Contact Match Debug]');
             console.log('  importedContacts count:', importedContacts.length);
             console.log('  visitorLabel:', visitorLabel);
-            console.log('  rawScanPhone:', rawScanPhone);
+            console.log('  Phone sources:');
+            console.log('    1. badgeEl.dataset.scanPhone:', phone1);
+            console.log('    2. extractScanPhone(scanData):', phone2);
+            console.log('    3. extractScanPhone(barcode_json):', phone3);
+            console.log('    4. extractPhoneFromAnyString(visitorLabel):', phone4);
             console.log('  scanData:', scanData);
+            console.log('  matchedScan:', matchedScan);
             console.log('  matchedVisitorBadge:', matchedVisitorBadge);
+            
+            const rawScanPhone = phone1 || phone2 || phone3 || phone4;
+            console.log('  FINAL rawScanPhone:', rawScanPhone);
             
             const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
             console.log('  phoneContact found:', phoneContact ? contactDisplayName(phoneContact) : 'null');
@@ -3500,13 +3509,25 @@
         }
 
         function extractScanPhone(scanData, fallbackRaw = '') {
+            console.log('[extractScanPhone] Called with:', {scanData, type: typeof scanData, fallbackRaw});
+            
+            // Handle number type (MongoDB may convert numeric strings to numbers, causing precision loss)
+            // Convert back to string immediately to preserve all digits
+            if (scanData && typeof scanData === 'number') {
+                console.log('[extractScanPhone] WARNING: scanData is number (precision may be lost), converting to string');
+                scanData = String(scanData);
+            }
+            
             // If scanData is a string, try to extract phone from it directly
             if (scanData && typeof scanData === 'string') {
+                console.log('[extractScanPhone] scanData is string, extracting...');
                 const digits = extractPhoneFromAnyString(scanData);
+                console.log('[extractScanPhone] Extracted digits:', digits);
                 if (digits) return digits;
             }
             
             if (scanData && typeof scanData === 'object') {
+                console.log('[extractScanPhone] scanData is object, checking fields...');
                 const direct = scanData.phone || scanData.phone_number || scanData.phonenumber || scanData.mobile || scanData.mobile_number || scanData.contact || scanData.contact_number || scanData.tel;
                 if (direct && `${direct}`.trim()) return normalizePhoneNumber(`${direct}`.trim()) || `${direct}`.trim();
                 for (const key of Object.keys(scanData)) {
@@ -3718,18 +3739,23 @@
         });
         
         async function processBarcodeData(jsonString) {
+            console.log('[Barcode Scan] Original scanned data:', jsonString);
             try {
                 let visitorData = null;
                 try {
                     visitorData = JSON.parse(jsonString);
+                    console.log('[Barcode Scan] Parsed as JSON:', visitorData);
                 } catch (_) {
+                    console.log('[Barcode Scan] Not JSON, extracting phone...');
                     const phoneOnly = extractScanPhone(null, jsonString);
+                    console.log('[Barcode Scan] Extracted phone:', phoneOnly);
                     if (!phoneOnly) {
                         showToast('Invalid barcode: expected JSON or phone number', 'error');
                         return;
                     }
                     visitorData = { phone: phoneOnly };
                     jsonString = JSON.stringify(visitorData);
+                    console.log('[Barcode Scan] Sending to backend:', jsonString);
                 }
 
                 const scanPhone = extractScanPhone(visitorData, jsonString);

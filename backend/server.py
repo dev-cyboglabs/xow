@@ -2596,7 +2596,7 @@ async def create_barcode_scan(barcode: BarcodeCreate):
     """Record a barcode scan during recording"""
     barcode_doc = {
         "recording_id": barcode.recording_id,
-        "barcode_data": barcode.barcode_data,
+        "barcode_data": str(barcode.barcode_data),  # Force string to prevent MongoDB numeric conversion
         "video_timestamp": barcode.video_timestamp,
         "frame_code": barcode.frame_code,
         "scan_time": datetime.utcnow()
