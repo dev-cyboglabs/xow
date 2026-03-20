@@ -2429,7 +2429,14 @@ Rules:
             logger.info(f"Processing speaker: {speaker.get('speaker_id')} - is_host: {speaker.get('is_host', False)} - label: {speaker.get('label')}")
             if not speaker.get('is_host', False):
                 # Create visitor badge
-                badge_id = speaker.get('label', f"Visitor_{len(visitors)+1}")
+                raw_label = speaker.get('label', f"Visitor_{len(visitors)+1}")
+                badge_id = raw_label
+                
+                # Extract phone from speaker label if embedded (e.g., "Visitor_919876543210")
+                embedded_phone = extract_phone_from_string(raw_label)
+                
+                # Use generic label if phone is embedded, otherwise use the raw label
+                visitor_label = f"Visitor {len(visitors)+1}" if embedded_phone else raw_label
                 
                 # Check if barcode was scanned for this visitor
                 is_barcode = any(b['barcode_data'] == badge_id for b in barcode_scans)
@@ -2446,7 +2453,7 @@ Rules:
                 visitor_badge = {
                     "badge_id": badge_id,
                     "recording_id": recording_id,
-                    "visitor_label": badge_id,
+                    "visitor_label": visitor_label,
                     "start_time": start_time,
                     "end_time": end_time,
                     "summary": f"Discussed: {', '.join(speaker.get('topics_discussed', [])[:2])}",
@@ -2455,6 +2462,9 @@ Rules:
                     "sentiment": speaker.get('sentiment', 'neutral'),
                     "key_points": speaker.get('key_points', []),
                     "is_barcode_linked": is_barcode,
+                    "barcode_data": {
+                        "phone": embedded_phone
+                    } if embedded_phone else None,
                     "company": speaker.get('company'),
                     "role": speaker.get('role'),
                     "created_at": datetime.utcnow()
@@ -2567,6 +2577,20 @@ async def get_visitor(visitor_id: str):
 
 # ==================== BARCODE ENDPOINTS ====================
 
+def extract_phone_from_string(text: str) -> str:
+    """Extract phone number from any string (e.g., 'Visitor_91981234567' -> '91981234567')"""
+    if not text:
+        return ""
+    # Remove all non-digit characters
+    digits = ''.join(c for c in str(text) if c.isdigit())
+    # Valid phone numbers are 7-15 digits
+    if 7 <= len(digits) <= 15:
+        return digits
+    # Try to find a sequence of 7-15 digits
+    import re
+    match = re.search(r'\d{7,15}', str(text))
+    return match.group(0) if match else ""
+
 @api_router.post("/barcodes")
 async def create_barcode_scan(barcode: BarcodeCreate):
     """Record a barcode scan during recording"""
@@ -2600,6 +2624,25 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
         
+        # Extract phone from all fields (including embedded in name like "Visitor_91981234567")
+        extracted_phone = visitor_data.get("phone", "") or visitor_data.get("phone_number", "")
+        if not extracted_phone:
+            # Check all fields for embedded phone numbers
+            for key, value in visitor_data.items():
+                if value:
+                    phone_candidate = extract_phone_from_string(str(value))
+                    if phone_candidate:
+                        extracted_phone = phone_candidate
+                        break
+        
+        # Determine visitor label: use name only if it doesn't contain embedded phone
+        raw_name = visitor_data.get("name", "")
+        name_has_phone = extract_phone_from_string(raw_name) if raw_name else ""
+        
+        # Count existing visitors to generate sequential label
+        existing_count = await db.visitor_badges.count_documents({"recording_id": scan.recording_id})
+        visitor_label = raw_name if (raw_name and not name_has_phone) else f"Visitor {existing_count + 1}"
+        
         # Update end_time of previous visitor if exists (auto-segment on new scan)
         await db.visitor_badges.update_many(
             {
@@ -2613,17 +2656,17 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
         visitor_doc = {
             "badge_id": str(uuid.uuid4()),
             "recording_id": scan.recording_id,
-            "visitor_label": visitor_data.get("name", "Unknown Visitor"),
+            "visitor_label": visitor_label,
             "start_time": scan.video_timestamp,
             "end_time": None,  # Will be set by AI or next scan
             "is_barcode_linked": True,
             "barcode_data": {
-                "name": visitor_data.get("name", ""),
-                "phone": visitor_data.get("phone", ""),
+                "name": raw_name if not name_has_phone else "",
+                "phone": extracted_phone,
                 "company": visitor_data.get("company", ""),
                 "email": visitor_data.get("email", "")
             },
-            "summary": f"Conversation with {visitor_data.get('name', 'visitor')}",
+            "summary": f"Conversation with {visitor_label}",
             "topics": [],
             "questions_asked": [],
             "sentiment": "neutral",
@@ -2655,7 +2698,7 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
             }
         )
         
-        logger.info(f"Barcode scan processed: {visitor_data.get('name')} at {scan.video_timestamp}s")
+        logger.info(f"Barcode scan processed: {visitor_label} (phone: {extracted_phone}) at {scan.video_timestamp}s")
         
         return serialize_doc(visitor_doc)
         

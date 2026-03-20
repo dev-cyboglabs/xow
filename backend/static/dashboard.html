@@ -410,19 +410,7 @@
         let speakerSegmentsFlat = [];
         const SPEAKER_COLORS = ['#f97316','#3b82f6','#10b981','#8b5cf6','#ef4444','#f59e0b','#06b6d4','#ec4899'];
         let analyticsQuery = '';
-        let importedContacts = [
-            // Sample contacts for demo
-            { name: 'Kabilan', email: 'kabilan@cyboglabs.com', phone: '6384302401', company: 'cyboglabs', designation: 'Developer', address: 'Tamil Nadu' },
-            { name: 'Akilan', email: 'akilan@cyboglabs.com', phone: '9384302401', company: 'cyboglabs', designation: 'Developer', address: 'Tamil Nadu' },
-            { name: 'Rajesh Kumar', email: 'rajesh.kumar@techcorp.com', phone: '+91 98765 43210', company: 'TechCorp Solutions', designation: 'CEO', address: 'Mumbai, Maharashtra' },
-            { name: 'Priya Sharma', email: 'priya.s@innovate.in', phone: '+91 98123 45678', company: 'Innovate Labs', designation: 'Product Manager', address: 'Bangalore, Karnataka' },
-            { name: 'Amit Patel', email: 'amit.patel@startup.io', phone: '+91 97654 32109', company: 'StartUp Ventures', designation: 'CTO', address: 'Pune, Maharashtra' },
-            { name: 'Sneha Reddy', email: 'sneha.reddy@digital.com', phone: '+91 96543 21098', company: 'Digital Marketing Co', designation: 'Marketing Head', address: 'Hyderabad, Telangana' },
-            { name: 'Vikram Singh', email: 'vikram@enterprise.net', phone: '+91 95432 10987', company: 'Enterprise Solutions', designation: 'Sales Director', address: 'Delhi, NCR' },
-            { name: 'Ananya Iyer', email: 'ananya.iyer@cloud.tech', phone: '+91 94321 09876', company: 'CloudTech India', designation: 'VP Engineering', address: 'Chennai, Tamil Nadu' },
-            { name: 'Karthik Menon', email: 'karthik.m@fintech.in', phone: '+91 93210 98765', company: 'FinTech Innovations', designation: 'CFO', address: 'Kochi, Kerala' },
-            { name: 'Divya Nair', email: 'divya.nair@ecom.store', phone: '+91 92109 87654', company: 'E-Commerce Hub', designation: 'Operations Manager', address: 'Ahmedabad, Gujarat' }
-        ]; // rows from imported Excel/CSV
+        let importedContacts = (() => { try { return JSON.parse(localStorage.getItem('xow_contacts') || '[]'); } catch { return []; } })(); // rows from imported Excel/CSV
         
         // Barcode scanner state
         let barcodeBuffer = '';
@@ -662,7 +650,11 @@
                         scanData = {};
                     }
                 }
-                const visitorName = scanData.name || `Visitor ${scanIdx + 1}`;
+                const rawVisitorName = scanData.name || `Visitor ${scanIdx + 1}`;
+                const _embeddedPhone = extractPhoneFromAnyString(rawVisitorName);
+                const _resolvedPhone = extractScanPhone(scanData, typeof scan.barcode_json === 'string' ? scan.barcode_json : '') || _embeddedPhone;
+                const _preMatchedContact = _resolvedPhone ? findContactByPhone(_resolvedPhone) : null;
+                const visitorName = (_preMatchedContact ? contactDisplayName(_preMatchedContact) : null) || (_embeddedPhone ? `Visitor ${scanIdx + 1}` : rawVisitorName) || `Visitor ${scanIdx + 1}`;
                 const scanTime = scan.video_timestamp || 0;
                 const nextScan = barcodeScans[scanIdx + 1] || null;
                 const nextScanTime = nextScan ? (nextScan.video_timestamp || scanTime) : null;
@@ -723,6 +715,7 @@
                     isContextBased: true,
                     isBarcodeLinked: true,
                     badgeKey: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`,
+                    scanPhone: _resolvedPhone,
                     fullText: scanSummary
                 });
             });
@@ -835,6 +828,7 @@
                                     // Check if this is a barcode-linked visitor (check speakers array)
                                     const isBarcodeLinked = group.speakers && group.speakers.some(s => s.is_barcode);
                                     const barcodeData = isBarcodeLinked ? group.speakers.find(s => s.is_barcode)?.barcode_data : null;
+                                    const scanPhone = group.scanPhone || extractScanPhone(barcodeData) || '';
                                     
                                     // For barcode visitors, use their actual name; otherwise use speaker labels
                                     const speakerLabels = isBarcodeLinked && barcodeData?.name 
@@ -845,7 +839,7 @@
                                         }).join(' + ');
                                     
                                     return `
-                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}">
+                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}" data-scan-phone="${scanPhone}">
                                         <div class="flex items-center gap-3 px-4 py-3 bg-white border ${isBarcodeLinked ? 'border-orange-200 bg-orange-50/60' : 'border-gray-200'} rounded-xl hover:border-orange-400 transition-colors">
                                             <div class="w-9 h-9 rounded-full ${isBarcodeLinked ? 'bg-orange-100' : 'bg-orange-100'} flex items-center justify-center flex-shrink-0">
                                                 ${isBarcodeLinked ? 
@@ -857,7 +851,7 @@
                                                 <div class="flex items-center gap-2">
                                                     <div class="font-medium text-gray-900 text-sm truncate">${group.contextTitle}</div>
                                                 </div>
-                                                <div class="text-xs text-gray-500 truncate">${isBarcodeLinked && barcodeData?.company ? barcodeData.company + ' • ' + fmtDur(group.startTime) : fmtDur(group.startTime)}</div>
+                                                <div class="text-xs text-gray-500 truncate">${isBarcodeLinked && (barcodeData?.company || scanPhone) ? `${barcodeData?.company || scanPhone} • ${fmtDur(group.startTime)}` : fmtDur(group.startTime)}</div>
                                             </div>
                                             <div class="flex items-center gap-2 flex-shrink-0">
                                                 <button onclick="showConversationInfo('${r.id}', '${groupKey}', ${gIdx})" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-all" title="Info">
@@ -2149,24 +2143,46 @@
 
             // Get visitor speaker (non-host) or exact scanned visitor
             const visitor = speakers.find(s => !s.is_host);
-            const visitorLabel = scanData?.name || matchedVisitorBadge?.visitor_label || visitor?.label || 'Visitor';
+            const visitorLabel = matchedVisitorBadge?.visitor_label || visitor?.label || 'Visitor';
+
+            // Extract phone from scan data or badge attribute, then look up in imported contacts
+            const rawScanPhone = badgeEl?.dataset?.scanPhone
+                || extractScanPhone(scanData)
+                || (() => {
+                    const raw = matchedScan?.barcode_json;
+                    return extractScanPhone(null, typeof raw === 'string' ? raw : JSON.stringify(raw || ''));
+                })()
+                || extractPhoneFromAnyString(visitorLabel);
             
-            // Find contact info from imported contacts
-            const contact = importedContacts.find(c => {
-                const name = (c.Name || c.name || '').toLowerCase();
-                return name === visitorLabel.toLowerCase();
+            console.log('[Contact Match Debug]');
+            console.log('  importedContacts count:', importedContacts.length);
+            console.log('  visitorLabel:', visitorLabel);
+            console.log('  rawScanPhone:', rawScanPhone);
+            console.log('  scanData:', scanData);
+            console.log('  matchedVisitorBadge:', matchedVisitorBadge);
+            
+            const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
+            console.log('  phoneContact found:', phoneContact ? contactDisplayName(phoneContact) : 'null');
+
+            // Fall back to name-based lookup only if no phone contact found
+            const contact = phoneContact || importedContacts.find(c => {
+                const name = (c.name || c['full name'] || c['fullname'] || c['visitor name'] || '').toLowerCase();
+                const needle = visitorLabel.toLowerCase();
+                return name && name === needle && !/^visitor\s*\d+$/i.test(needle);
             });
-            
+            console.log('  final contact:', contact ? contactDisplayName(contact) : 'null');
+
             // Populate modal
             const modal = document.getElementById('conversation-info-modal');
             const resolvedStartTime = Number(matchedScan?.video_timestamp || matchedVisitorBadge?.start_time || badgeStartTime || 0);
-            const resolvedTitle = scanData?.name || matchedVisitorBadge?.visitor_label || conversationGroup?.title || 'Conversation';
+            const resolvedTitle = (contact ? contactDisplayName(contact) : null)
+                || matchedVisitorBadge?.visitor_label || conversationGroup?.title || 'Conversation';
             document.getElementById('conv-info-title').textContent = resolvedStartTime > 0
                 ? `${resolvedTitle} • ${fmtDur(resolvedStartTime)}`
                 : resolvedTitle;
-            document.getElementById('conv-info-name').textContent = scanData?.name || contact?.Name || contact?.name || visitorLabel;
-            document.getElementById('conv-info-phone').textContent = scanData?.phone || contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
-            document.getElementById('conv-info-company').textContent = scanData?.company || contact?.Company || contact?.company || '-';
+            document.getElementById('conv-info-name').textContent = (contact ? contactDisplayName(contact) : null) || visitorLabel;
+            document.getElementById('conv-info-phone').textContent = contactPhoneValue(contact) || rawScanPhone || '-';
+            document.getElementById('conv-info-company').textContent = contactCompanyValue(contact) || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
             
@@ -3340,6 +3356,7 @@
                         Object.keys(row).forEach(k => { norm[k.toLowerCase().trim()] = String(row[k]).trim(); });
                         return norm;
                     });
+                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
                     // Re-render analytics list so import badge updates
                     const listEl = document.getElementById('analytics-list');
                     if (listEl) {
@@ -3355,6 +3372,33 @@
             };
             reader.readAsArrayBuffer(file);
             event.target.value = ''; // allow re-importing same file
+        }
+
+        // Find best matching contact from imported sheet by phone number (2-pass)
+        function findContactByPhone(rawPhone) {
+            if (!importedContacts.length || !rawPhone) return null;
+            const digits = normalizePhoneNumber(rawPhone);
+            if (digits.length < 7) return null;
+            // Pass 1: columns whose name suggests a phone field
+            for (const c of importedContacts) {
+                for (const k of Object.keys(c)) {
+                    if (/phone|mobile|cell|mob|tel|contact/i.test(k)) {
+                        const cd = normalizePhoneNumber(c[k]);
+                        if (cd.length >= 7 && (cd === digits || cd.endsWith(digits) || digits.endsWith(cd))) return c;
+                    }
+                }
+            }
+            // Pass 2: any column with a purely numeric value 7-15 digits
+            for (const c of importedContacts) {
+                for (const k of Object.keys(c)) {
+                    if (/name|email|company|address|city|note|remark|subject|role|title/i.test(k)) continue;
+                    const cd = normalizePhoneNumber(c[k]);
+                    if (/^\d+$/.test(cd) && cd.length >= 7 && cd.length <= 15) {
+                        if (cd === digits || cd.endsWith(digits) || digits.endsWith(cd)) return c;
+                    }
+                }
+            }
+            return null;
         }
 
         // Find best matching contact from imported sheet by visitor name
@@ -3411,6 +3455,82 @@
         function contactDisplayName(c) {
             const nameKeys = ['name','full name','fullname','visitor name','contact name','first name','firstname'];
             return nameKeys.map(k => c[k]).find(v => v && v.trim()) || 'Unknown';
+        }
+
+        function normalizePhoneNumber(value) {
+            return `${value || ''}`.replace(/[^\d]/g, '');
+        }
+
+        function extractPhoneFromAnyString(str) {
+            if (!str) return '';
+            const pure = normalizePhoneNumber(str);
+            if (pure.length >= 7 && pure.length <= 15) return pure;
+            const m = String(str).match(/\d{7,15}/);
+            return m ? m[0] : '';
+        }
+
+        function contactPhoneValue(contact) {
+            if (!contact) return '';
+            const keys = ['phone', 'phone number', 'phonenumber', 'mobile', 'mobile number', 'tel', 'telephone', 'contact', 'contact number', 'cell', 'mob'];
+            for (const key of keys) {
+                const value = contact[key];
+                if (value && `${value}`.trim()) return `${value}`.trim();
+            }
+            for (const key of Object.keys(contact)) {
+                if (/phone|mobile|cell|mob|tel|telephone|contact/i.test(key) && contact[key] && `${contact[key]}`.trim()) {
+                    return `${contact[key]}`.trim();
+                }
+            }
+            return '';
+        }
+
+        function contactCompanyValue(contact) {
+            if (!contact) return '';
+            const keys = ['company', 'company name', 'organization', 'organisation', 'org', 'business', 'business name'];
+            for (const key of keys) {
+                const value = contact[key];
+                if (value && `${value}`.trim()) return `${value}`.trim();
+            }
+            for (const key of Object.keys(contact)) {
+                if (/company|organization|organisation|business/i.test(key) && contact[key] && `${contact[key]}`.trim()) {
+                    return `${contact[key]}`.trim();
+                }
+            }
+            return '';
+        }
+
+        function extractScanPhone(scanData, fallbackRaw = '') {
+            // If scanData is a string, try to extract phone from it directly
+            if (scanData && typeof scanData === 'string') {
+                const digits = extractPhoneFromAnyString(scanData);
+                if (digits) return digits;
+            }
+            
+            if (scanData && typeof scanData === 'object') {
+                const direct = scanData.phone || scanData.phone_number || scanData.phonenumber || scanData.mobile || scanData.mobile_number || scanData.contact || scanData.contact_number || scanData.tel;
+                if (direct && `${direct}`.trim()) return normalizePhoneNumber(`${direct}`.trim()) || `${direct}`.trim();
+                for (const key of Object.keys(scanData)) {
+                    if (/phone|mobile|cell|mob|tel|telephone|contact/i.test(key) && scanData[key] && `${scanData[key]}`.trim()) {
+                        return normalizePhoneNumber(`${scanData[key]}`) || `${scanData[key]}`.trim();
+                    }
+                }
+                // Check name/all fields for embedded phone digits (e.g. "Visitor_919876543210")
+                for (const key of Object.keys(scanData)) {
+                    const val = `${scanData[key] || ''}`.trim();
+                    if (val) {
+                        const digits = extractPhoneFromAnyString(val);
+                        if (digits) return digits;
+                    }
+                }
+            }
+            const fallback = `${fallbackRaw || ''}`.trim();
+            if (!fallback) return '';
+            try {
+                const parsed = JSON.parse(fallback);
+                return extractScanPhone(parsed, '');
+            } catch (_) {
+                return extractPhoneFromAnyString(fallback);
+            }
         }
 
         // Render all fields of a contact row as HTML
@@ -3599,12 +3719,22 @@
         
         async function processBarcodeData(jsonString) {
             try {
-                // Parse JSON barcode data
-                const visitorData = JSON.parse(jsonString);
-                
-                // Validate required fields
-                if (!visitorData.name) {
-                    showToast('Invalid barcode: missing name field', 'error');
+                let visitorData = null;
+                try {
+                    visitorData = JSON.parse(jsonString);
+                } catch (_) {
+                    const phoneOnly = extractScanPhone(null, jsonString);
+                    if (!phoneOnly) {
+                        showToast('Invalid barcode: expected JSON or phone number', 'error');
+                        return;
+                    }
+                    visitorData = { phone: phoneOnly };
+                    jsonString = JSON.stringify(visitorData);
+                }
+
+                const scanPhone = extractScanPhone(visitorData, jsonString);
+                if (!visitorData.name && !scanPhone) {
+                    showToast('Invalid barcode: missing phone or name', 'error');
                     return;
                 }
                 
@@ -3620,7 +3750,7 @@
                     : 0;
                 
                 // Show scanning indicator
-                showBarcodeScanIndicator(visitorData.name);
+                showBarcodeScanIndicator(visitorData.name || scanPhone || 'Visitor');
                 
                 // Send to backend
                 const response = await fetch(`${API}/barcodes/scan`, {
@@ -3641,7 +3771,7 @@
                 const result = await response.json();
                 
                 // Show success notification
-                showToast(`✓ Scanned: ${visitorData.name} at ${fmtDur(currentTimestamp)}`, 'success');
+                showToast(`✓ Scanned: ${visitorData.name || scanPhone || 'Visitor'} at ${fmtDur(currentTimestamp)}`, 'success');
                 
                 // Refresh dashboard to show new visitor
                 await fetchData();
