@@ -964,17 +964,24 @@
                 // Add from visitors array
                 if (rec.visitors && rec.visitors.length > 0) {
                     for (const v of rec.visitors) {
+                        console.log('[allConversations] Original visitor object:', v);
+                        console.log('[allConversations] v.barcode_data:', v.barcode_data);
+                        console.log('[allConversations] v.visitor_label:', v.visitor_label);
+                        
                         allConversations.push({
                             type: 'visitor',
                             recording_id: rec.id,
                             recording: rec,
                             label: v.visitor_label || v.badge_id || 'Visitor',
+                            visitor_label: v.visitor_label,
+                            barcode_data: v.barcode_data,
+                            badge_id: v.badge_id,
                             summary: v.summary || `Topics: ${(v.topics || []).slice(0, 2).join(', ')}` || 'Conversation with visitor',
                             start_time: v.start_time || 0,
                             end_time: v.end_time,
                             sentiment: v.sentiment,
                             topics: v.topics || [],
-                            questions: v.questions_asked || [],
+                            questions_asked: v.questions_asked || [],
                             is_barcode: v.is_barcode_linked
                         });
                     }
@@ -1146,14 +1153,50 @@
                             const canPlay = item.conv.recording && (item.conv.recording.has_video || item.conv.recording.has_audio);
                             const playbackTarget = resolveFollowupPlaybackTarget(item.conv.recording, item.conv);
                             
+                            // Match contact by phone from barcode data
+                            // Backend stores barcode_data as object with {phone, name, company, email}
+                            let scanData = item.conv.barcode_data || null;
+                            console.log('[Followup Badge] item.conv:', item.conv);
+                            console.log('[Followup Badge] barcode_data:', scanData);
+                            console.log('[Followup Badge] visitor_label:', item.conv.visitor_label);
+                            
+                            let rawPhone = '';
+                            
+                            if (scanData && typeof scanData === 'object' && scanData.phone) {
+                                // Extract from barcode_data.phone field
+                                console.log('[Followup Badge] Extracting from barcode_data.phone:', scanData.phone);
+                                rawPhone = extractScanPhone(scanData.phone) || scanData.phone;
+                            } else if (typeof scanData === 'string') {
+                                console.log('[Followup Badge] Parsing scanData string');
+                                try { 
+                                    const parsed = JSON.parse(scanData);
+                                    rawPhone = extractScanPhone(parsed);
+                                } catch (_) {
+                                    rawPhone = extractScanPhone(scanData);
+                                }
+                            }
+                            
+                            // Fallback to extracting from visitor label
+                            if (!rawPhone) {
+                                console.log('[Followup Badge] Extracting from visitor_label');
+                                rawPhone = extractPhoneFromAnyString(item.conv.visitor_label || item.conv.label || '');
+                            }
+                            
+                            console.log('[Followup Badge] rawPhone:', rawPhone);
+                            const matchedContact = rawPhone ? findContactByPhone(rawPhone) : null;
+                            console.log('[Followup Badge] matchedContact:', matchedContact);
+                            const displayName = matchedContact ? contactDisplayName(matchedContact) : (item.conv.visitor_label || item.conv.label);
+                            const displayCompany = matchedContact ? contactCompanyValue(matchedContact) : (item.conv.recording?.booth_name || 'Recording');
+                            console.log('[Followup Badge] displayName:', displayName, 'displayCompany:', displayCompany);
+                            
                             return `
                             <div class="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-green-400 transition-colors">
                                 <div class="w-9 h-9 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
                                     <svg class="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                                 </div>
                                 <div class="flex-1 min-w-0">
-                                    <div class="font-medium text-gray-900 text-sm truncate">${item.conv.label}</div>
-                                    <div class="text-xs text-gray-500 truncate">${item.conv.recording?.booth_name || 'Recording'}</div>
+                                    <div class="font-medium text-gray-900 text-sm truncate">${displayName}</div>
+                                    <div class="text-xs text-gray-500 truncate">${displayCompany}</div>
                                 </div>
                                 <div class="flex items-center gap-2 flex-shrink-0">
                                     <button onclick="showFollowupInfo('${item.conv.recording_id}', ${item.idx})" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-all" title="Info">
@@ -2353,8 +2396,13 @@
         }
         
         async function showFollowupInfo(recordingId, convIdx) {
+            console.log('[showFollowupInfo] CALLED with recordingId:', recordingId, 'convIdx:', convIdx);
             const recording = data.recordings.find(r => r.id === recordingId);
-            if (!recording) return;
+            if (!recording) {
+                console.log('[showFollowupInfo] Recording not found');
+                return;
+            }
+            console.log('[showFollowupInfo] Recording found:', recording.id);
             
             const speakers = recording.speakers || [];
             const barcodeScans = recording.barcode_scans || [];
@@ -2370,10 +2418,15 @@
                 conv = speakers.filter(s => !s.is_host)[convIdx];
             }
             
-            if (!conv) return;
+            if (!conv) {
+                console.log('[showFollowupInfo] Conv not found');
+                return;
+            }
+            console.log('[showFollowupInfo] Conv:', conv);
 
             const playbackTarget = resolveFollowupPlaybackTarget(recording, conv);
             if (playbackTarget.groupKey) {
+                console.log('[showFollowupInfo] Redirecting to showConversationInfo with groupKey:', playbackTarget.groupKey);
                 await showConversationInfo(recordingId, playbackTarget.groupKey, convIdx);
                 return;
             }
@@ -2381,23 +2434,55 @@
             // Get visitor speaker (non-host)
             const visitor = speakers.find(s => !s.is_host);
             const visitorLabel = conv.visitor_label || conv.label || visitor?.label || 'Visitor';
+            console.log('[showFollowupInfo] visitorLabel:', visitorLabel);
             
-            // Find contact info from imported contacts
-            const contact = importedContacts.find(c => {
-                const name = (c.Name || c.name || '').toLowerCase();
-                return name === visitorLabel.toLowerCase();
+            // Extract phone from barcode data for contact matching
+            // Backend stores barcode_data as object with {phone, name, company, email}
+            let scanData = conv.barcode_data || null;
+            console.log('[showFollowupInfo] conv.barcode_data:', scanData);
+            
+            // If barcode_data is an object with phone field, extract it
+            let rawScanPhone = '';
+            if (scanData && typeof scanData === 'object' && scanData.phone) {
+                console.log('[showFollowupInfo] Extracting from barcode_data.phone:', scanData.phone);
+                rawScanPhone = extractScanPhone(scanData.phone) || scanData.phone;
+            } else if (typeof scanData === 'string') {
+                console.log('[showFollowupInfo] Parsing scanData string');
+                try {
+                    const parsed = JSON.parse(scanData);
+                    rawScanPhone = extractScanPhone(parsed);
+                } catch (_) {
+                    rawScanPhone = extractScanPhone(scanData);
+                }
+            }
+            
+            // Fallback to extracting from visitor label if no phone found
+            if (!rawScanPhone) {
+                console.log('[showFollowupInfo] No phone from barcode_data, extracting from visitorLabel');
+                rawScanPhone = extractPhoneFromAnyString(visitorLabel);
+            }
+            
+            console.log('[showFollowupInfo] rawScanPhone:', rawScanPhone);
+            const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
+            console.log('[showFollowupInfo] phoneContact:', phoneContact);
+            
+            // Fall back to name-based lookup only if no phone contact found
+            const contact = phoneContact || importedContacts.find(c => {
+                const name = (c.name || c['full name'] || c['fullname'] || c['visitor name'] || '').toLowerCase();
+                const needle = visitorLabel.toLowerCase();
+                return name && name === needle && !/^visitor\s*\d+$/i.test(needle);
             });
             
             // Populate modal
             const modal = document.getElementById('conversation-info-modal');
             const fallbackStartTime = Number(conv.start_time || conv.video_timestamp || 0);
-            const fallbackTitle = conv.title || visitorLabel;
+            const resolvedTitle = (contact ? contactDisplayName(contact) : null) || conv.title || visitorLabel;
             document.getElementById('conv-info-title').textContent = fallbackStartTime > 0
-                ? `${fallbackTitle} • ${fmtDur(fallbackStartTime)}`
-                : fallbackTitle;
-            document.getElementById('conv-info-name').textContent = contact?.Name || contact?.name || visitorLabel;
-            document.getElementById('conv-info-phone').textContent = contact?.Phone || contact?.phone || contact?.['Phone Number'] || '-';
-            document.getElementById('conv-info-company').textContent = contact?.Company || contact?.company || '-';
+                ? `${resolvedTitle} • ${fmtDur(fallbackStartTime)}`
+                : resolvedTitle;
+            document.getElementById('conv-info-name').textContent = (contact ? contactDisplayName(contact) : null) || visitorLabel;
+            document.getElementById('conv-info-phone').textContent = contactPhoneValue(contact) || rawScanPhone || '-';
+            document.getElementById('conv-info-company').textContent = contactCompanyValue(contact) || '-';
             
             const summaryEl = document.getElementById('conv-info-summary');
 
