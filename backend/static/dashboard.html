@@ -1030,30 +1030,28 @@
             }
 
             // ── Follow-up detection ──────────────────────────────────────
-            const FOLLOWUP_KW = ['call me','call us','meet','in office','at office','contact me','email me',
-                'follow up','follow-up','schedule','appointment','demo','trial','proposal','quotation',
-                'quote','pricing','price','buy','purchase','order','interested in','want to','need to',
-                'reach out','get back to','let me know','discuss further','more information','visit again',
-                'come back','looking for','considering','thinking about','like to know'];
+            // Focus on visitors who expressed interest in contact/collaboration
+            const FOLLOWUP_KW = ['contact me','call me','call us','email me','reach out','get back to',
+                'contact details','contact information','your contact','give me contact',
+                'collaborate','collab','partnership','work together','business together',
+                'follow up','follow-up','schedule','appointment','meeting','meet',
+                'demo','trial','proposal','quotation','quote',
+                'interested in','want to','need to','looking for',
+                'discuss further','more information','tell me more'];
 
             let followupItems = allConversations.map((conv, idx) => {
                 const key = `${conv.recording_id}|${idx}`;
                 if (followupsDismissed.includes(key)) return null;
                 const text = ((conv.summary || '') + ' ' + (conv.questions || []).join(' ')).toLowerCase();
-                const sent = (conv.sentiment || '').toLowerCase();
-                const isPositive = sent === 'positive' || sent === 'interested';
                 const matchedKw = FOLLOWUP_KW.find(kw => text.includes(kw));
-                if (!isPositive && !matchedKw) return null;
+                // Only show if they explicitly asked for contact/collaboration
+                if (!matchedKw) return null;
                 // Extract trigger phrase
                 let trigger = '';
-                if (matchedKw) {
-                    const sentences = ((conv.summary || '') + ' ' + (conv.questions || []).join('. ')).split(/[.!?]/);
-                    const hit = sentences.find(s => s.toLowerCase().includes(matchedKw));
-                    trigger = hit ? hit.trim() : matchedKw;
-                } else {
-                    trigger = conv.summary ? conv.summary.slice(0, 80) + (conv.summary.length > 80 ? '…' : '') : 'Positive interest expressed';
-                }
-                return { conv, idx, key, trigger, isPositive, matchedKw };
+                const sentences = ((conv.summary || '') + ' ' + (conv.questions || []).join('. ')).split(/[.!?]/);
+                const hit = sentences.find(s => s.toLowerCase().includes(matchedKw));
+                trigger = hit ? hit.trim() : matchedKw;
+                return { conv, idx, key, trigger, matchedKw };
             }).filter(Boolean);
 
             return `<div class="fade">
@@ -1154,20 +1152,12 @@
                             const playbackTarget = resolveFollowupPlaybackTarget(item.conv.recording, item.conv);
                             
                             // Match contact by phone from barcode data
-                            // Backend stores barcode_data as object with {phone, name, company, email}
                             let scanData = item.conv.barcode_data || null;
-                            console.log('[Followup Badge] item.conv:', item.conv);
-                            console.log('[Followup Badge] barcode_data:', scanData);
-                            console.log('[Followup Badge] visitor_label:', item.conv.visitor_label);
-                            
                             let rawPhone = '';
                             
                             if (scanData && typeof scanData === 'object' && scanData.phone) {
-                                // Extract from barcode_data.phone field
-                                console.log('[Followup Badge] Extracting from barcode_data.phone:', scanData.phone);
                                 rawPhone = extractScanPhone(scanData.phone) || scanData.phone;
                             } else if (typeof scanData === 'string') {
-                                console.log('[Followup Badge] Parsing scanData string');
                                 try { 
                                     const parsed = JSON.parse(scanData);
                                     rawPhone = extractScanPhone(parsed);
@@ -1176,18 +1166,13 @@
                                 }
                             }
                             
-                            // Fallback to extracting from visitor label
                             if (!rawPhone) {
-                                console.log('[Followup Badge] Extracting from visitor_label');
                                 rawPhone = extractPhoneFromAnyString(item.conv.visitor_label || item.conv.label || '');
                             }
                             
-                            console.log('[Followup Badge] rawPhone:', rawPhone);
                             const matchedContact = rawPhone ? findContactByPhone(rawPhone) : null;
-                            console.log('[Followup Badge] matchedContact:', matchedContact);
                             const displayName = matchedContact ? contactDisplayName(matchedContact) : (item.conv.visitor_label || item.conv.label);
                             const displayCompany = matchedContact ? contactCompanyValue(matchedContact) : (item.conv.recording?.booth_name || 'Recording');
-                            console.log('[Followup Badge] displayName:', displayName, 'displayCompany:', displayCompany);
                             
                             return `
                             <div class="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl hover:border-green-400 transition-colors">
@@ -2365,8 +2350,8 @@
             const visitor = speakers.find(s => !s.is_host);
             const visitorLabel = visitor?.label || wishlistItem.speakers || 'Visitor';
             
-            // Extract phone from wishlist data or visitor label for contact matching
-            const rawScanPhone = extractPhoneFromAnyString(visitorLabel) || extractPhoneFromAnyString(wishlistItem.contextTitle || '');
+            // Extract phone from wishlist scanPhone field or visitor label for contact matching
+            const rawScanPhone = wishlistItem.scanPhone || wishlistItem.data?.scanPhone || extractPhoneFromAnyString(visitorLabel) || extractPhoneFromAnyString(wishlistItem.contextTitle || '');
             const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
             
             // Fall back to name-based lookup only if no phone contact found
