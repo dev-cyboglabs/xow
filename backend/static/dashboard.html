@@ -687,7 +687,7 @@
 
                 windowSegments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
                 const scanSummary = windowSegments.length > 0
-                    ? windowSegments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    ? windowSegments.map(seg => seg.content || '').join(' ')
                     : `Scanned visitor: ${visitorName}`;
                 const scanSpeaker = {
                     speaker_id: scan._id || scan.visitor_badge_id || `barcode-scan-${scanIdx}`,
@@ -2269,7 +2269,7 @@
 
                 segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
                 const fullText = segments.length > 0
-                    ? segments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    ? segments.map(seg => seg.content || '').join(' ')
                     : (matchedVisitorBadge?.summary || `Scanned visitor: ${visitorLabel}`);
                 summaryEl.textContent = 'Generating summary...';
 
@@ -2545,7 +2545,7 @@
 
                 segments.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
                 const fullText = segments.length > 0
-                    ? segments.map(seg => `${seg.speaker_label}: ${seg.content || ''}`).join(' ')
+                    ? segments.map(seg => seg.content || '').join(' ')
                     : (matchedVisitorBadge?.summary || conv.summary || 'No conversation content available');
 
                 summaryEl.textContent = 'Generating summary...';
