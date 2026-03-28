@@ -2619,6 +2619,13 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
         # Parse JSON barcode data
         visitor_data = json.loads(scan.barcode_json)
         
+        # CRITICAL: Convert phone to string immediately to prevent precision loss
+        # MongoDB may convert large numbers, causing data corruption
+        if "phone" in visitor_data and visitor_data["phone"] is not None:
+            visitor_data["phone"] = str(visitor_data["phone"])
+        if "phone_number" in visitor_data and visitor_data["phone_number"] is not None:
+            visitor_data["phone_number"] = str(visitor_data["phone_number"])
+        
         # Validate recording exists
         recording = await db.recordings.find_one({"_id": ObjectId(scan.recording_id)})
         if not recording:
@@ -2662,9 +2669,9 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
             "is_barcode_linked": True,
             "barcode_data": {
                 "name": raw_name if not name_has_phone else "",
-                "phone": extracted_phone,
-                "company": visitor_data.get("company", ""),
-                "email": visitor_data.get("email", "")
+                "phone": str(extracted_phone) if extracted_phone else "",  # Force string
+                "company": str(visitor_data.get("company", "")) if visitor_data.get("company") else "",
+                "email": str(visitor_data.get("email", "")) if visitor_data.get("email") else ""
             },
             "summary": f"Conversation with {visitor_label}",
             "topics": [],
