@@ -517,7 +517,7 @@
             icon.classList.remove('animate-spin');
         }
 
-        function setView(v) {
+        window.setView = function(v) {
             view = v;
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             const navEl = document.getElementById(`nav-${v}`);
@@ -822,13 +822,90 @@
                                 const renderBadge = (group, gIdx) => {
                                     if (!group) return '';
                                     
-                                    const fullText = group.fullText || group.segments.map(s => s.content || '').join(' ');
-                                    const groupKey = group.badgeKey ? `${r.id}-${group.badgeKey}` : `${r.id}-grp-${gIdx}`;
-                                    
-                                    // Check if this is a barcode-linked visitor (check speakers array)
-                                    const isBarcodeLinked = group.speakers && group.speakers.some(s => s.is_barcode);
-                                    const barcodeData = isBarcodeLinked ? group.speakers.find(s => s.is_barcode)?.barcode_data : null;
-                                    const scanPhone = group.scanPhone || extractScanPhone(barcodeData) || '';
+                                    try {
+                                        const fullText = group.fullText || group.segments.map(s => s.content || '').join(' ');
+                                        const groupKey = group.badgeKey ? `${r.id}-${group.badgeKey}` : `${r.id}-grp-${gIdx}`;
+                                        
+                                        // Check if this is a barcode-linked visitor (check speakers array)
+                                        const isBarcodeLinked = group.speakers && group.speakers.some(s => s.is_barcode);
+                                        const barcodeData = isBarcodeLinked ? group.speakers.find(s => s.is_barcode)?.barcode_data : null;
+                                        const scanPhone = group.scanPhone || extractScanPhone(barcodeData) || '';
+                                        
+                                        // Extract visitor_id from barcode_data or from visitor label/contextTitle
+                                        let visitorId = '';
+                                        
+                                        // Try multiple sources for visitor_id
+                                        if (barcodeData && typeof barcodeData === 'object' && Object.keys(barcodeData).length > 0) {
+                                            // Try direct field access
+                                            visitorId = barcodeData.visitor_id || barcodeData.visitorid || barcodeData.id || '';
+                                            
+                                            // If still no ID, try extractVisitorId on the whole barcodeData object
+                                            if (!visitorId) {
+                                                visitorId = extractVisitorId(barcodeData);
+                                            }
+                                        }
+                                        
+                                        // CRITICAL FALLBACK: If barcodeData is empty, check recording.barcode_scans array
+                                        // (same source the info modal uses successfully)
+                                        if (!visitorId && r.barcode_scans && r.barcode_scans.length > 0) {
+                                            // Find scan that matches this group's time window
+                                            const matchedScan = r.barcode_scans.find(scan => {
+                                                const scanTime = scan.video_timestamp || 0;
+                                                const groupStart = group.startTime || 0;
+                                                const groupEnd = group.endTime || (groupStart + 120);
+                                                return scanTime >= groupStart && scanTime <= groupEnd;
+                                            });
+                                            
+                                            if (matchedScan && matchedScan.barcode_data) {
+                                                visitorId = extractVisitorId(matchedScan.barcode_data);
+                                            }
+                                        }
+                                        
+                                        // Fallback to extracting from contextTitle
+                                        if (!visitorId && group.contextTitle) {
+                                            visitorId = extractVisitorId(group.contextTitle);
+                                        }
+                                        
+                                        // Fallback to extracting from speaker label
+                                        if (!visitorId && isBarcodeLinked) {
+                                            const barcodeSpeaker = group.speakers.find(s => s.is_barcode);
+                                            if (barcodeSpeaker?.label) {
+                                                visitorId = extractVisitorId(barcodeSpeaker.label);
+                                            }
+                                        }
+                                        
+                                        console.log('[Badge Render] DETAILED DEBUG:', {
+                                            contextTitle: group.contextTitle,
+                                            'barcodeData (full)': barcodeData,
+                                            'barcodeData type': typeof barcodeData,
+                                            'barcodeData keys': barcodeData ? Object.keys(barcodeData) : 'null',
+                                            'barcodeData.visitor_id': barcodeData?.visitor_id,
+                                            'group.speakers': group.speakers,
+                                            extractedVisitorId: visitorId,
+                                            scanPhone: scanPhone,
+                                            importedContactsCount: importedContacts.length
+                                        });
+                                        
+                                        // Match visitor with imported contacts by ID, phone, or name
+                                        let matchedContact = null;
+                                        if (visitorId) {
+                                            matchedContact = findContactById(visitorId);
+                                            console.log('[Badge Render] ID match result:', matchedContact ? contactDisplayName(matchedContact) : 'null');
+                                        }
+                                        if (!matchedContact && scanPhone) {
+                                            matchedContact = findContactByPhone(scanPhone);
+                                            console.log('[Badge Render] Phone match result:', matchedContact ? contactDisplayName(matchedContact) : 'null');
+                                        }
+                                        if (!matchedContact && group.contextTitle && !visitorId) {
+                                            matchedContact = findContact(group.contextTitle);
+                                            console.log('[Badge Render] Name match result:', matchedContact ? contactDisplayName(matchedContact) : 'null');
+                                        }
+                                        
+                                        // Display name: matched contact > barcode name > context title
+                                        const displayName = matchedContact ? contactDisplayName(matchedContact) : (barcodeData?.name || group.contextTitle);
+                                        const displayCompany = matchedContact ? contactCompanyValue(matchedContact) : (barcodeData?.company || '');
+                                        
+                                        console.log('[Badge Render] Final display:', {displayName, displayCompany});
                                     
                                     // For barcode visitors, use their actual name; otherwise use speaker labels
                                     const speakerLabels = isBarcodeLinked && barcodeData?.name 
@@ -839,7 +916,7 @@
                                         }).join(' + ');
                                     
                                     return `
-                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}" data-scan-phone="${scanPhone}">
+                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}" data-scan-phone="${scanPhone}" data-visitor-id="${visitorId}">
                                         <div class="flex items-center gap-3 px-4 py-3 bg-white border ${isBarcodeLinked ? 'border-orange-200 bg-orange-50/60' : 'border-gray-200'} rounded-xl hover:border-orange-400 transition-colors">
                                             <div class="w-9 h-9 rounded-full ${isBarcodeLinked ? 'bg-orange-100' : 'bg-orange-100'} flex items-center justify-center flex-shrink-0">
                                                 ${isBarcodeLinked ? 
@@ -849,9 +926,9 @@
                                             </div>
                                             <div class="flex-1 min-w-0">
                                                 <div class="flex items-center gap-2">
-                                                    <div class="font-medium text-gray-900 text-sm truncate">${group.contextTitle}</div>
+                                                    <div class="font-medium text-gray-900 text-sm truncate">${displayName}</div>
                                                 </div>
-                                                <div class="text-xs text-gray-500 truncate">${isBarcodeLinked && (barcodeData?.company || scanPhone) ? `${barcodeData?.company || scanPhone} • ${fmtDur(group.startTime)}` : fmtDur(group.startTime)}</div>
+                                                <div class="text-xs text-gray-500 truncate">${isBarcodeLinked && (displayCompany || scanPhone) ? `${displayCompany || scanPhone} • ${fmtDur(group.startTime)}` : fmtDur(group.startTime)}</div>
                                             </div>
                                             <div class="flex items-center gap-2 flex-shrink-0">
                                                 <button onclick="showConversationInfo('${r.id}', '${groupKey}', ${gIdx})" class="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-blue-50 text-gray-400 hover:text-blue-500 transition-all" title="Info">
@@ -875,6 +952,19 @@
                                             </div>
                                         </div>
                                     </div>`;
+                                    } catch (err) {
+                                        console.error('[renderBadge] Error rendering badge:', err);
+                                        // Fallback rendering if contact matching fails
+                                        const groupKey = group.badgeKey ? `${r.id}-${group.badgeKey}` : `${r.id}-grp-${gIdx}`;
+                                        return `<div class="flex-1 context-badge" data-group="${groupKey}">
+                                            <div class="flex items-center gap-3 px-4 py-3 bg-white border border-gray-200 rounded-xl">
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="font-medium text-gray-900 text-sm truncate">${group.contextTitle || 'Conversation'}</div>
+                                                    <div class="text-xs text-gray-500">Error loading details</div>
+                                                </div>
+                                            </div>
+                                        </div>`;
+                                    }
                                 };
                                 
                                 rows.push(`
@@ -1821,10 +1911,46 @@
                                 const safeName = (w.boothName || 'Recording').replace(/'/g, "\\'");
                                 const groupKey = 'wishlist-' + w.id;
                                 
-                                // Match contact by phone from wishlist data
-                                // Use scanPhone if available, otherwise try to extract from speakers/contextTitle
+                                // Extract visitor_id - try multiple sources (same as Session tab fix)
+                                let visitorId = w.visitorId || w.data?.visitorId || '';
+                                
+                                // Fallback: extract from contextTitle or speakers
+                                if (!visitorId && w.contextTitle) {
+                                    visitorId = extractVisitorId(w.contextTitle);
+                                }
+                                if (!visitorId && w.speakers) {
+                                    visitorId = extractVisitorId(w.speakers);
+                                }
+                                
+                                // CRITICAL FALLBACK: Check recording.barcode_scans array (same as Session tab)
+                                if (!visitorId && rec && rec.barcode_scans && rec.barcode_scans.length > 0) {
+                                    const matchedScan = rec.barcode_scans.find(scan => {
+                                        const scanTime = scan.video_timestamp || 0;
+                                        const itemStart = w.startTime || 0;
+                                        const itemEnd = itemStart + 120;
+                                        return scanTime >= itemStart && scanTime <= itemEnd;
+                                    });
+                                    
+                                    if (matchedScan && matchedScan.barcode_data) {
+                                        visitorId = extractVisitorId(matchedScan.barcode_data);
+                                    }
+                                }
+                                
+                                // Extract phone
                                 const rawPhone = w.scanPhone || w.data?.scanPhone || extractPhoneFromAnyString(w.speakers || w.contextTitle || '');
-                                const matchedContact = rawPhone ? findContactByPhone(rawPhone) : null;
+                                
+                                // Match contact by ID first, then phone, then name (same priority as Session tab)
+                                let matchedContact = null;
+                                if (visitorId) {
+                                    matchedContact = findContactById(visitorId);
+                                }
+                                if (!matchedContact && rawPhone) {
+                                    matchedContact = findContactByPhone(rawPhone);
+                                }
+                                if (!matchedContact && w.contextTitle) {
+                                    matchedContact = findContact(w.contextTitle);
+                                }
+                                
                                 const displayName = matchedContact ? contactDisplayName(matchedContact) : (w.contextTitle || w.speakers || 'Conversation');
                                 const displayCompany = matchedContact ? contactCompanyValue(matchedContact) : (w.boothName || 'Recording');
                                 
@@ -1939,6 +2065,7 @@
             const speakers = badge.dataset.speakers || '';
             const startTime = Number(badge.dataset.startTime || 0);
             const scanPhone = badge.dataset.scanPhone || '';
+            const visitorId = badge.dataset.visitorId || '';
             
             // Extract group data from the badge
             const titleEl = badge.querySelector('.font-semibold.text-gray-900');
@@ -1972,6 +2099,7 @@
                 content: text.substring(0, 300),
                 speakers: speakers,
                 scanPhone: scanPhone,
+                visitorId: visitorId,
                 boothName: rec.booth_name || 'Recording',
                 recordingDate: rec.created_at,
                 data: {
@@ -1979,6 +2107,7 @@
                     text: badge.dataset.text,
                     speakers: badge.dataset.speakers,
                     scanPhone: scanPhone,
+                    visitorId: visitorId,
                     startTime: startTime,
                     hasVideo: rec.has_video,
                     hasAudio: rec.has_audio
@@ -2184,7 +2313,14 @@
             const visitor = speakers.find(s => !s.is_host);
             const visitorLabel = matchedVisitorBadge?.visitor_label || visitor?.label || 'Visitor';
 
-            // Extract phone from scan data or badge attribute, then look up in imported contacts
+            // Extract visitor ID and phone from scan data - prioritize ID matching
+            const visitorId1 = badgeEl?.dataset?.visitorId;
+            const visitorId2 = extractVisitorId(scanData);
+            const visitorId3 = (() => {
+                const raw = matchedScan?.barcode_json;
+                return extractVisitorId(null, typeof raw === 'string' ? raw : JSON.stringify(raw || ''));
+            })();
+            
             const phone1 = badgeEl?.dataset?.scanPhone;
             const phone2 = extractScanPhone(scanData);
             const phone3 = (() => {
@@ -2196,6 +2332,10 @@
             console.log('[Contact Match Debug]');
             console.log('  importedContacts count:', importedContacts.length);
             console.log('  visitorLabel:', visitorLabel);
+            console.log('  Visitor ID sources:');
+            console.log('    1. badgeEl.dataset.visitorId:', visitorId1);
+            console.log('    2. extractVisitorId(scanData):', visitorId2);
+            console.log('    3. extractVisitorId(barcode_json):', visitorId3);
             console.log('  Phone sources:');
             console.log('    1. badgeEl.dataset.scanPhone:', phone1);
             console.log('    2. extractScanPhone(scanData):', phone2);
@@ -2205,14 +2345,21 @@
             console.log('  matchedScan:', matchedScan);
             console.log('  matchedVisitorBadge:', matchedVisitorBadge);
             
+            const rawVisitorId = visitorId1 || visitorId2 || visitorId3;
             const rawScanPhone = phone1 || phone2 || phone3 || phone4;
+            console.log('  FINAL rawVisitorId:', rawVisitorId);
             console.log('  FINAL rawScanPhone:', rawScanPhone);
             
-            const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
+            // Priority 1: Match by visitor ID
+            const idContact = rawVisitorId ? findContactById(rawVisitorId) : null;
+            console.log('  idContact found:', idContact ? contactDisplayName(idContact) : 'null');
+            
+            // Priority 2: Match by phone number (fallback)
+            const phoneContact = !idContact && rawScanPhone ? findContactByPhone(rawScanPhone) : null;
             console.log('  phoneContact found:', phoneContact ? contactDisplayName(phoneContact) : 'null');
 
-            // Fall back to name-based lookup only if no phone contact found
-            const contact = phoneContact || importedContacts.find(c => {
+            // Priority 3: Match by name (last resort)
+            const contact = idContact || phoneContact || importedContacts.find(c => {
                 const name = (c.name || c['full name'] || c['fullname'] || c['visitor name'] || '').toLowerCase();
                 const needle = visitorLabel.toLowerCase();
                 return name && name === needle && !/^visitor\s*\d+$/i.test(needle);
@@ -2350,12 +2497,18 @@
             const visitor = speakers.find(s => !s.is_host);
             const visitorLabel = visitor?.label || wishlistItem.speakers || 'Visitor';
             
-            // Extract phone from wishlist scanPhone field or visitor label for contact matching
+            // Extract visitor ID and phone from wishlist data - prioritize ID matching
+            const rawVisitorId = wishlistItem.visitorId || wishlistItem.data?.visitorId || extractVisitorId(wishlistItem.contextTitle || wishlistItem.speakers || '');
             const rawScanPhone = wishlistItem.scanPhone || wishlistItem.data?.scanPhone || extractPhoneFromAnyString(visitorLabel) || extractPhoneFromAnyString(wishlistItem.contextTitle || '');
-            const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
             
-            // Fall back to name-based lookup only if no phone contact found
-            const contact = phoneContact || importedContacts.find(c => {
+            // Priority 1: Match by visitor ID
+            const idContact = rawVisitorId ? findContactById(rawVisitorId) : null;
+            
+            // Priority 2: Match by phone number (fallback)
+            const phoneContact = !idContact && rawScanPhone ? findContactByPhone(rawScanPhone) : null;
+            
+            // Priority 3: Match by name (last resort)
+            const contact = idContact || phoneContact || importedContacts.find(c => {
                 const name = (c.name || c['full name'] || c['fullname'] || c['visitor name'] || '').toLowerCase();
                 const needle = visitorLabel.toLowerCase();
                 return name && name === needle && !/^visitor\s*\d+$/i.test(needle);
@@ -2438,12 +2591,21 @@
             const visitorLabel = conv.visitor_label || conv.label || visitor?.label || 'Visitor';
             console.log('[showFollowupInfo] visitorLabel:', visitorLabel);
             
-            // Extract phone from barcode data for contact matching
-            // Backend stores barcode_data as object with {phone, name, company, email}
+            // Extract visitor ID and phone from barcode data - prioritize ID matching
+            // Backend stores barcode_data as object with {visitor_id, phone, name, company, email}
             let scanData = conv.barcode_data || null;
             console.log('[showFollowupInfo] conv.barcode_data:', scanData);
             
-            // If barcode_data is an object with phone field, extract it
+            // Extract visitor ID
+            let rawVisitorId = '';
+            if (scanData && typeof scanData === 'object' && scanData.visitor_id) {
+                console.log('[showFollowupInfo] Extracting from barcode_data.visitor_id:', scanData.visitor_id);
+                rawVisitorId = String(scanData.visitor_id).trim().toUpperCase();
+            } else if (typeof scanData === 'string') {
+                rawVisitorId = extractVisitorId(scanData);
+            }
+            
+            // Extract phone
             let rawScanPhone = '';
             if (scanData && typeof scanData === 'object' && scanData.phone) {
                 console.log('[showFollowupInfo] Extracting from barcode_data.phone:', scanData.phone);
@@ -2458,18 +2620,19 @@
                 }
             }
             
-            // Fallback to extracting from visitor label if no phone found
-            if (!rawScanPhone) {
-                console.log('[showFollowupInfo] No phone from barcode_data, extracting from visitorLabel');
-                rawScanPhone = extractPhoneFromAnyString(visitorLabel);
-            }
-            
+            console.log('[showFollowupInfo] rawVisitorId:', rawVisitorId);
             console.log('[showFollowupInfo] rawScanPhone:', rawScanPhone);
-            const phoneContact = rawScanPhone ? findContactByPhone(rawScanPhone) : null;
+            
+            // Priority 1: Match by visitor ID
+            const idContact = rawVisitorId ? findContactById(rawVisitorId) : null;
+            console.log('[showFollowupInfo] idContact:', idContact);
+            
+            // Priority 2: Match by phone number (fallback)
+            const phoneContact = !idContact && rawScanPhone ? findContactByPhone(rawScanPhone) : null;
             console.log('[showFollowupInfo] phoneContact:', phoneContact);
             
-            // Fall back to name-based lookup only if no phone contact found
-            const contact = phoneContact || importedContacts.find(c => {
+            // Priority 3: Match by name (last resort)
+            const contact = idContact || phoneContact || importedContacts.find(c => {
                 const name = (c.name || c['full name'] || c['fullname'] || c['visitor name'] || '').toLowerCase();
                 const needle = visitorLabel.toLowerCase();
                 return name && name === needle && !/^visitor\s*\d+$/i.test(needle);
@@ -3470,7 +3633,36 @@
             event.target.value = ''; // allow re-importing same file
         }
 
+        // Find contact by unique visitor ID (primary matching method)
+        function findContactById(visitorId) {
+            if (!importedContacts.length || !visitorId) return null;
+            const searchId = String(visitorId).trim().toUpperCase();
+            if (!searchId) return null;
+            
+            // Search in columns that suggest ID fields
+            const idKeys = ['visitor_id', 'visitorid', 'id', 'visitor id', 'badge_id', 'badgeid', 'badge id', 'unique_id', 'uniqueid'];
+            for (const c of importedContacts) {
+                for (const k of Object.keys(c)) {
+                    if (idKeys.includes(k.toLowerCase())) {
+                        const contactId = String(c[k]).trim().toUpperCase();
+                        if (contactId === searchId) return c;
+                    }
+                }
+            }
+            
+            // Fallback: search any column for exact match (case-insensitive)
+            for (const c of importedContacts) {
+                for (const k of Object.keys(c)) {
+                    const val = String(c[k]).trim().toUpperCase();
+                    if (val === searchId && searchId.length >= 3) return c;
+                }
+            }
+            
+            return null;
+        }
+
         // Find best matching contact from imported sheet by phone number (2-pass)
+        // This is now a fallback method when visitor_id is not available
         function findContactByPhone(rawPhone) {
             if (!importedContacts.length || !rawPhone) return null;
             const digits = normalizePhoneNumber(rawPhone);
@@ -3592,6 +3784,73 @@
                     return `${contact[key]}`.trim();
                 }
             }
+            return '';
+        }
+
+        // Extract visitor ID from QR scan data (primary identifier)
+        function extractVisitorId(scanData, fallbackRaw = '') {
+            console.log('[extractVisitorId] Called with:', {scanData, type: typeof scanData, fallbackRaw});
+            
+            // If scanData is a string, check if it looks like a visitor ID (e.g., "BV98761")
+            if (scanData && typeof scanData === 'string') {
+                const trimmed = scanData.trim();
+                
+                // Check for "Visitor_BV98761" format - extract ID after underscore
+                if (trimmed.includes('_')) {
+                    const parts = trimmed.split('_');
+                    const idPart = parts[parts.length - 1]; // Get last part after underscore
+                    if (/^[A-Z0-9]{3,20}$/i.test(idPart)) {
+                        console.log('[extractVisitorId] Found ID after underscore:', idPart);
+                        return idPart.toUpperCase();
+                    }
+                }
+                
+                // Check if it matches visitor ID pattern (letters + numbers, 3-20 chars)
+                if (/^[A-Z0-9]{3,20}$/i.test(trimmed)) {
+                    console.log('[extractVisitorId] Found ID in string:', trimmed);
+                    return trimmed.toUpperCase();
+                }
+            }
+            
+            // If scanData is an object, check for ID fields
+            if (scanData && typeof scanData === 'object') {
+                console.log('[extractVisitorId] scanData is object, checking fields...');
+                const idFields = ['visitor_id', 'visitorid', 'id', 'visitor id', 'badge_id', 'badgeid', 'unique_id', 'uniqueid'];
+                for (const field of idFields) {
+                    if (scanData[field]) {
+                        const id = String(scanData[field]).trim().toUpperCase();
+                        if (id) {
+                            console.log('[extractVisitorId] Found ID in field', field, ':', id);
+                            return id;
+                        }
+                    }
+                }
+                
+                // Check all fields for visitor ID pattern
+                for (const key of Object.keys(scanData)) {
+                    const val = String(scanData[key] || '').trim();
+                    if (val && /^[A-Z0-9]{3,20}$/i.test(val)) {
+                        console.log('[extractVisitorId] Found ID pattern in', key, ':', val);
+                        return val.toUpperCase();
+                    }
+                }
+            }
+            
+            // Try fallback
+            const fallback = `${fallbackRaw || ''}`.trim();
+            if (fallback) {
+                try {
+                    const parsed = JSON.parse(fallback);
+                    return extractVisitorId(parsed, '');
+                } catch (_) {
+                    // Check if fallback itself is a visitor ID
+                    if (/^[A-Z0-9]{3,20}$/i.test(fallback)) {
+                        return fallback.toUpperCase();
+                    }
+                }
+            }
+            
+            console.log('[extractVisitorId] No visitor ID found');
             return '';
         }
 

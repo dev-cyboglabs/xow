@@ -2616,8 +2616,18 @@ async def create_barcode_scan(barcode: BarcodeCreate):
 async def process_barcode_scan(scan: BarcodeScanCreate):
     """Process barcode scan with JSON visitor data and create visitor context"""
     try:
-        # Parse JSON barcode data
-        visitor_data = json.loads(scan.barcode_json)
+        # Parse JSON barcode data or handle simple visitor ID string
+        try:
+            visitor_data = json.loads(scan.barcode_json)
+        except json.JSONDecodeError:
+            # If not valid JSON, treat as simple visitor ID string
+            visitor_id_str = scan.barcode_json.strip()
+            # Check if it looks like a visitor ID (alphanumeric, 3-20 chars)
+            if re.match(r'^[A-Z0-9]{3,20}$', visitor_id_str, re.IGNORECASE):
+                visitor_data = {"visitor_id": visitor_id_str.upper()}
+            else:
+                # Might be a phone number or other data
+                visitor_data = {"phone": visitor_id_str}
         
         # CRITICAL: Convert phone to string immediately to prevent precision loss
         # MongoDB may convert large numbers, causing data corruption
@@ -2626,10 +2636,19 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
         if "phone_number" in visitor_data and visitor_data["phone_number"] is not None:
             visitor_data["phone_number"] = str(visitor_data["phone_number"])
         
+        # CRITICAL: Convert visitor_id to string to ensure consistent matching
+        if "visitor_id" in visitor_data and visitor_data["visitor_id"] is not None:
+            visitor_data["visitor_id"] = str(visitor_data["visitor_id"]).strip().upper()
+        
         # Validate recording exists
         recording = await db.recordings.find_one({"_id": ObjectId(scan.recording_id)})
         if not recording:
             raise HTTPException(status_code=404, detail="Recording not found")
+        
+        # Extract visitor ID (primary identifier)
+        extracted_visitor_id = visitor_data.get("visitor_id", "") or visitor_data.get("id", "") or visitor_data.get("badge_id", "")
+        if extracted_visitor_id:
+            extracted_visitor_id = str(extracted_visitor_id).strip().upper()
         
         # Extract phone from all fields (including embedded in name like "Visitor_91981234567")
         extracted_phone = visitor_data.get("phone", "") or visitor_data.get("phone_number", "")
@@ -2668,6 +2687,7 @@ async def process_barcode_scan(scan: BarcodeScanCreate):
             "end_time": None,  # Will be set by AI or next scan
             "is_barcode_linked": True,
             "barcode_data": {
+                "visitor_id": str(extracted_visitor_id) if extracted_visitor_id else "",  # Primary identifier
                 "name": raw_name if not name_has_phone else "",
                 "phone": str(extracted_phone) if extracted_phone else "",  # Force string
                 "company": str(visitor_data.get("company", "")) if visitor_data.get("company") else "",
