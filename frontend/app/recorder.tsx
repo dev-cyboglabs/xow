@@ -68,7 +68,6 @@ export default function RecorderScreen() {
   const [barcodeCount, setBarcodeCount] = useState(0);
   const [barcodeScans, setBarcodeScans] = useState<BarcodeData[]>([]);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const [mediaLibraryPermission, requestMediaLibraryPermission] = MediaLibrary.usePermissions();
   const [currentTime, setCurrentTime] = useState(new Date());
   const [isSaving, setIsSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState(0);
@@ -275,12 +274,8 @@ export default function RecorderScreen() {
     if (!audioStatus.granted) {
       Alert.alert('Permission Required', 'Microphone access is needed for recording.');
     }
-    if (!mediaLibraryPermission?.granted) {
-      const result = await requestMediaLibraryPermission();
-      if (!result.granted) {
-        Alert.alert('Permission Required', 'Media library access is needed to save videos to your gallery.');
-      }
-    }
+    // MediaLibrary permissions removed - causing config issues
+    // Gallery save will still work via try-catch when saving videos
   };
 
   const checkConnection = async () => {
