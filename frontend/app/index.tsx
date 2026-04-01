@@ -141,9 +141,6 @@ export default function SetupScreen() {
     }
   };
 
-  const skipToApp = () => {
-    router.replace('/recorder');
-  };
 
   useEffect(() => {
     if (status !== 'ready') return;
@@ -181,9 +178,6 @@ export default function SetupScreen() {
         <Text style={styles.errorText}>{errorMsg}</Text>
         <TouchableOpacity style={styles.retryBtn} onPress={init}>
           <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.skipBtn} onPress={skipToApp}>
-          <Text style={styles.skipText}>Skip for Testing</Text>
         </TouchableOpacity>
       </View>
     );
@@ -243,10 +237,6 @@ export default function SetupScreen() {
             <ActivityIndicator color="#8B5CF6" size="small" />
             <Text style={styles.waitingText}>Waiting for connection</Text>
           </View>
-
-          <TouchableOpacity style={styles.skipBtn} onPress={skipToApp}>
-            <Text style={styles.skipText}>Skip for Testing</Text>
-          </TouchableOpacity>
         </View>
       </View>
     </View>
