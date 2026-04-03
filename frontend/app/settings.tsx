@@ -208,7 +208,7 @@ export default function SettingsScreen() {
     }
   };
 
-  const sidebarWidth = Math.min(90, width * 0.12);
+  const sidebarWidth = Math.min(60, width * 0.08);
 
   return (
     <View style={[styles.container, { width, height }]}>
@@ -217,9 +217,6 @@ export default function SettingsScreen() {
         <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={20} color="#fff" />
         </TouchableOpacity>
-        <View style={styles.sidebarIcon}>
-          <Ionicons name="settings" size={24} color="#E54B2A" />
-        </View>
       </View>
 
       {/* Content */}

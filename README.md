@@ -16,3 +16,13 @@ apk build steps
 
 # Frontend Deploy
 1. Frontend-dashboard folder has index.html, dashboard.js, dashboard.html upload three files in godaddy
+
+# Build the Apk
+
+cd /Users/KABILAN/Desktop/xow/frontend
+cd android && ./gradlew clean && cd ..
+npx expo prebuild --clean --platform android
+cd android && ./gradlew assembleRelease
+
+# APK Location
+/Users/KABILAN/Desktop/xow/frontend/android/app/build/outputs/apk/release/app-release.apk
