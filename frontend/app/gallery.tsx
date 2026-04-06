@@ -24,6 +24,15 @@ import axios from 'axios';
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
 
+interface VideoChunk {
+  chunkIndex: number;
+  filePath: string;
+  duration: number;
+  startTime: number;
+  endTime: number;
+  fileSize: number;
+}
+
 interface LocalRecording {
   id: string;
   localId: string;
@@ -38,6 +47,8 @@ interface LocalRecording {
   fps?: number;
   fpsTimeline?: number[];
   capturedFrames?: string[];  // periodic visitor snapshot paths
+  videoChunks?: VideoChunk[];  // Array of video chunks for chunked recordings
+  isChunked?: boolean;  // Flag indicating chunked recording
 }
 
 interface BarcodeData {
@@ -83,9 +94,23 @@ export default function GalleryScreen() {
   const videoRef = useRef<any>(null);
   const [videoPosition, setVideoPosition] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [globalDuration, setGlobalDuration] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(true);
   const [videoFps, setVideoFps] = useState(30);
   const [previewFpsTimeline, setPreviewFpsTimeline] = useState<number[]>([]);
   const [videoHasEnded, setVideoHasEnded] = useState(false);
+  
+  // Chunked playback state
+  const [allChunks, setAllChunks] = useState<VideoChunk[]>([]);
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+  const [isChunkedPlayback, setIsChunkedPlayback] = useState(false);
+  const [chunkStartOffsets, setChunkStartOffsets] = useState<number[]>([]);
+  const [isSeeking, setIsSeeking] = useState(false);
+  const progressTrackWidthRef = useRef(0);
+  const pendingSeekMsRef = useRef<number | null>(null);
+  const pendingSeekResumeRef = useRef<boolean | null>(null);
+  const dragSeekSecondsRef = useRef<number | null>(null);
+  const wasPlayingBeforeSeekRef = useRef(true);
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
@@ -140,6 +165,67 @@ export default function GalleryScreen() {
     }
   };
 
+  const seekToGlobalSeconds = async (targetSeconds: number, shouldResume: boolean) => {
+    const total = globalDuration > 0 ? globalDuration : videoDuration;
+    if (!videoRef.current || total <= 0) return;
+
+    const clamped = Math.max(0, Math.min(targetSeconds, total));
+    setVideoPosition(clamped);
+    setVideoHasEnded(false);
+
+    if (!isChunkedPlayback || allChunks.length === 0) {
+      await videoRef.current.setPositionAsync(clamped * 1000);
+      if (shouldResume) {
+        await videoRef.current.playAsync();
+        setIsPlaying(true);
+      } else {
+        await videoRef.current.pauseAsync();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    let targetChunkIndex = allChunks.length - 1;
+    for (let i = 0; i < allChunks.length; i++) {
+      const start = chunkStartOffsets[i] || 0;
+      const end = i + 1 < allChunks.length ? (chunkStartOffsets[i + 1] || total) : total;
+      if (clamped >= start && clamped < end) {
+        targetChunkIndex = i;
+        break;
+      }
+    }
+
+    const targetChunkStart = chunkStartOffsets[targetChunkIndex] || 0;
+    const localSeconds = Math.max(0, clamped - targetChunkStart);
+    const localMs = localSeconds * 1000;
+
+    if (targetChunkIndex === currentChunkIndex) {
+      await videoRef.current.setPositionAsync(localMs);
+      if (shouldResume) {
+        await videoRef.current.playAsync();
+        setIsPlaying(true);
+      } else {
+        await videoRef.current.pauseAsync();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    pendingSeekMsRef.current = localMs;
+    pendingSeekResumeRef.current = shouldResume;
+    setCurrentChunkIndex(targetChunkIndex);
+    setPreviewUri(allChunks[targetChunkIndex].filePath);
+    setIsPlaying(shouldResume);
+  };
+
+  const getSeekTargetSeconds = (locationX: number): number => {
+    const total = globalDuration > 0 ? globalDuration : videoDuration;
+    const width = progressTrackWidthRef.current;
+    if (total <= 0 || width <= 0) return 0;
+    const ratio = Math.max(0, Math.min(locationX / width, 1));
+    return ratio * total;
+  };
+
   const getLocalRecordings = async (): Promise<LocalRecording[]> => {
     try {
       const saved = await AsyncStorage.getItem('xow_local_recordings');
@@ -152,7 +238,53 @@ export default function GalleryScreen() {
   const openPreview = async (recording: CombinedRecording) => {
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
-      if (localRec.videoPath) {
+      
+      // Handle chunked recordings - set up sequential playback
+      if (localRec.isChunked && localRec.videoChunks && localRec.videoChunks.length > 0) {
+        try {
+          console.log(`Opening chunked recording with ${localRec.videoChunks.length} chunks (total: ${localRec.duration}s)`);
+          
+          // Sort chunks by index
+          const sortedChunks = [...localRec.videoChunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+          
+          // Verify first chunk exists
+          const firstChunk = sortedChunks[0];
+          const fileInfo = await FileSystem.getInfoAsync(firstChunk.filePath);
+          
+          if (fileInfo.exists) {
+            // Set up for sequential chunk playback
+            setAllChunks(sortedChunks);
+            setCurrentChunkIndex(0);
+            setIsChunkedPlayback(true);
+            const offsets: number[] = [];
+            let acc = 0;
+            for (const chunk of sortedChunks) {
+              offsets.push(acc);
+              acc += chunk.duration || 0;
+            }
+            setChunkStartOffsets(offsets);
+            setPreviewUri(firstChunk.filePath);
+            setVideoPosition(0);
+            setVideoDuration(0);
+            setGlobalDuration(localRec.duration || Math.floor(acc));
+            setIsPlaying(true);
+            setVideoHasEnded(false);
+            
+            const totalMinutes = Math.floor(localRec.duration / 60);
+            const totalSeconds = localRec.duration % 60;
+            setPreviewTitle(`${fmtDate(localRec.createdAt)} (${totalMinutes}m ${totalSeconds}s total)`);
+            setVideoFps(localRec.fps || 30);
+            setPreviewFpsTimeline(localRec.fpsTimeline || []);
+            setPreviewVisible(true);
+          } else {
+            Alert.alert('File Not Found', 'The video chunk could not be found.');
+          }
+        } catch (e) {
+          console.error('Error opening chunked preview:', e);
+          Alert.alert('Error', 'Could not open video preview.');
+        }
+      } else if (localRec.videoPath) {
+        // Handle non-chunked recordings
         try {
           // content:// SAF URIs cannot be checked with getInfoAsync — play directly
           if (localRec.videoPath.startsWith('content://')) {
@@ -160,6 +292,10 @@ export default function GalleryScreen() {
             setPreviewTitle(fmtDate(localRec.createdAt));
             setVideoFps(localRec.fps || 30);
             setPreviewFpsTimeline(localRec.fpsTimeline || []);
+            setGlobalDuration(localRec.duration || 0);
+            setIsChunkedPlayback(false);
+            setChunkStartOffsets([]);
+            setIsPlaying(true);
             setPreviewVisible(true);
           } else {
             const fileInfo = await FileSystem.getInfoAsync(localRec.videoPath);
@@ -168,9 +304,13 @@ export default function GalleryScreen() {
               setPreviewTitle(fmtDate(localRec.createdAt));
               setVideoFps(localRec.fps || 30);
               setPreviewFpsTimeline(localRec.fpsTimeline || []);
+              setGlobalDuration(localRec.duration || 0);
+              setIsChunkedPlayback(false);
+              setChunkStartOffsets([]);
+              setIsPlaying(true);
               setPreviewVisible(true);
             } else {
-              Alert.alert('File Not Found', 'The video file could not be found. It may have been moved or deleted.');
+              Alert.alert('File Not Found', 'Video file does not exist.');
             }
           }
         } catch (e) {
@@ -188,6 +328,10 @@ export default function GalleryScreen() {
         setPreviewTitle(fmtDate(cloudRec.start_time));
         setVideoFps(30);
         setPreviewFpsTimeline([]);
+        setGlobalDuration((recording as CloudRecording).duration || 0);
+        setIsChunkedPlayback(false);
+        setChunkStartOffsets([]);
+        setIsPlaying(true);
         setPreviewVisible(true);
       } else {
         Alert.alert('No Video', 'This cloud recording does not have a video.');
@@ -200,36 +344,117 @@ export default function GalleryScreen() {
     setPreviewUri(null);
     setVideoPosition(0);
     setVideoDuration(0);
+    setGlobalDuration(0);
+    setIsPlaying(false);
     setPreviewFpsTimeline([]);
     setVideoHasEnded(false);
+    
+    // Reset chunked playback state
+    setIsChunkedPlayback(false);
+    setAllChunks([]);
+    setCurrentChunkIndex(0);
+    setChunkStartOffsets([]);
+    
     if (videoRef.current) {
       videoRef.current.stopAsync();
     }
   };
 
   const replayVideo = async () => {
+    if (isChunkedPlayback && allChunks.length > 0) {
+      setCurrentChunkIndex(0);
+      setPreviewUri(allChunks[0].filePath);
+      setVideoPosition(0);
+      setVideoHasEnded(false);
+      setIsPlaying(true);
+      return;
+    }
+
     if (videoRef.current) {
       await videoRef.current.replayAsync();
       setVideoHasEnded(false);
+      setIsPlaying(true);
+    }
+  };
+
+  const togglePlayPause = async () => {
+    if (!videoRef.current) return;
+    try {
+      if (isPlaying) {
+        await videoRef.current.pauseAsync();
+        setIsPlaying(false);
+      } else {
+        await videoRef.current.playAsync();
+        setIsPlaying(true);
+      }
+    } catch (e) {
+      console.log('Play/pause error:', e);
     }
   };
 
   const handlePlaybackStatusUpdate = (status: any) => {
     if (status.isLoaded) {
+      if (pendingSeekMsRef.current !== null && videoRef.current) {
+        const ms = pendingSeekMsRef.current;
+        pendingSeekMsRef.current = null;
+        const resume = pendingSeekResumeRef.current;
+        pendingSeekResumeRef.current = null;
+        videoRef.current
+          .setPositionAsync(ms)
+          .then(async () => {
+            if (resume === true) {
+              await videoRef.current?.playAsync();
+              setIsPlaying(true);
+            } else if (resume === false) {
+              await videoRef.current?.pauseAsync();
+              setIsPlaying(false);
+            }
+          })
+          .catch((e: any) => {
+            console.log('Pending seek apply error:', e?.message || e);
+          });
+      }
+
+      if (isSeeking) {
+        return;
+      }
+
       const positionSeconds = status.positionMillis / 1000;
-      setVideoPosition(positionSeconds);
+      const baseOffset = isChunkedPlayback ? (chunkStartOffsets[currentChunkIndex] || 0) : 0;
+      const mergedPosition = baseOffset + positionSeconds;
+      setVideoPosition(mergedPosition);
       if (status.durationMillis) {
-        setVideoDuration(status.durationMillis / 1000);
+        const currentChunkDuration = status.durationMillis / 1000;
+        setVideoDuration(isChunkedPlayback ? globalDuration : currentChunkDuration);
+        if (!isChunkedPlayback && globalDuration <= 0) {
+          setGlobalDuration(currentChunkDuration);
+        }
       }
 
       // Check if video has ended
       if (status.didJustFinish) {
         setVideoHasEnded(true);
+        
+        // If chunked playback, load next chunk automatically
+        if (isChunkedPlayback && allChunks.length > 0) {
+          const nextIndex = currentChunkIndex + 1;
+          if (nextIndex < allChunks.length) {
+            console.log(`Auto-playing next chunk: ${nextIndex + 1}/${allChunks.length}`);
+            const nextChunk = allChunks[nextIndex];
+            setCurrentChunkIndex(nextIndex);
+            setPreviewUri(nextChunk.filePath);
+            setVideoHasEnded(false);
+            setIsPlaying(true);
+          } else {
+            console.log('All chunks played');
+            setIsPlaying(false);
+          }
+        }
       }
 
       if (previewFpsTimeline.length > 0) {
         const secondIndex = Math.min(
-          Math.floor(positionSeconds),
+          Math.floor(mergedPosition),
           previewFpsTimeline.length - 1
         );
         const fpsAtSecond = previewFpsTimeline[secondIndex];
@@ -247,6 +472,10 @@ export default function GalleryScreen() {
     const frames = Math.floor((s % 1) * videoFps);
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}:${frames.toString().padStart(2, '0')}`;
   };
+
+  const displayPosition = isSeeking && dragSeekSecondsRef.current !== null ? dragSeekSecondsRef.current : videoPosition;
+  const previewTotalDuration = globalDuration || videoDuration;
+  const progressRatio = previewTotalDuration > 0 ? Math.min(displayPosition / previewTotalDuration, 1) : 0;
 
   const uploadToCloud = async (recording: LocalRecording) => {
     if (!deviceId) return;
@@ -704,7 +933,7 @@ export default function GalleryScreen() {
   const filteredRecordings = filterRecordings(recordings);
   const localCount = recordings.filter(r => r.source === 'local').length;
   const cloudCount = recordings.filter(r => r.source === 'cloud').length;
-  const totalDuration = recordings.reduce((acc, r) => {
+  const totalRecordingsDuration = recordings.reduce((acc, r) => {
     const dur = r.source === 'local' ? (r as LocalRecording).duration : ((r as CloudRecording).duration || 0);
     return acc + dur;
   }, 0);
@@ -731,7 +960,7 @@ export default function GalleryScreen() {
             <Text style={styles.sideStatLabel}>Cloud</Text>
           </View>
           <View style={styles.sideStat}>
-            <Text style={[styles.sideStatNum, { color: '#E54B2A', fontSize: 14 }]}>{fmtDur(totalDuration)}</Text>
+            <Text style={[styles.sideStatNum, { color: '#E54B2A', fontSize: 14 }]}>{fmtDur(totalRecordingsDuration)}</Text>
             <Text style={styles.sideStatLabel}>Duration</Text>
           </View>
         </View>
@@ -839,12 +1068,13 @@ export default function GalleryScreen() {
               <View style={styles.videoContainer}>
                 {previewUri && (
                   <Video
+                    key={previewUri}
                     {...{ ref: videoRef }}
                     source={{ uri: previewUri }}
                     style={styles.videoPlayer}
-                    useNativeControls
+                    useNativeControls={false}
                     resizeMode={ResizeMode.CONTAIN}
-                    shouldPlay
+                    shouldPlay={isPlaying}
                     isLooping={false}
                     onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
                   />
@@ -875,6 +1105,46 @@ export default function GalleryScreen() {
                     <Text style={styles.replayText}>Replay</Text>
                   </TouchableOpacity>
                 )}
+
+                <View style={styles.controlsBar}>
+                  <TouchableOpacity style={styles.controlPlayBtn} onPress={togglePlayPause}>
+                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
+                  </TouchableOpacity>
+                  <Text style={styles.controlTimeText}>{formatTC(displayPosition)}</Text>
+                  <View
+                    style={styles.progressTrack}
+                    onLayout={(e) => {
+                      progressTrackWidthRef.current = e.nativeEvent.layout.width;
+                    }}
+                    onStartShouldSetResponder={() => true}
+                    onMoveShouldSetResponder={() => true}
+                    onResponderGrant={(e) => {
+                      wasPlayingBeforeSeekRef.current = isPlaying;
+                      const target = getSeekTargetSeconds(e.nativeEvent.locationX);
+                      dragSeekSecondsRef.current = target;
+                      setVideoPosition(target);
+                      setVideoHasEnded(false);
+                      setIsSeeking(true);
+                    }}
+                    onResponderMove={(e) => {
+                      const target = getSeekTargetSeconds(e.nativeEvent.locationX);
+                      dragSeekSecondsRef.current = target;
+                      setVideoPosition(target);
+                    }}
+                    onResponderRelease={async () => {
+                      const target = dragSeekSecondsRef.current;
+                      dragSeekSecondsRef.current = null;
+                      setIsSeeking(false);
+                      if (typeof target === 'number') {
+                        await seekToGlobalSeconds(target, wasPlayingBeforeSeekRef.current);
+                      }
+                    }}
+                  >
+                    <View style={[styles.progressFill, { width: `${progressRatio * 100}%` }]} />
+                    <View style={[styles.progressThumb, { left: `${progressRatio * 100}%` }]} />
+                  </View>
+                  <Text style={styles.controlTimeText}>{formatTC(previewTotalDuration)}</Text>
+                </View>
               </View>
             </View>
           </ScrollView>
@@ -982,4 +1252,10 @@ const styles = StyleSheet.create({
   // Replay button
   replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -60 }, { translateY: -60 }], width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
   replayText: { color: '#fff', fontSize: 14, fontWeight: '700', marginTop: 8, letterSpacing: 0.5 },
+  controlsBar: { position: 'absolute', left: 10, right: 10, bottom: 10, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  controlPlayBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(229,75,42,0.85)', justifyContent: 'center', alignItems: 'center' },
+  controlTimeText: { color: '#fff', fontSize: 10, fontWeight: '700', minWidth: 72, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  progressTrack: { flex: 1, height: 6, borderRadius: 4, backgroundColor: '#222', overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#E54B2A' },
+  progressThumb: { position: 'absolute', top: -4, marginLeft: -6, width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' },
 });

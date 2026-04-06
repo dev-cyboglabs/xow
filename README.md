@@ -20,9 +20,22 @@ apk build steps
 # Build the Apk
 
 cd /Users/KABILAN/Desktop/xow/frontend
+# Clean and rebuild
 cd android && ./gradlew clean && cd ..
 npx expo prebuild --clean --platform android
 cd android && ./gradlew assembleRelease
+
+cd /Users/KABILAN/Desktop/xow/frontend
+
+# Clean build artifacts (safer than gradlew clean)
+rm -rf android/app/.cxx android/app/build
+
+# Regenerate Android project
+npx expo prebuild --clean --platform android
+
+# Build release APK
+cd android && ./gradlew assembleRelease
+
 
 # APK Location
 /Users/KABILAN/Desktop/xow/frontend/android/app/build/outputs/apk/release/app-release.apk

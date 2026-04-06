@@ -22,6 +22,17 @@ import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
+import {
+  saveChunkMetadata,
+  getSessionMetadata,
+  saveChunkFile,
+  getFileSize,
+  markSessionComplete,
+  cleanupOldSessions,
+  CHUNK_CONFIG,
+  type VideoChunk as ChunkType,
+  type RecordingMetadata,
+} from './utils/chunkRecording';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const EXTERNAL_STORAGE_URI_KEY = 'xow_external_storage_uri';
@@ -45,7 +56,9 @@ interface LocalRecording {
   deviceId: string;
   fps?: number;
   fpsTimeline?: number[];
-  capturedFrames?: string[];  // periodic visitor snapshot paths (1 per minute)
+  capturedFrames?: string[];
+  videoChunks?: ChunkType[];  // chunked video segments
+  isChunked?: boolean;  // flag to indicate chunked recording
 }
 
 interface BarcodeData {
@@ -77,6 +90,8 @@ export default function RecorderScreen() {
   const [autoUpload, setAutoUpload] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [storageLocation, setStorageLocation] = useState<'Internal' | 'External'>('Internal');
+  const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
+  const [recordingChunks, setRecordingChunks] = useState<ChunkType[]>([]);
   const toastAnim = useRef(new Animated.Value(0)).current;
   
   const cameraRef = useRef<CameraView>(null);
@@ -93,6 +108,15 @@ export default function RecorderScreen() {
   const recordingStartTime = useRef<number>(0);
   const barcodeInputRef = useRef<TextInput>(null);
   const videoUriRef = useRef<string | null>(null);
+  const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentSessionIdRef = useRef<string | null>(null);
+  const chunkStartTimeRef = useRef<number>(0);
+  const isRecordingRef = useRef(false);
+  const videoRecordingActiveRef = useRef(false);
+  const currentChunkIndexRef = useRef(0);
+  const recordingChunksRef = useRef<ChunkType[]>([]);
+  const recordingTimeRef = useRef(0);
+  const barcodeScansRef = useRef<BarcodeData[]>([]);
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -120,6 +144,30 @@ export default function RecorderScreen() {
       if (storageWatchRef.current) clearInterval(storageWatchRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  useEffect(() => {
+    videoRecordingActiveRef.current = videoRecordingActive;
+  }, [videoRecordingActive]);
+
+  useEffect(() => {
+    currentChunkIndexRef.current = currentChunkIndex;
+  }, [currentChunkIndex]);
+
+  useEffect(() => {
+    recordingChunksRef.current = recordingChunks;
+  }, [recordingChunks]);
+
+  useEffect(() => {
+    recordingTimeRef.current = recordingTime;
+  }, [recordingTime]);
+
+  useEffect(() => {
+    barcodeScansRef.current = barcodeScans;
+  }, [barcodeScans]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -297,10 +345,101 @@ export default function RecorderScreen() {
   const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
-  const startRecording = async () => {
-    if (!device) return;
+  /**
+   * Save current chunk and start a new one
+   * This is called automatically every CHUNK_DURATION_MS during recording
+   */
+  const rotateVideoChunk = async () => {
+    if (!cameraRef.current || !videoRecordingActiveRef.current || !currentSessionIdRef.current || !isRecordingRef.current) {
+      console.log('Chunk rotation skipped: camera not ready or not recording');
+      return;
+    }
 
     try {
+      const activeChunkIndex = currentChunkIndexRef.current;
+      const nextChunkIndex = activeChunkIndex + 1;
+      const sessionId = currentSessionIdRef.current;
+      if (!sessionId) return;
+
+      console.log(`🔄 Rotating to chunk ${nextChunkIndex}...`);
+
+      // Stop current recording and wait for URI from recordAsync promise
+      cameraRef.current.stopRecording();
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      if (!videoUriRef.current) {
+        console.warn('No video URI available after stopping chunk');
+        return;
+      }
+
+      const chunkEndTime = Date.now();
+      const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
+      const baseDir = `${FileSystem.documentDirectory}chunks`;
+      await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
+
+      const savedPath = await saveChunkFile(
+        videoUriRef.current,
+        sessionId,
+        activeChunkIndex,
+        baseDir
+      );
+
+      const fileSize = await getFileSize(savedPath);
+      const chunk: ChunkType = {
+        chunkIndex: activeChunkIndex,
+        filePath: savedPath,
+        duration: chunkDuration,
+        startTime: chunkStartTimeRef.current,
+        endTime: chunkEndTime,
+        fileSize,
+      };
+
+      const updatedChunks = [...recordingChunksRef.current, chunk];
+      recordingChunksRef.current = updatedChunks;
+      setRecordingChunks(updatedChunks);
+
+      const metadata = await getSessionMetadata(sessionId);
+      if (metadata) {
+        metadata.chunks = updatedChunks;
+        metadata.totalDuration = recordingTimeRef.current;
+        metadata.barcodeScansList = barcodeScansRef.current;
+        await saveChunkMetadata(metadata);
+      }
+
+      console.log(`✓ Chunk ${activeChunkIndex} saved: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+      showToast(`Chunk ${activeChunkIndex + 1} saved`);
+
+      currentChunkIndexRef.current = nextChunkIndex;
+      setCurrentChunkIndex(nextChunkIndex);
+
+      // Start next chunk
+      videoUriRef.current = null;
+      chunkStartTimeRef.current = Date.now();
+      if (cameraRef.current && isRecordingRef.current && videoRecordingActiveRef.current) {
+        console.log(`Starting chunk ${nextChunkIndex} recording...`);
+        cameraRef.current
+          .recordAsync({ maxDuration: CHUNK_CONFIG.DURATION_SECONDS })
+          .then((result) => {
+            if (result?.uri) {
+              videoUriRef.current = result.uri;
+              console.log(`Video chunk ${nextChunkIndex} recording result:`, result);
+              console.log(`Video chunk ${nextChunkIndex} URI saved:`, result.uri);
+            }
+          })
+          .catch((err: any) => {
+            console.log('Chunk recording error:', err?.message || err);
+          });
+      }
+    } catch (e: any) {
+      console.error(`Failed to save chunk ${currentChunkIndexRef.current}:`, e?.message || e);
+    }
+  };
+
+const startRecording = async () => {
+  if (!device) return;
+
+    try {
+      isRecordingRef.current = true;
       setIsRecording(true);
       setFrameCount(0);
       setBarcodeCount(0);
@@ -311,6 +450,28 @@ export default function RecorderScreen() {
 
       const localId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       setCurrentRecording({ localId });
+
+      // Initialize chunked recording
+      const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      currentSessionIdRef.current = sessionId;
+      setCurrentChunkIndex(0);
+      setRecordingChunks([]);
+      currentChunkIndexRef.current = 0;
+      recordingChunksRef.current = [];
+      chunkStartTimeRef.current = Date.now();
+
+      // Create initial metadata
+      const metadata: RecordingMetadata = {
+        sessionId,
+        chunks: [],
+        totalDuration: 0,
+        createdAt: new Date().toISOString(),
+        isComplete: false,
+        audioPath: null,
+        barcodeScansList: [],
+      };
+      await saveChunkMetadata(metadata);
+      console.log(`📹 Chunked recording session started: ${sessionId}`);
 
       frameCountRef.current = 0;
       lastFpsFrameRef.current = 0;
@@ -331,6 +492,11 @@ export default function RecorderScreen() {
         lastFpsFrameRef.current = current;
       }, 1000);
 
+      // Set up automatic chunk rotation timer (every 5 minutes)
+      chunkTimerRef.current = setInterval(() => {
+        rotateVideoChunk();
+      }, CHUNK_CONFIG.DURATION_MS);
+
       // Show Android Expo Go limitation notice
       if (Platform.OS === 'android' && __DEV__) {
         console.log('Note: Video recording is limited in Expo Go on Android. For full video recording, use a development build.');
@@ -339,29 +505,32 @@ export default function RecorderScreen() {
 
       // Try video recording on all platforms (may fail on Android Expo Go)
       if (cameraRef.current && Platform.OS !== 'web') {
-        console.log('Starting video recording on', Platform.OS);
+        console.log('Starting chunked video recording on', Platform.OS);
+        videoRecordingActiveRef.current = true;
         setVideoRecordingActive(true);
         
         // Show Android limitation warning
         if (Platform.OS === 'android') {
           console.log('Note: Video recording may be limited in Expo Go on Android. For full video recording, use a development build.');
-          showToast('Video may be limited on Expo Go');
+          showToast('Chunked recording enabled');
         }
         
         try {
-          cameraRef.current.recordAsync({ maxDuration: 3600 }).then((result) => {
-            console.log('Video recording result:', result);
+          // Record first chunk with maxDuration = chunk duration
+          cameraRef.current.recordAsync({ maxDuration: CHUNK_CONFIG.DURATION_SECONDS }).then((result) => {
+            console.log('Video chunk 0 recording result:', result);
             if (result?.uri) {
               videoUriRef.current = result.uri;
-              console.log('Video URI saved:', result.uri);
+              console.log('Video chunk 0 URI saved:', result.uri);
             }
-            setVideoRecordingActive(false);
           }).catch((err: any) => {
-            console.log('Video recording error:', err?.message || err);
+            console.log('Video chunk recording error:', err?.message || err);
+            videoRecordingActiveRef.current = false;
             setVideoRecordingActive(false);
           });
         } catch (e: any) {
           console.log('recordAsync failed:', e?.message || e);
+          videoRecordingActiveRef.current = false;
           setVideoRecordingActive(false);
         }
       }
@@ -374,10 +543,11 @@ export default function RecorderScreen() {
         console.log('Audio recording error:', audioErr?.message || audioErr);
       }
 
-      showToast('Recording started');
+      showToast('Chunked recording started');
     } catch (e: any) {
       console.error('Start recording error:', e?.message || e);
       showToast('Failed to start recording');
+      isRecordingRef.current = false;
       setIsRecording(false);
     }
   };
@@ -389,31 +559,70 @@ export default function RecorderScreen() {
     setSaveProgress(0);
     
     try {
+      isRecordingRef.current = false;
       setIsRecording(false);
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
+      if (chunkTimerRef.current) clearInterval(chunkTimerRef.current);
 
       let audioUri: string | null = null;
       let videoUri: string | null = null;
 
-      if (cameraRef.current && videoRecordingActive) {
+      // Save the final chunk
+      if (cameraRef.current && videoRecordingActiveRef.current && currentSessionIdRef.current) {
         try {
-          console.log('Stopping video recording...');
+          console.log('Stopping final video chunk...');
           cameraRef.current.stopRecording();
           
           for (let i = 0; i < 100; i++) {
             await new Promise(resolve => setTimeout(resolve, 100));
             if (videoUriRef.current) {
-              console.log('Video saved at:', videoUriRef.current);
+              console.log('Final chunk saved at:', videoUriRef.current);
               break;
             }
           }
           videoUri = videoUriRef.current;
+
+          // Save the final chunk to storage
+          if (videoUri) {
+            const chunkEndTime = Date.now();
+            const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
+            
+            // Use documentDirectory which is always writable
+            const baseDir = `${FileSystem.documentDirectory}chunks`;
+            await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
+            
+            const savedPath = await saveChunkFile(
+              videoUri,
+              currentSessionIdRef.current,
+              currentChunkIndexRef.current,
+              baseDir
+            );
+            
+            const fileSize = await getFileSize(savedPath);
+            
+            const finalChunk: ChunkType = {
+              chunkIndex: currentChunkIndexRef.current,
+              filePath: savedPath,
+              duration: chunkDuration,
+              startTime: chunkStartTimeRef.current,
+              endTime: chunkEndTime,
+              fileSize,
+            };
+            
+            const allChunks = [...recordingChunksRef.current, finalChunk];
+            recordingChunksRef.current = allChunks;
+            setRecordingChunks(allChunks);
+            
+            console.log(`✓ Final chunk ${currentChunkIndexRef.current} saved: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
+            console.log(`📦 Total chunks: ${allChunks.length}`);
+          }
         } catch (e: any) {
           console.log('Stop video error:', e?.message || e);
         }
       }
+      videoRecordingActiveRef.current = false;
       setVideoRecordingActive(false);
 
       try {
@@ -426,60 +635,16 @@ export default function RecorderScreen() {
 
       setSaveProgress(30);
 
-      let savedVideoPath: string | null = null;
       let savedAudioPath: string | null = null;
       const timestamp = Date.now();
 
-      // Save video to persistent storage (not cache — cache is cleared between sessions)
-      if (videoUri) {
-        try {
-          const ext = videoUri.toLowerCase().endsWith('.mov') ? 'mov' : 'mp4';
-          const fileName = `XoW_${timestamp}.${ext}`;
-          const mimeType = ext === 'mov' ? 'video/quicktime' : 'video/mp4';
-
-          // Always write to a persistent internal file:// dir first (needed for preview & upload)
-          const internalDir = `file:///storage/emulated/0/Android/data/${APP_PACKAGE}/files/XoW`;
-          await FileSystem.makeDirectoryAsync(internalDir, { intermediates: true }).catch(() => {});
-          const persistentPath = `${internalDir}/${fileName}`;
-          await FileSystem.copyAsync({ from: videoUri, to: persistentPath });
-          savedVideoPath = persistentPath;
-          console.log('✓ Video saved (persistent):', persistentPath);
-
-          // If user selected external storage, also copy there
-          // Use persistentPath as source (guaranteed to exist) not raw videoUri
-          const { dir: storageDir, label } = await getStorageDir();
-          if (storageDir !== internalDir) {
-            try {
-              await copyIntoStorage(persistentPath, storageDir, fileName, mimeType);
-              console.log('✓ Video copied to external:', label);
-              showToast(`Video saved to ${label}`);
-            } catch (extErr: any) {
-              console.log('External video copy failed (non-critical):', extErr?.message);
-              showToast('Video saved locally');
-            }
-          } else {
-            showToast('Video saved');
-          }
-
-          // Also save to gallery for user-facing access in Photos app
-          try {
-            const asset = await MediaLibrary.createAssetAsync(videoUri);
-            await MediaLibrary.createAlbumAsync('XoW Recordings', asset, false);
-            console.log('✓ Video also saved to gallery');
-          } catch (_) {}
-        } catch (e: any) {
-          console.log('Video save error:', e?.message || e);
-          savedVideoPath = videoUri; // last resort: original temp path
-        }
-      }
-
-      setSaveProgress(50);
-
-      // Save audio to app directory (audio doesn't need to be in gallery)
+      // Save audio to app directory
       if (audioUri) {
         try {
-          const { dir: storageDir } = await getStorageDir();
-          const dest = await copyIntoStorage(audioUri, storageDir, `XoW_${timestamp}.m4a`, 'audio/mp4');
+          const audioDir = `${FileSystem.documentDirectory}audio`;
+          await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => {});
+          const dest = `${audioDir}/XoW_${timestamp}.m4a`;
+          await FileSystem.copyAsync({ from: audioUri, to: dest });
           savedAudioPath = dest;
           console.log('✓ Audio saved:', dest);
         } catch (e: any) {
@@ -488,15 +653,36 @@ export default function RecorderScreen() {
         }
       }
 
+      setSaveProgress(50);
+
+      const finalChunksArray = recordingChunksRef.current;
+
+      // Update final metadata with audio path and mark as complete
+      if (currentSessionIdRef.current) {
+        const metadata = await getSessionMetadata(currentSessionIdRef.current);
+        if (metadata) {
+          metadata.audioPath = savedAudioPath;
+          metadata.totalDuration = recordingTimeRef.current;
+          metadata.barcodeScansList = barcodeScansRef.current;
+          metadata.chunks = finalChunksArray.length > 0 ? finalChunksArray : metadata.chunks;
+          await saveChunkMetadata(metadata);
+          await markSessionComplete(currentSessionIdRef.current);
+          
+          console.log(`✅ Session complete: ${metadata.chunks.length} chunks, ${recordingTimeRef.current}s total`);
+          showToast(`Recording saved: ${metadata.chunks.length} chunks`);
+        }
+      }
+
       setSaveProgress(60);
 
+      // Save to local recordings list with chunk information
       const localRecording: LocalRecording = {
         id: '',
         localId: currentRecording.localId,
-        videoPath: savedVideoPath,
+        videoPath: finalChunksArray.length > 0 ? finalChunksArray[0].filePath : null, // Use first chunk for preview
         audioPath: savedAudioPath,
-        barcodeScansList: barcodeScans,
-        duration: recordingTime,
+        barcodeScansList: barcodeScansRef.current,
+        duration: recordingTimeRef.current,
         createdAt: new Date().toISOString(),
         isUploaded: false,
         boothName: device?.name || 'Unknown Booth',
@@ -509,6 +695,8 @@ export default function RecorderScreen() {
               )
             : latestFpsRef.current || fps || 30,
         fpsTimeline: [...fpsSamplesRef.current],
+        videoChunks: finalChunksArray,
+        isChunked: true,
       };
 
       const existingRecordings = await getLocalRecordings();
@@ -517,28 +705,25 @@ export default function RecorderScreen() {
       
       setSaveProgress(70);
 
-      if (autoUpload && isOnline && (savedVideoPath || savedAudioPath)) {
+      if (autoUpload && isOnline && (finalChunksArray.length > 0 || savedAudioPath)) {
         showToast('Uploading to cloud...');
+        setSaveProgress(80);
         try {
           await uploadRecordingToCloud(localRecording);
-          showToast(`Uploaded! ${barcodeCount} visitors`);
-        } catch (e: any) {
-          console.log('Auto upload failed:', e?.message || e);
-          showToast('Saved locally. Upload from Gallery.');
+          showToast('Upload complete');
+        } catch (uploadErr: any) {
+          console.log('Upload error:', uploadErr?.message || uploadErr);
+          showToast('Upload failed (saved locally)');
         }
-      } else {
-        const hasMedia = savedVideoPath || savedAudioPath;
-        showToast(hasMedia ? `Saved! ${barcodeCount} visitors` : 'Recording saved');
       }
 
       setSaveProgress(100);
-
+      showToast('Recording saved');
       setCurrentRecording(null);
-      setRecordingTime(0);
-      setFrameCount(0);
-      setBarcodeCount(0);
-      setBarcodeScans([]);
-      videoUriRef.current = null;
+      setIsSaving(false);
+      
+      // Clean up old incomplete sessions
+      await cleanupOldSessions();
     } catch (e: any) {
       console.error('Stop recording error:', e?.message || e);
       showToast('Save failed');
@@ -573,7 +758,44 @@ export default function RecorderScreen() {
     const recordingId = res.data.id;
     console.log('Created recording in backend:', recordingId);
 
-    if (recording.videoPath) {
+    // Upload video chunks if available
+    if (recording.isChunked && recording.videoChunks && recording.videoChunks.length > 0) {
+      try {
+        const totalChunks = recording.videoChunks.length;
+        console.log(`Uploading ${totalChunks} video chunks...`);
+        
+        for (let i = 0; i < recording.videoChunks.length; i++) {
+          const chunk = recording.videoChunks[i];
+          const fileInfo = await FileSystem.getInfoAsync(chunk.filePath);
+          
+          if (fileInfo.exists) {
+            console.log(`Uploading chunk ${i + 1}/${totalChunks}...`);
+            
+            const uploadResult = await FileSystem.uploadAsync(
+              `${API_URL}/api/recordings/${recordingId}/upload-video`,
+              chunk.filePath,
+              {
+                fieldName: 'video',
+                httpMethod: 'POST',
+                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                mimeType: 'video/mp4',
+                parameters: { 
+                  chunk_index: String(chunk.chunkIndex), 
+                  total_chunks: String(totalChunks),
+                  chunk_duration: String(chunk.duration),
+                  chunk_size: String(chunk.fileSize),
+                },
+              }
+            );
+            console.log(`Chunk ${i + 1} upload status:`, uploadResult.status);
+          }
+        }
+        console.log('✓ All chunks uploaded successfully');
+      } catch (e: any) {
+        console.log('Chunk upload error:', e?.message || e);
+      }
+    } else if (recording.videoPath) {
+      // Legacy single file upload
       try {
         const fileInfo = await FileSystem.getInfoAsync(recording.videoPath);
         if (fileInfo.exists) {
