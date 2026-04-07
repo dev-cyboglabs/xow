@@ -84,6 +84,10 @@ export default function GalleryScreen() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0); // 0–1, video chunk progress
+  const [autoUploadingId, setAutoUploadingId] = useState<string | null>(null);
+  const [autoUploadProgress, setAutoUploadProgress] = useState<number>(0); // 0–1
+  const autoUploadStateRef = useRef<{ localId: string; progress: number } | null>(null);
+  const autoUploadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'local' | 'cloud'>('all');
   
@@ -114,6 +118,38 @@ export default function GalleryScreen() {
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
+
+  // Poll for background auto-upload state written by recorder screen
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const raw = await AsyncStorage.getItem('xow_auto_upload_state');
+        if (raw) {
+          const state: { localId: string; progress: number } = JSON.parse(raw);
+          const wasNull = autoUploadStateRef.current === null;
+          autoUploadStateRef.current = state;
+          setAutoUploadingId(state.localId);
+          setAutoUploadProgress(state.progress / 100);
+          if (wasNull && deviceId) {
+            // New auto-upload started — refresh list so the recording card appears
+            fetchRecordings();
+          }
+        } else if (autoUploadStateRef.current !== null) {
+          // Auto-upload just completed
+          autoUploadStateRef.current = null;
+          setAutoUploadingId(null);
+          setAutoUploadProgress(0);
+          if (deviceId) fetchRecordings();
+        }
+      } catch {}
+    };
+
+    poll();
+    autoUploadPollRef.current = setInterval(poll, 1000);
+    return () => {
+      if (autoUploadPollRef.current) clearInterval(autoUploadPollRef.current);
+    };
+  }, [deviceId]);
 
   const loadDevice = async () => {
     const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
@@ -830,16 +866,19 @@ export default function GalleryScreen() {
               <TouchableOpacity
                 style={styles.uploadBtn}
                 onPress={() => uploadToCloud(localItem)}
-                disabled={uploadingId === localItem.localId}
+                disabled={uploadingId === localItem.localId || autoUploadingId === localItem.localId}
               >
-                {uploadingId === localItem.localId ? (
-                  uploadProgress > 0 ? (
-                    <Text style={[styles.uploadBtnText, { color: '#10B981' }]}>
-                      {Math.round(uploadProgress * 100)}%
-                    </Text>
-                  ) : (
-                    <ActivityIndicator size="small" color="#10B981" />
-                  )
+                {(uploadingId === localItem.localId || autoUploadingId === localItem.localId) ? (
+                  (() => {
+                    const prog = uploadingId === localItem.localId ? uploadProgress : autoUploadProgress;
+                    return prog > 0 ? (
+                      <Text style={[styles.uploadBtnText, { color: '#10B981' }]}>
+                        {Math.round(prog * 100)}%
+                      </Text>
+                    ) : (
+                      <ActivityIndicator size="small" color="#10B981" />
+                    );
+                  })()
                 ) : (
                   <>
                     <Ionicons name="cloud-upload" size={23} color="#10B981" />

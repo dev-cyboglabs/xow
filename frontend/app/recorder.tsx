@@ -770,32 +770,38 @@ const startRecording = async () => {
     const currentDevice = deviceRef.current;
     if (!currentDevice) throw new Error('No device');
 
+    const AUTO_UPLOAD_KEY = 'xow_auto_upload_state';
+    const setProgress = (p: number) =>
+      AsyncStorage.setItem(AUTO_UPLOAD_KEY, JSON.stringify({ localId: recording.localId, progress: p })).catch(() => {});
+
     console.log('Starting upload for recording:', recording.localId);
 
-    const res = await axios.post(`${API_URL}/api/recordings`, {
-      device_id: currentDevice.device_id,
-      expo_name: 'Expo 2025',
-      booth_name: recording.boothName,
-      start_time: recording.createdAt,
-      duration: recording.duration,
-    });
-    
-    const recordingId = res.data.id;
-    console.log('Created recording in backend:', recordingId);
+    // Signal gallery: auto-upload starting
+    await setProgress(1);
 
-    // Upload video chunks if available
-    if (recording.isChunked && recording.videoChunks && recording.videoChunks.length > 0) {
-      try {
+    try {
+      const res = await axios.post(`${API_URL}/api/recordings`, {
+        device_id: currentDevice.device_id,
+        expo_name: 'Expo 2025',
+        booth_name: recording.boothName,
+        start_time: recording.createdAt,
+        duration: recording.duration,
+      });
+
+      const recordingId = res.data.id;
+      console.log('Created recording in backend:', recordingId);
+
+      // Upload video chunks if available
+      if (recording.isChunked && recording.videoChunks && recording.videoChunks.length > 0) {
         const totalChunks = recording.videoChunks.length;
         console.log(`Uploading ${totalChunks} video chunks...`);
-        
-        for (let i = 0; i < recording.videoChunks.length; i++) {
+
+        for (let i = 0; i < totalChunks; i++) {
           const chunk = recording.videoChunks[i];
           const fileInfo = await FileSystem.getInfoAsync(chunk.filePath);
-          
+
           if (fileInfo.exists) {
             console.log(`Uploading chunk ${i + 1}/${totalChunks}...`);
-            
             const uploadResult = await FileSystem.uploadAsync(
               `${API_URL}/api/recordings/${recordingId}/upload-video`,
               chunk.filePath,
@@ -804,8 +810,8 @@ const startRecording = async () => {
                 httpMethod: 'POST',
                 uploadType: FileSystem.FileSystemUploadType.MULTIPART,
                 mimeType: 'video/mp4',
-                parameters: { 
-                  chunk_index: String(chunk.chunkIndex), 
+                parameters: {
+                  chunk_index: String(chunk.chunkIndex),
                   total_chunks: String(totalChunks),
                   chunk_duration: String(chunk.duration),
                   chunk_size: String(chunk.fileSize),
@@ -814,19 +820,17 @@ const startRecording = async () => {
             );
             console.log(`Chunk ${i + 1} upload status:`, uploadResult.status);
           }
+          // Video chunks = 5%–90% of total progress
+          await setProgress(5 + Math.round(((i + 1) / totalChunks) * 85));
         }
         console.log('✓ All chunks uploaded successfully');
-      } catch (e: any) {
-        console.log('Chunk upload error:', e?.message || e);
-      }
-    } else if (recording.videoPath) {
-      // Legacy single file upload
-      try {
+      } else if (recording.videoPath) {
+        // Legacy single file upload
+        await setProgress(30);
         const fileInfo = await FileSystem.getInfoAsync(recording.videoPath);
         if (fileInfo.exists) {
           const isMovFile = recording.videoPath.toLowerCase().endsWith('.mov');
           console.log('Uploading video...');
-          
           const uploadResult = await FileSystem.uploadAsync(
             `${API_URL}/api/recordings/${recordingId}/upload-video`,
             recording.videoPath,
@@ -840,17 +844,14 @@ const startRecording = async () => {
           );
           console.log('Video upload status:', uploadResult.status);
         }
-      } catch (e: any) {
-        console.log('Video upload error:', e?.message || e);
+        await setProgress(75);
       }
-    }
 
-    if (recording.audioPath) {
-      try {
+      if (recording.audioPath) {
+        await setProgress(90);
         const fileInfo = await FileSystem.getInfoAsync(recording.audioPath);
         if (fileInfo.exists) {
           console.log('Uploading audio...');
-          
           const uploadResult = await FileSystem.uploadAsync(
             `${API_URL}/api/recordings/${recordingId}/upload-audio`,
             recording.audioPath,
@@ -863,35 +864,41 @@ const startRecording = async () => {
           );
           console.log('Audio upload status:', uploadResult.status);
         }
-      } catch (e: any) {
-        console.log('Audio upload error:', e?.message || e);
       }
+
+      await setProgress(95);
+
+      for (const scan of recording.barcodeScansList || []) {
+        try {
+          await axios.post(`${API_URL}/api/barcodes`, {
+            recording_id: recordingId,
+            barcode_data: scan.barcode_data,
+            video_timestamp: scan.video_timestamp,
+            frame_code: scan.frame_code,
+          });
+        } catch {}
+      }
+
+      await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`, {
+        duration: recording.duration,
+      });
+
+      const localRecordings = await getLocalRecordings();
+      const idx = localRecordings.findIndex(r => r.localId === recording.localId);
+      if (idx !== -1) {
+        localRecordings[idx].id = recordingId;
+        localRecordings[idx].isUploaded = true;
+        await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(localRecordings));
+      }
+
+      // Signal gallery: upload complete (removing key triggers refresh)
+      await AsyncStorage.removeItem(AUTO_UPLOAD_KEY);
+
+      return recordingId;
+    } catch (e) {
+      await AsyncStorage.removeItem(AUTO_UPLOAD_KEY).catch(() => {});
+      throw e;
     }
-
-    for (const scan of recording.barcodeScansList || []) {
-      try {
-        await axios.post(`${API_URL}/api/barcodes`, {
-          recording_id: recordingId,
-          barcode_data: scan.barcode_data,
-          video_timestamp: scan.video_timestamp,
-          frame_code: scan.frame_code,
-        });
-      } catch {}
-    }
-
-    await axios.put(`${API_URL}/api/recordings/${recordingId}/complete`, {
-      duration: recording.duration,
-    });
-
-    const localRecordings = await getLocalRecordings();
-    const idx = localRecordings.findIndex(r => r.localId === recording.localId);
-    if (idx !== -1) {
-      localRecordings[idx].id = recordingId;
-      localRecordings[idx].isUploaded = true;
-      await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(localRecordings));
-    }
-
-    return recordingId;
   };
 
   const validateBarcode = (barcode: string): boolean => {
