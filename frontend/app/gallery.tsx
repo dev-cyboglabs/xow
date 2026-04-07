@@ -172,17 +172,27 @@ export default function GalleryScreen() {
 
       // Combine recordings
       const combined: CombinedRecording[] = [];
-      
+
       // Add local recordings (not uploaded)
       for (const local of localRecordings) {
         if (!local.isUploaded) {
           combined.push({ ...local, source: 'local' as const });
         }
       }
-      
-      // Add cloud recordings
+
+      // Collect timestamps of all local recordings (uploaded or not) to prevent cloud duplicates
+      const allLocalTimes = new Set(localRecordings.map(l => l.createdAt));
+
+      // Add cloud recordings — skip any whose start_time matches ANY local recording
+      // (prevents duplicates during upload when cloud entry is created before local is marked uploaded)
+      // Also skip recordings with status 'recording' (these are being uploaded, not completed)
       for (const cloud of cloudRecordings) {
-        combined.push({ ...cloud, source: 'cloud' as const });
+        const isDuplicate = allLocalTimes.has(cloud.start_time);
+        const isBeingUploaded = cloud.status === 'recording';
+        
+        if (!isDuplicate && !isBeingUploaded) {
+          combined.push({ ...cloud, source: 'cloud' as const });
+        }
       }
 
       // Sort by date (newest first)
