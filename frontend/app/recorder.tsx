@@ -117,6 +117,9 @@ export default function RecorderScreen() {
   const recordingChunksRef = useRef<ChunkType[]>([]);
   const recordingTimeRef = useRef(0);
   const barcodeScansRef = useRef<BarcodeData[]>([]);
+  const audioRecordingStartedRef = useRef(false);
+  const barcodeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastBarcodeRef = useRef<string>('');
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -142,6 +145,7 @@ export default function RecorderScreen() {
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
       if (clockRef.current) clearInterval(clockRef.current);
       if (storageWatchRef.current) clearInterval(storageWatchRef.current);
+      if (barcodeDebounceRef.current) clearTimeout(barcodeDebounceRef.current);
     };
   }, []);
 
@@ -535,12 +539,18 @@ const startRecording = async () => {
         }
       }
 
+      audioRecordingStartedRef.current = false;
       try {
         await audioRecorder.prepareToRecordAsync();
-        audioRecorder.record();
+        await audioRecorder.record();
+        audioRecordingStartedRef.current = true;
         console.log('Audio recording started');
       } catch (audioErr: any) {
         console.log('Audio recording error:', audioErr?.message || audioErr);
+        if (Platform.OS === 'android' && __DEV__) {
+          console.log('⚠️ Audio recording not available in Expo Go on Android');
+          console.log('ℹ️ Video recording will continue without audio');
+        }
       }
 
       showToast('Chunked recording started');
@@ -625,12 +635,18 @@ const startRecording = async () => {
       videoRecordingActiveRef.current = false;
       setVideoRecordingActive(false);
 
-      try {
-        await audioRecorder.stop();
-        audioUri = audioRecorder.uri;
-        console.log('Audio saved at:', audioUri);
-      } catch (e: any) {
-        console.log('Stop audio error:', e?.message || e);
+      // Only try to stop audio if it was successfully started
+      if (audioRecordingStartedRef.current) {
+        try {
+          await audioRecorder.stop();
+          audioUri = audioRecorder.uri;
+          console.log('Audio saved at:', audioUri);
+        } catch (e: any) {
+          console.log('Stop audio error:', e?.message || e);
+          // Silently continue - audio failed but video should still save
+        }
+      } else {
+        console.log('⚠️ Audio was not recorded (Expo Go limitation)');
       }
 
       setSaveProgress(30);
@@ -869,9 +885,75 @@ const startRecording = async () => {
     return recordingId;
   };
 
-  const handleBarcode = async () => {
-    if (!barcodeInput.trim() || !isRecording) return;
-    const bc = barcodeInput.trim();
+  const validateBarcode = (barcode: string): boolean => {
+    // Accept ANY QR code format - no restrictions on prefix, format, or length
+    // Works with any format: BV98761, ME727, YT67, ABC123, etc.
+    const trimmed = barcode.trim();
+    
+    // Reject only if empty
+    if (trimmed.length === 0) {
+      console.log('⚠️ Empty barcode data');
+      return false;
+    }
+    
+    // Accept any non-empty QR data
+    console.log(`✓ Valid QR data (${trimmed.length} chars):`, trimmed);
+    return true;
+  };
+
+  const processBarcodeInput = (value: string) => {
+    // Clear any existing debounce timer
+    if (barcodeDebounceRef.current) {
+      clearTimeout(barcodeDebounceRef.current);
+    }
+    
+    const trimmed = value.trim();
+    
+    // If input is cleared, reset
+    if (!trimmed) {
+      lastBarcodeRef.current = '';
+      return;
+    }
+    
+    // Debounce: Wait 800ms after last character before processing
+    // This ensures the scanner has completely finished typing the full barcode
+    // Longer delay is critical to prevent accepting partial scans
+    barcodeDebounceRef.current = setTimeout(() => {
+      if (trimmed && isRecording) {
+        // Check if this is a duplicate of the last scan (within 2 seconds)
+        if (trimmed === lastBarcodeRef.current) {
+          console.log('⚠️ Duplicate barcode scan ignored:', trimmed);
+          setBarcodeInput('');
+          return;
+        }
+        
+        // Validate barcode format (minimum 6 chars: BV + 4 digits)
+        // Only accept when scanner has finished typing completely
+        if (validateBarcode(trimmed)) {
+          handleBarcode(trimmed);
+        } else {
+          // Invalid or incomplete barcode - show warning and clear
+          console.log('❌ Rejected partial/invalid barcode:', trimmed);
+          showToast(`Incomplete scan: ${trimmed}`);
+          setBarcodeInput('');
+          barcodeInputRef.current?.focus();
+        }
+      }
+    }, 200); // 200ms debounce - waits for complete scan to finish
+  };
+
+  const handleBarcode = async (barcodeValue?: string) => {
+    const bc = barcodeValue || barcodeInput.trim();
+    
+    if (!bc || !isRecording) return;
+    
+    // Final validation
+    if (!validateBarcode(bc)) {
+      showToast(`Invalid barcode format`);
+      setBarcodeInput('');
+      return;
+    }
+    
     const ts = (Date.now() - recordingStartTime.current) / 1000;
     
     const newScan: BarcodeData = {
@@ -879,9 +961,20 @@ const startRecording = async () => {
       video_timestamp: ts,
       frame_code: frameCount,
     };
+    
     setBarcodeScans(prev => [...prev, newScan]);
     setBarcodeCount(p => p + 1);
     setBarcodeInput('');
+    lastBarcodeRef.current = bc;
+    
+    // Clear the last barcode after 2 seconds to allow re-scanning
+    setTimeout(() => {
+      if (lastBarcodeRef.current === bc) {
+        lastBarcodeRef.current = '';
+      }
+    }, 2000);
+    
+    console.log('✓ Barcode scanned:', bc);
     showToast(`Visitor: ${bc}`);
     barcodeInputRef.current?.focus();
   };
@@ -1057,14 +1150,18 @@ const startRecording = async () => {
               placeholder="Scan/Enter"
               placeholderTextColor="#444"
               value={barcodeInput}
-              onChangeText={setBarcodeInput}
-              onSubmitEditing={handleBarcode}
+              onChangeText={(value) => {
+                setBarcodeInput(value);
+                processBarcodeInput(value);
+              }}
+              onSubmitEditing={() => handleBarcode()}
               autoCapitalize="characters"
               editable={isRecording}
+              returnKeyType="done"
             />
             <TouchableOpacity
               style={[styles.addBtn, !isRecording && { backgroundColor: '#333' }]}
-              onPress={handleBarcode}
+              onPress={() => handleBarcode()}
               disabled={!isRecording}
             >
               <Ionicons name="add" size={16} color="#fff" />

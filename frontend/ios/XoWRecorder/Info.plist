@@ -49,6 +49,10 @@
     <string>XoW needs camera access to record booth activity</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>XoW needs microphone access to record audio</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>XoW needs permission to save recordings to your device</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>XoW needs access to save videos and audio to your gallery</string>
     <key>NSUserActivityTypes</key>
     <array>
       <string>$(PRODUCT_BUNDLE_IDENTIFIER).expo.index_route</string>
