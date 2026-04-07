@@ -264,6 +264,8 @@ export default function SettingsScreen() {
                   onValueChange={toggleAutoUpload}
                   trackColor={{ false: '#333', true: '#E54B2A' }}
                   thumbColor={settings.autoUpload ? '#fff' : '#666'}
+                  ios_backgroundColor="#333"
+                  style={{ transform: [{ scaleX: 1.3 }, { scaleY: 1.3 }] }}
                 />
               </View>
               <Text style={styles.hintText}>
@@ -379,60 +381,60 @@ const styles = StyleSheet.create({
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#000' },
 
   // Sidebar
-  sidebar: { backgroundColor: '#0a0a0a', borderRightWidth: 1, borderRightColor: '#1a1a1a', padding: 10, alignItems: 'center', justifyContent: 'space-between' },
-  backBtn: { width: 36, height: 36, borderRadius: 8, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
-  sidebarIcon: { width: 36, height: 36, borderRadius: 8, backgroundColor: 'rgba(139,92,246,0.15)', justifyContent: 'center', alignItems: 'center' },
+  sidebar: { backgroundColor: '#0a0a0a', borderRightWidth: 1, borderRightColor: '#1a1a1a', paddingVertical: 18, paddingHorizontal: 20, paddingLeft: 28, alignItems: 'center', justifyContent: 'space-between' },
+  backBtn: { width: 60, height: 60, borderRadius: 12, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
+  sidebarIcon: { width: 60, height: 60, borderRadius: 12, backgroundColor: 'rgba(139,92,246,0.15)', justifyContent: 'center', alignItems: 'center' },
 
   // Content
   content: { flex: 1 },
-  contentInner: { padding: 16 },
-  header: { marginBottom: 20 },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
-  headerSub: { color: '#555', fontSize: 11, marginTop: 4 },
+  contentInner: { padding: 24 },
+  header: { marginBottom: 28 },
+  headerTitle: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  headerSub: { color: '#555', fontSize: 16, marginTop: 6 },
 
-  sections: { gap: 20 },
+  sections: { gap: 28 },
 
-  section: { gap: 10 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { color: '#888', fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  section: { gap: 14 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  sectionTitle: { color: '#888', fontSize: 17, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  card: { backgroundColor: '#0a0a0a', borderRadius: 12, padding: 16, borderWidth: 1, borderColor: '#1a1a1a' },
+  card: { backgroundColor: '#0a0a0a', borderRadius: 14, padding: 20, borderWidth: 1, borderColor: '#1a1a1a' },
 
   // Info Row
-  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  infoLabel: { color: '#666', fontSize: 12 },
-  infoValue: { color: '#fff', fontSize: 13, fontWeight: '500' },
-  hintText: { color: '#555', fontSize: 10, marginTop: 10 },
+  infoRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  infoLabel: { color: '#666', fontSize: 17 },
+  infoValue: { color: '#fff', fontSize: 18, fontWeight: '500' },
+  hintText: { color: '#555', fontSize: 14, marginTop: 14 },
 
   // Setting Row
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingInfo: { flex: 1, marginRight: 16 },
-  settingLabel: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  settingDesc: { color: '#666', fontSize: 11, marginTop: 2 },
+  settingInfo: { flex: 1, marginRight: 20 },
+  settingLabel: { color: '#fff', fontSize: 19, fontWeight: '600' },
+  settingDesc: { color: '#666', fontSize: 15, marginTop: 3 },
 
   // Location Options
-  locationOption: { flexDirection: 'row', alignItems: 'center', padding: 12, marginBottom: 8, borderRadius: 8, backgroundColor: '#111', borderWidth: 1, borderColor: '#222' },
+  locationOption: { flexDirection: 'row', alignItems: 'center', padding: 16, marginBottom: 12, borderRadius: 10, backgroundColor: '#111', borderWidth: 1, borderColor: '#222' },
   locationActive: { borderColor: '#E54B2A', backgroundColor: 'rgba(229,75,42,0.1)' },
   locationDisabled: { opacity: 0.5, borderColor: '#1a1a1a' },
-  locationInfo: { flex: 1, marginLeft: 12 },
-  locationTitle: { color: '#888', fontSize: 13, fontWeight: '500' },
+  locationInfo: { flex: 1, marginLeft: 16 },
+  locationTitle: { color: '#888', fontSize: 18, fontWeight: '500' },
   locationTitleActive: { color: '#fff' },
   locationTitleDisabled: { color: '#444' },
-  locationDesc: { color: '#666', fontSize: 11, marginTop: 2 },
+  locationDesc: { color: '#666', fontSize: 15, marginTop: 3 },
 
   // Storage Availability Badges
-  availableBadge: { backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
-  availableBadgeText: { color: '#10B981', fontSize: 9, fontWeight: '700' },
-  unavailableBadge: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
-  unavailableBadgeText: { color: '#EF4444', fontSize: 9, fontWeight: '600' },
+  availableBadge: { backgroundColor: 'rgba(16,185,129,0.15)', borderWidth: 1, borderColor: 'rgba(16,185,129,0.3)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  availableBadgeText: { color: '#10B981', fontSize: 13, fontWeight: '700' },
+  unavailableBadge: { backgroundColor: 'rgba(239,68,68,0.15)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.3)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  unavailableBadgeText: { color: '#EF4444', fontSize: 13, fontWeight: '600' },
 
   // Access Button
-  accessBtn: { marginTop: 12, height: 42, borderRadius: 10, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8 },
-  accessBtnText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  needsAccessBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.4)', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2 },
-  needsAccessBadgeText: { color: '#F59E0B', fontSize: 9, fontWeight: '700' },
+  accessBtn: { marginTop: 16, height: 56, borderRadius: 12, backgroundColor: '#8B5CF6', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 12 },
+  accessBtnText: { color: '#fff', fontSize: 18, fontWeight: '700' },
+  needsAccessBadge: { backgroundColor: 'rgba(245,158,11,0.15)', borderWidth: 1, borderColor: 'rgba(245,158,11,0.4)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  needsAccessBadgeText: { color: '#F59E0B', fontSize: 13, fontWeight: '700' },
 
   // Info Card
-  infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 12, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 8, gap: 10 },
-  infoText: { flex: 1, color: '#F59E0B', fontSize: 11, lineHeight: 16 },
+  infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 16, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 10, gap: 14 },
+  infoText: { flex: 1, color: '#F59E0B', fontSize: 15, lineHeight: 22 },
 });

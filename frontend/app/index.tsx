@@ -189,21 +189,21 @@ export default function SetupScreen() {
       {/* Left branding panel */}
       <View style={styles.leftPanel}>
         <View style={styles.logo}>
-          <Ionicons name="videocam" size={28} color="#fff" />
+          <Ionicons name="videocam" size={48} color="#fff" />
         </View>
         <Text style={styles.brandName}>XoW</Text>
         <Text style={styles.tagline}>Booth Recording System</Text>
         <View style={styles.features}>
           <View style={styles.feature}>
-            <Ionicons name="recording" size={14} color="#E54B2A" />
+            <Ionicons name="recording" size={20} color="#E54B2A" />
             <Text style={styles.featureText}>HD Recording</Text>
           </View>
           <View style={styles.feature}>
-            <Ionicons name="scan" size={14} color="#E54B2A" />
+            <Ionicons name="scan" size={20} color="#E54B2A" />
             <Text style={styles.featureText}>Visitor Tracking</Text>
           </View>
           <View style={styles.feature}>
-            <Ionicons name="cloud" size={14} color="#E54B2A" />
+            <Ionicons name="cloud" size={20} color="#E54B2A" />
             <Text style={styles.featureText}>Cloud Sync</Text>
           </View>
         </View>
@@ -247,36 +247,36 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#000' },
 
-  logo: { width: 50, height: 50, borderRadius: 12, backgroundColor: '#E54B2A', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  brandName: { fontSize: 32, fontWeight: '800', color: '#fff' },
-  tagline: { fontSize: 11, color: '#666', marginBottom: 20 },
+  logo: { width: 90, height: 90, borderRadius: 20, backgroundColor: '#E54B2A', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
+  brandName: { fontSize: 64, fontWeight: '800', color: '#fff' },
+  tagline: { fontSize: 20, color: '#666', marginBottom: 32 },
 
-  loadingText: { color: '#555', fontSize: 13, marginTop: 12 },
-  errorText: { color: '#EF4444', fontSize: 13, textAlign: 'center', marginTop: 12, paddingHorizontal: 32 },
-  retryBtn: { marginTop: 20, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: '#E54B2A', borderRadius: 8 },
-  retryText: { color: '#fff', fontWeight: '600', fontSize: 14 },
-  skipBtn: { marginTop: 14, paddingHorizontal: 24, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111' },
-  skipText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  loadingText: { color: '#555', fontSize: 24, marginTop: 20 },
+  errorText: { color: '#EF4444', fontSize: 24, textAlign: 'center', marginTop: 20, paddingHorizontal: 40 },
+  retryBtn: { marginTop: 32, paddingHorizontal: 40, paddingVertical: 18, backgroundColor: '#E54B2A', borderRadius: 12 },
+  retryText: { color: '#fff', fontWeight: '600', fontSize: 24 },
+  skipBtn: { marginTop: 24, paddingHorizontal: 40, paddingVertical: 18, borderRadius: 12, borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111' },
+  skipText: { color: '#fff', fontWeight: '600', fontSize: 24 },
 
-  leftPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#1a1a1a', padding: 20 },
-  features: { gap: 8 },
-  feature: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  featureText: { color: '#888', fontSize: 11 },
+  leftPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#1a1a1a', padding: 36 },
+  features: { gap: 16 },
+  feature: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  featureText: { color: '#888', fontSize: 22 },
 
-  rightPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
-  card: { width: '100%', maxWidth: 280, backgroundColor: '#0a0a0a', borderRadius: 16, padding: 20, borderWidth: 1, borderColor: '#1a1a1a' },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
-  cardTitle: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  cardSub: { color: '#666', fontSize: 11, lineHeight: 16, marginBottom: 16 },
+  rightPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 36 },
+  card: { width: '100%', maxWidth: 480, backgroundColor: '#0a0a0a', borderRadius: 24, padding: 36, borderWidth: 1, borderColor: '#1a1a1a' },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 14 },
+  cardTitle: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  cardSub: { color: '#666', fontSize: 20, lineHeight: 28, marginBottom: 24 },
 
-  codeBox: { backgroundColor: 'rgba(139,92,246,0.1)', borderWidth: 1, borderColor: 'rgba(139,92,246,0.3)', borderRadius: 12, paddingVertical: 14, alignItems: 'center', marginBottom: 8 },
-  codeText: { color: '#fff', fontSize: 32, fontWeight: '800', fontFamily: 'monospace', letterSpacing: 8 },
+  codeBox: { backgroundColor: 'rgba(139,92,246,0.1)', borderWidth: 3, borderColor: 'rgba(139,92,246,0.3)', borderRadius: 20, paddingVertical: 28, alignItems: 'center', marginBottom: 16 },
+  codeText: { color: '#fff', fontSize: 64, fontWeight: '800', fontFamily: 'monospace', letterSpacing: 16 },
 
-  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, justifyContent: 'center', marginBottom: 14 },
-  timerText: { color: '#555', fontSize: 10 },
+  timerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 24 },
+  timerText: { color: '#555', fontSize: 18 },
 
-  hint: { color: '#444', fontSize: 10, textAlign: 'center', marginBottom: 16, lineHeight: 15 },
+  hint: { color: '#444', fontSize: 18, textAlign: 'center', marginBottom: 26, lineHeight: 26 },
 
-  waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  waitingText: { color: '#555', fontSize: 11 },
+  waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16 },
+  waitingText: { color: '#555', fontSize: 20 },
 });

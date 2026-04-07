@@ -1005,7 +1005,8 @@ const startRecording = async () => {
   }
 
   // Responsive panel width with better spacing for different screen sizes
-  const panelWidth = width < 600 ? Math.min(130, width * 0.22) : width < 900 ? Math.min(150, width * 0.18) : Math.min(160, width * 0.16);
+  // Increased widths to accommodate larger UI elements
+  const panelWidth = width < 600 ? Math.min(180, width * 0.28) : width < 900 ? Math.min(200, width * 0.24) : Math.min(220, width * 0.22);
   const isSmallScreen = width < 600;
   const isMediumScreen = width >= 600 && width < 900;
 
@@ -1164,7 +1165,7 @@ const startRecording = async () => {
               onPress={() => handleBarcode()}
               disabled={!isRecording}
             >
-              <Ionicons name="add" size={16} color="#fff" />
+              <Ionicons name="add" size={22} color="#fff" />
             </TouchableOpacity>
           </View>
           {isRecording && barcodeCount > 0 && (
@@ -1180,7 +1181,7 @@ const startRecording = async () => {
           >
             <View style={[styles.recBtnInner, isRecording && styles.recBtnInnerActive]}>
               {isSaving ? (
-                <Ionicons name="save" size={20} color="#fff" />
+                <Ionicons name="save" size={28} color="#fff" />
               ) : isRecording ? (
                 <View style={styles.stopIcon} />
               ) : (
@@ -1195,15 +1196,15 @@ const startRecording = async () => {
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/gallery')}>
-            <Ionicons name="folder" size={18} color="#fff" />
+            <Ionicons name="folder" size={24} color="#fff" />
             <Text style={styles.actLabel}>Gallery</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings" size={18} color="#E54B2A" />
+            <Ionicons name="settings" size={24} color="#E54B2A" />
             <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Settings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={handleLogout}>
-            <Ionicons name="power" size={18} color="#EF4444" />
+            <Ionicons name="power" size={24} color="#EF4444" />
             <Text style={[styles.actLabel, { color: '#EF4444' }]}>Exit</Text>
           </TouchableOpacity>
         </View>
@@ -1241,259 +1242,259 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d0d0d', 
     borderBottomWidth: 1, 
     borderBottomColor: '#1a1a1a', 
-    paddingHorizontal: 14, 
-    paddingVertical: 8 
+    paddingHorizontal: 20, 
+    paddingVertical: 12 
   },
-  previewHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  previewLogo: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  previewLogoText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
-  previewLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#EF4444' },
-  previewDivider: { width: 1, height: 20, backgroundColor: '#2a2a2a' },
-  previewTCBlock: { alignItems: 'flex-start', gap: 2 },
-  previewMetaLabel: { color: '#555', fontSize: 7, fontWeight: '700', letterSpacing: 0.5 },
-  previewTCVal: { color: '#EF4444', fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  previewFPSVal: { color: '#E54B2A', fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  previewHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  previewLogo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  previewLogoText: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 1.5 },
+  previewLiveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
+  previewDivider: { width: 1, height: 28, backgroundColor: '#2a2a2a' },
+  previewTCBlock: { alignItems: 'flex-start', gap: 3 },
+  previewMetaLabel: { color: '#555', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+  previewTCVal: { color: '#EF4444', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  previewFPSVal: { color: '#E54B2A', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   
   topBar: { 
     position: 'absolute', 
-    top: 12, 
-    left: 12, 
-    right: 12, 
+    top: 16, 
+    left: 16, 
+    right: 16, 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start',
-    gap: 8
+    gap: 12
   },
-  deviceSection: { gap: 6, marginTop: 20 },
+  deviceSection: { gap: 8, marginTop: 18 },
   idBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: 'rgba(0,0,0,0.85)', 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: 6, 
-    gap: 5 
+    paddingHorizontal: 14, 
+    paddingVertical: 8, 
+    borderRadius: 8, 
+    gap: 7 
   },
-  idText: { color: '#fff', fontSize: 10, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  idText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   brandBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: 'rgba(229,75,42,0.4)', 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-    borderRadius: 6, 
-    gap: 4 
+    paddingHorizontal: 12, 
+    paddingVertical: 6, 
+    borderRadius: 8, 
+    gap: 6 
   },
-  brandText: { color: '#E54B2A', fontSize: 9, fontWeight: '800' },
+  brandText: { color: '#E54B2A', fontSize: 13, fontWeight: '800' },
   recBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: '#DC2626', 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 6, 
-    gap: 6 
+    paddingHorizontal: 16, 
+    paddingVertical: 9, 
+    borderRadius: 8, 
+    gap: 8 
   },
-  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff' },
-  recText: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  videoIndicator: { color: '#fff', fontSize: 8, fontWeight: '600', backgroundColor: '#E54B2A', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginLeft: 4 },
+  recDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#fff' },
+  recText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1.5 },
+  videoIndicator: { color: '#fff', fontSize: 11, fontWeight: '600', backgroundColor: '#E54B2A', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, marginLeft: 5 },
   statusBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    paddingHorizontal: 10, 
-    paddingVertical: 5, 
-    borderRadius: 6, 
-    gap: 5 
-  },
-  online: { backgroundColor: 'rgba(16,185,129,0.3)' },
-  offline: { backgroundColor: 'rgba(239,68,68,0.3)' },
-  statusDot: { width: 6, height: 6, borderRadius: 3 },
-  onlineDot: { backgroundColor: '#10B981' },
-  offlineDot: { backgroundColor: '#EF4444' },
-  statusText: { color: '#fff', fontSize: 9, fontWeight: '700' },
-  
-  tcBox: { 
-    position: 'absolute', 
-    top: 60, 
-    left: 12, 
-    backgroundColor: 'rgba(0,0,0,0.9)', 
-    padding: 10, 
-    borderRadius: 8, 
-    borderLeftWidth: 3, 
-    borderLeftColor: '#E54B2A' 
-  },
-  tcLabel: { color: '#666', fontSize: 8, fontWeight: '600', marginTop: 3 },
-  tcVal: { color: '#fff', fontSize: 12, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  tcDiv: { height: 1, backgroundColor: '#333', marginVertical: 5 },
-  
-  watermark: { 
-    position: 'absolute', 
-    bottom: 14, 
-    right: 14, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(229,75,42,0.95)', 
-    paddingHorizontal: 12, 
-    paddingVertical: 7, 
+    paddingHorizontal: 14, 
+    paddingVertical: 8, 
     borderRadius: 8, 
     gap: 7 
   },
-  wmIcon: { width: 20, height: 20, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  wmText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1 },
-  wmLive: { color: '#fff', fontSize: 8, fontWeight: '700', backgroundColor: '#EF4444', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginLeft: 3 },
+  online: { backgroundColor: 'rgba(16,185,129,0.3)' },
+  offline: { backgroundColor: 'rgba(239,68,68,0.3)' },
+  statusDot: { width: 9, height: 9, borderRadius: 5 },
+  onlineDot: { backgroundColor: '#10B981' },
+  offlineDot: { backgroundColor: '#EF4444' },
+  statusText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+  
+  tcBox: { 
+    position: 'absolute', 
+    top: 80, 
+    left: 16, 
+    backgroundColor: 'rgba(0,0,0,0.9)', 
+    padding: 14, 
+    borderRadius: 10, 
+    borderLeftWidth: 4, 
+    borderLeftColor: '#E54B2A' 
+  },
+  tcLabel: { color: '#666', fontSize: 11, fontWeight: '600', marginTop: 4 },
+  tcVal: { color: '#fff', fontSize: 17, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tcDiv: { height: 1, backgroundColor: '#333', marginVertical: 7 },
+  
+  watermark: { 
+    position: 'absolute', 
+    bottom: 18, 
+    right: 18, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(229,75,42,0.95)', 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 10, 
+    gap: 10 
+  },
+  wmIcon: { width: 28, height: 28, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  wmText: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 1.5 },
+  wmLive: { color: '#fff', fontSize: 11, fontWeight: '700', backgroundColor: '#EF4444', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, marginLeft: 4 },
   
   visitorBox: { 
     position: 'absolute', 
-    bottom: 14, 
-    left: 14, 
+    bottom: 18, 
+    left: 18, 
     backgroundColor: 'rgba(0,0,0,0.9)', 
-    paddingHorizontal: 14, 
-    paddingVertical: 9, 
-    borderRadius: 10, 
+    paddingHorizontal: 18, 
+    paddingVertical: 12, 
+    borderRadius: 12, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 9 
+    gap: 12 
   },
-  visitorNum: { color: '#fff', fontSize: 22, fontWeight: '800' },
-  visitorLabel: { color: '#666', fontSize: 10 },
+  visitorNum: { color: '#fff', fontSize: 30, fontWeight: '800' },
+  visitorLabel: { color: '#666', fontSize: 14 },
   
   durationBox: { 
     position: 'absolute', 
-    bottom: 14, 
+    bottom: 18, 
     alignSelf: 'center', 
     backgroundColor: 'rgba(0,0,0,0.85)', 
-    paddingHorizontal: 18, 
-    paddingVertical: 9, 
-    borderRadius: 8, 
-    borderWidth: 1, 
+    paddingHorizontal: 24, 
+    paddingVertical: 12, 
+    borderRadius: 10, 
+    borderWidth: 2, 
     borderColor: '#EF4444' 
   },
-  durationText: { color: '#EF4444', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  durationText: { color: '#EF4444', fontSize: 24, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   
-  uploadOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  uploadOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 28 },
   uploadBox: { 
     backgroundColor: '#0a0a0a', 
-    padding: 32, 
-    borderRadius: 16, 
+    padding: 40, 
+    borderRadius: 20, 
     alignItems: 'center', 
     borderWidth: 1, 
     borderColor: '#1a1a1a',
-    minWidth: 260
+    minWidth: 340
   },
-  uploadTitle: { color: '#fff', fontSize: 16, fontWeight: '600', marginTop: 12, marginBottom: 20 },
-  progressBar: { width: 220, height: 6, backgroundColor: '#1a1a1a', borderRadius: 3, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#E54B2A', borderRadius: 3 },
-  uploadPercent: { color: '#E54B2A', fontSize: 14, fontWeight: '700', marginTop: 10 },
+  uploadTitle: { color: '#fff', fontSize: 22, fontWeight: '600', marginTop: 16, marginBottom: 26 },
+  progressBar: { width: 280, height: 8, backgroundColor: '#1a1a1a', borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#E54B2A', borderRadius: 4 },
+  uploadPercent: { color: '#E54B2A', fontSize: 19, fontWeight: '700', marginTop: 14 },
   
   toast: { 
     position: 'absolute', 
-    bottom: 65, 
+    bottom: 85, 
     alignSelf: 'center', 
     backgroundColor: 'rgba(0,0,0,0.95)', 
-    paddingHorizontal: 22, 
-    paddingVertical: 13, 
-    borderRadius: 10, 
+    paddingHorizontal: 28, 
+    paddingVertical: 16, 
+    borderRadius: 12, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 11, 
+    gap: 14, 
     borderWidth: 1, 
     borderColor: '#10B981' 
   },
-  toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  toastText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   
   panel: { 
     backgroundColor: '#0a0a0a', 
     borderLeftWidth: 1, 
     borderLeftColor: '#1a1a1a', 
-    padding: 14, 
+    padding: 20, 
     justifyContent: 'space-between' 
   },
-  boothName: { color: '#fff', fontSize: 12, fontWeight: '700', textAlign: 'center' },
-  boothSub: { color: '#666', fontSize: 9, textAlign: 'center', marginTop: 3 },
+  boothName: { color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center' },
+  boothSub: { color: '#666', fontSize: 15, textAlign: 'center', marginTop: 5 },
   uploadModeBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: 5, 
-    marginTop: 7, 
-    paddingVertical: 5, 
-    paddingHorizontal: 9, 
+    gap: 7, 
+    marginTop: 10, 
+    paddingVertical: 7, 
+    paddingHorizontal: 12, 
     backgroundColor: 'rgba(255,255,255,0.05)', 
-    borderRadius: 5 
+    borderRadius: 7 
   },
-  uploadModeText: { fontSize: 9, fontWeight: '600' },
+  uploadModeText: { fontSize: 15, fontWeight: '600' },
   storageBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: 5, 
-    marginTop: 5, 
-    paddingVertical: 4, 
-    paddingHorizontal: 9, 
+    gap: 7, 
+    marginTop: 7, 
+    paddingVertical: 6, 
+    paddingHorizontal: 12, 
     backgroundColor: 'rgba(255,255,255,0.05)', 
-    borderRadius: 5 
+    borderRadius: 7 
   },
-  storageBadgeText: { fontSize: 9, fontWeight: '600' },
+  storageBadgeText: { fontSize: 15, fontWeight: '600' },
   
-  section: { marginTop: 18 },
-  secLabel: { color: '#555', fontSize: 8, fontWeight: '700', marginBottom: 7, letterSpacing: 0.5 },
-  inputRow: { flexDirection: 'row', gap: 6 },
+  section: { marginTop: 24 },
+  secLabel: { color: '#555', fontSize: 14, fontWeight: '700', marginBottom: 10, letterSpacing: 0.5 },
+  inputRow: { flexDirection: 'row', gap: 8 },
   input: { 
     flex: 1, 
     backgroundColor: '#111', 
-    borderRadius: 7, 
-    paddingHorizontal: 10, 
-    paddingVertical: 9, 
+    borderRadius: 9, 
+    paddingHorizontal: 14, 
+    paddingVertical: 12, 
     color: '#fff', 
-    fontSize: 11, 
+    fontSize: 18, 
     borderWidth: 1, 
     borderColor: '#222' 
   },
   addBtn: { 
-    width: 36, 
-    height: 36, 
-    borderRadius: 7, 
+    width: 52, 
+    height: 52, 
+    borderRadius: 9, 
     backgroundColor: '#E54B2A', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  scanCount: { color: '#E54B2A', fontSize: 9, marginTop: 5, textAlign: 'center' },
+  scanCount: { color: '#E54B2A', fontSize: 15, marginTop: 7, textAlign: 'center' },
   
-  recSection: { alignItems: 'center', marginVertical: 10 },
+  recSection: { alignItems: 'center', marginVertical: 14 },
   recBtn: { 
-    width: 66, 
-    height: 66, 
-    borderRadius: 33, 
+    width: 88, 
+    height: 88, 
+    borderRadius: 44, 
     backgroundColor: 'rgba(229,75,42,0.2)', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    borderWidth: 3, 
+    borderWidth: 4, 
     borderColor: '#E54B2A' 
   },
   recBtnActive: { backgroundColor: 'rgba(239,68,68,0.2)', borderColor: '#EF4444' },
   recBtnInner: { 
-    width: 50, 
-    height: 50, 
-    borderRadius: 25, 
+    width: 66, 
+    height: 66, 
+    borderRadius: 33, 
     backgroundColor: '#E54B2A', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  recBtnInnerActive: { backgroundColor: '#EF4444', borderRadius: 8, width: 34, height: 34 },
-  recordIcon: { width: 21, height: 21, borderRadius: 11, backgroundColor: '#fff' },
-  stopIcon: { width: 15, height: 15, borderRadius: 2, backgroundColor: '#fff' },
-  recLabel: { color: '#888', fontSize: 10, fontWeight: '700', textAlign: 'center', marginTop: 7, letterSpacing: 0.5 },
+  recBtnInnerActive: { backgroundColor: '#EF4444', borderRadius: 10, width: 44, height: 44 },
+  recordIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff' },
+  stopIcon: { width: 20, height: 20, borderRadius: 3, backgroundColor: '#fff' },
+  recLabel: { color: '#888', fontSize: 19, fontWeight: '700', textAlign: 'center', marginTop: 10, letterSpacing: 0.5 },
   
   actions: { 
     flexDirection: 'row', 
     justifyContent: 'space-around', 
-    paddingTop: 12, 
+    paddingTop: 16, 
     borderTopWidth: 1, 
     borderTopColor: '#1a1a1a',
-    marginTop: 4
+    marginTop: 6
   },
-  actBtn: { alignItems: 'center', padding: 7 },
-  actLabel: { color: '#888', fontSize: 8, marginTop: 4 },
+  actBtn: { alignItems: 'center', padding: 10 },
+  actLabel: { color: '#888', fontSize: 14, marginTop: 6 },
 
   // Exit modal (Enhanced spacing)
   exitOverlay: {
@@ -1505,37 +1506,37 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.85)', 
     justifyContent: 'center', 
     alignItems: 'center',
-    padding: 20,
+    padding: 28,
     zIndex: 1000
   },
   exitModal: { 
-    width: '85%',
-    maxWidth: 300, 
+    width: '90%',
+    maxWidth: 480, 
     backgroundColor: '#0f0f0f', 
-    borderRadius: 16, 
-    padding: 28, 
+    borderRadius: 24, 
+    padding: 44, 
     borderWidth: 1, 
     borderColor: '#2a2a2a' 
   },
-  exitTitle: { color: '#fff', fontSize: 19, fontWeight: '700', textAlign: 'center', marginBottom: 10 },
-  exitSub: { color: '#888', fontSize: 14, textAlign: 'center', marginBottom: 24, lineHeight: 20 },
-  exitBtnRow: { flexDirection: 'row', gap: 12 },
+  exitTitle: { color: '#fff', fontSize: 32, fontWeight: '700', textAlign: 'center', marginBottom: 18 },
+  exitSub: { color: '#888', fontSize: 22, textAlign: 'center', marginBottom: 36, lineHeight: 32 },
+  exitBtnRow: { flexDirection: 'row', gap: 20 },
   exitCancelBtn: { 
     flex: 1, 
-    paddingVertical: 12, 
-    borderRadius: 9, 
+    paddingVertical: 20, 
+    borderRadius: 13, 
     backgroundColor: '#1a1a1a', 
     alignItems: 'center', 
     borderWidth: 1, 
     borderColor: '#333' 
   },
-  exitCancelText: { color: '#888', fontSize: 14, fontWeight: '600' },
+  exitCancelText: { color: '#888', fontSize: 22, fontWeight: '600' },
   exitConfirmBtn: { 
     flex: 1, 
-    paddingVertical: 12, 
-    borderRadius: 9, 
+    paddingVertical: 20, 
+    borderRadius: 13, 
     backgroundColor: '#EF4444', 
     alignItems: 'center' 
   },
-  exitConfirmText: { color: '#fff', fontSize: 14, fontWeight: '700' },
+  exitConfirmText: { color: '#fff', fontSize: 22, fontWeight: '700' },
 });
