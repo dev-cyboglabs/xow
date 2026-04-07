@@ -363,7 +363,7 @@ export default function SettingsScreen() {
           {/* Storage Info */}
           <View style={styles.section}>
             <View style={styles.infoCard}>
-              <Ionicons name="information-circle" size={18} color="#F59E0B" />
+              <Ionicons name="information-circle" size={22} color="#F59E0B" />
               <Text style={styles.infoText}>
                 Videos are saved to your device's Gallery (DCIM/Movies) and are accessible from your phone's Photos/Gallery app.
                 Audio files are saved to the selected storage location for processing.
@@ -436,5 +436,5 @@ const styles = StyleSheet.create({
 
   // Info Card
   infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 20, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 12, gap: 17 },
-  infoText: { flex: 1, color: '#F59E0B', fontSize: 19, lineHeight: 26 },
+  infoText: { flex: 1, color: '#F59E0B', fontSize: 16, lineHeight: 26 },
 });

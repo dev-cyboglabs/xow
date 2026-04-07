@@ -361,20 +361,8 @@ export default function GalleryScreen() {
   };
 
   const replayVideo = async () => {
-    if (isChunkedPlayback && allChunks.length > 0) {
-      setCurrentChunkIndex(0);
-      setPreviewUri(allChunks[0].filePath);
-      setVideoPosition(0);
-      setVideoHasEnded(false);
-      setIsPlaying(true);
-      return;
-    }
-
-    if (videoRef.current) {
-      await videoRef.current.replayAsync();
-      setVideoHasEnded(false);
-      setIsPlaying(true);
-    }
+    setVideoHasEnded(false);
+    await seekToGlobalSeconds(0, true);
   };
 
   const togglePlayPause = async () => {
@@ -829,13 +817,13 @@ export default function GalleryScreen() {
                 style={styles.previewBtn}
                 onPress={() => openPreview(item)}
               >
-                <Ionicons name="play-circle" size={16} color="#E54B2A" />
+                <Ionicons name="play-circle" size={26} color="#E54B2A" />
                 <Text style={styles.previewBtnText}>Preview</Text>
               </TouchableOpacity>
             ) : null}
             {!isLocal && cloudItem.status === 'error' && (
               <TouchableOpacity style={styles.reprocessBtn} onPress={() => handleReprocess(cloudItem)}>
-                <Ionicons name="refresh" size={12} color="#F59E0B" />
+                <Ionicons name="refresh" size={21} color="#F59E0B" />
               </TouchableOpacity>
             )}
             {isLocal && (
@@ -854,7 +842,7 @@ export default function GalleryScreen() {
                   )
                 ) : (
                   <>
-                    <Ionicons name="cloud-upload" size={14} color="#10B981" />
+                    <Ionicons name="cloud-upload" size={23} color="#10B981" />
                     <Text style={styles.uploadBtnText}>Upload</Text>
                   </>
                 )}
@@ -868,7 +856,7 @@ export default function GalleryScreen() {
               {deletingId === itemId ? (
                 <ActivityIndicator size="small" color="#EF4444" />
               ) : (
-                <Ionicons name="trash" size={14} color="#EF4444" />
+                <Ionicons name="trash" size={23} color="#EF4444" />
               )}
             </TouchableOpacity>
           </View>
@@ -878,14 +866,14 @@ export default function GalleryScreen() {
         <View style={styles.mediaRow}>
           <View style={styles.mediaIcons}>
             <View style={[styles.mediaBadge, hasVideo && styles.mediaBadgeActive]}>
-              <Ionicons name="videocam" size={10} color={hasVideo ? '#10B981' : '#444'} />
+              <Ionicons name="videocam" size={18} color={hasVideo ? '#10B981' : '#444'} />
             </View>
             <View style={[styles.mediaBadge, hasAudio && styles.mediaBadgeActive]}>
-              <Ionicons name="mic" size={10} color={hasAudio ? '#10B981' : '#444'} />
+              <Ionicons name="mic" size={18} color={hasAudio ? '#10B981' : '#444'} />
             </View>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: `${config.color}20` }]}>
-            <Ionicons name={config.icon as any} size={10} color={config.color} />
+            <Ionicons name={config.icon as any} size={18} color={config.color} />
             <Text style={[styles.statusText, { color: config.color }]}>{config.label}</Text>
           </View>
         </View>
@@ -893,7 +881,7 @@ export default function GalleryScreen() {
         {/* Stats Row */}
         <View style={styles.statsRow}>
           <View style={styles.stat}>
-            <Ionicons name="people" size={12} color="#E54B2A" />
+            <Ionicons name="people" size={21} color="#E54B2A" />
             <Text style={styles.statText}>{String(visitorCount || 0)} visitors</Text>
             {!isLocal && cloudItem.head_count != null && cloudItem.head_count > 0 && (
               <View style={styles.aiDetectedBadge}>
@@ -903,7 +891,7 @@ export default function GalleryScreen() {
           </View>
           {!isLocal && cloudItem.total_speakers != null && cloudItem.total_speakers > 0 && (
             <View style={styles.stat}>
-              <Ionicons name="chatbubbles" size={12} color="#10B981" />
+              <Ionicons name="chatbubbles" size={21} color="#10B981" />
               <Text style={styles.statText}>{String(cloudItem.total_speakers)} speakers</Text>
             </View>
           )}
@@ -1052,12 +1040,7 @@ export default function GalleryScreen() {
         onRequestClose={closePreview}
       >
         <View style={styles.modalOverlay}>
-          <ScrollView 
-            contentContainerStyle={styles.modalScrollContent}
-            showsVerticalScrollIndicator={false}
-            bounces={false}
-          >
-            <View style={styles.modalContent}>
+          <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{previewTitle}</Text>
                 <TouchableOpacity style={styles.closeBtn} onPress={closePreview}>
@@ -1147,7 +1130,6 @@ export default function GalleryScreen() {
                 </View>
               </View>
             </View>
-          </ScrollView>
         </View>
       </Modal>
     </View>
@@ -1230,31 +1212,30 @@ const styles = StyleSheet.create({
   summary: { flex: 1, color: '#888', fontSize: 18, lineHeight: 26 },
 
   // Modal
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
-  modalScrollContent: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 36 },
-  modalContent: { width: '90%', maxWidth: 850, backgroundColor: '#0a0a0a', borderRadius: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#1a1a1a' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
-  modalTitle: { color: '#fff', fontSize: 26, fontWeight: '600' },
-  closeBtn: { width: 56, height: 56, borderRadius: 10, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { width: '100%', maxWidth: 1105, maxHeight: '95%', backgroundColor: '#0a0a0a', borderRadius: 31, borderWidth: 1, borderColor: '#1a1a1a', flexDirection: 'column' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
+  modalTitle: { color: '#fff', fontSize: 22, fontWeight: '600' },
+  closeBtn: { width: 73, height: 73, borderRadius: 13, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
   
   // Video container and overlay
   videoContainer: { position: 'relative', width: '100%', backgroundColor: '#000' },
   videoPlayer: { width: '100%', aspectRatio: 16/9, backgroundColor: '#000' },
-  videoOverlay: { position: 'absolute', top: 14, left: 14, backgroundColor: 'rgba(0,0,0,0.85)', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#E54B2A', gap: 6 },
-  overlayLogo: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingBottom: 3 },
-  overlayLogoText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 0.5 },
-  overlayDivider: { height: 1, backgroundColor: '#333', marginVertical: 2 },
-  overlayBlock: { gap: 2 },
-  overlayLabel: { color: '#666', fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
-  overlayTCValue: { color: '#EF4444', fontSize: 17, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  overlayFPSValue: { color: '#E54B2A', fontSize: 17, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  videoOverlay: { position: 'absolute', top: 18, left: 18, backgroundColor: 'rgba(0,0,0,0.85)', paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10, borderLeftWidth: 4, borderLeftColor: '#E54B2A', gap: 8 },
+  overlayLogo: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 4 },
+  overlayLogoText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },
+  overlayDivider: { height: 1, backgroundColor: '#333', marginVertical: 3 },
+  overlayBlock: { gap: 3 },
+  overlayLabel: { color: '#666', fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  overlayTCValue: { color: '#EF4444', fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  overlayFPSValue: { color: '#E54B2A', fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 
   // Replay button
-  replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -75 }, { translateY: -75 }], width: 150, height: 150, borderRadius: 75, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 8 },
-  replayText: { color: '#fff', fontSize: 19, fontWeight: '700', marginTop: 10, letterSpacing: 0.5 },
-  controlsBar: { position: 'absolute', left: 14, right: 14, bottom: 14, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  controlPlayBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(229,75,42,0.85)', justifyContent: 'center', alignItems: 'center' },
-  controlTimeText: { color: '#fff', fontSize: 14, fontWeight: '700', minWidth: 90, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -98 }, { translateY: -98 }], width: 195, height: 195, borderRadius: 98, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
+  replayText: { color: '#fff', fontSize: 25, fontWeight: '700', marginTop: 13, letterSpacing: 0.5 },
+  controlsBar: { position: 'absolute', left: 18, right: 18, bottom: 80, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 13, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 16 },
+  controlPlayBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(229,75,42,0.85)', justifyContent: 'center', alignItems: 'center' },
+  controlTimeText: { color: '#fff', fontSize: 18, fontWeight: '700', minWidth: 117, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   progressTrack: { flex: 1, height: 8, borderRadius: 5, backgroundColor: '#222', overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#E54B2A' },
   progressThumb: { position: 'absolute', top: -5, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff' },
