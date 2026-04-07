@@ -121,8 +121,36 @@ export default function SetupScreen() {
     setSecondsLeft(secs);
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
-      setSecondsLeft(prev => (prev <= 1 ? 0 : prev - 1));
+      setSecondsLeft(prev => {
+        if (prev <= 1) {
+          // When timer expires, regenerate a new pairing code
+          regeneratePairingCode();
+          return 0;
+        }
+        return prev - 1;
+      });
     }, 1000);
+  };
+
+  const regeneratePairingCode = async () => {
+    try {
+      const device_id = await AsyncStorage.getItem(DEVICE_ID_KEY);
+      const password = await AsyncStorage.getItem(DEVICE_PWD_KEY);
+      if (!device_id || !password) return;
+
+      const res = await axios.post(
+        `${API_URL}/api/devices/${device_id}/remove-pairing?password=${password}`
+      );
+      const code = res.data?.new_pairing_code || '------';
+      const secs = res.data?.expires_in_seconds ?? 300;
+      
+      setPairingCode(code);
+      startCountdown(secs);
+    } catch (error) {
+      // If regeneration fails, try again in 5 minutes
+      setPairingCode('------');
+      startCountdown(300);
+    }
   };
 
   const pollPairingStatus = async () => {
