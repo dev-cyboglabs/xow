@@ -1005,8 +1005,8 @@ const startRecording = async () => {
   }
 
   // Responsive panel width with better spacing for different screen sizes
-  // Increased widths to accommodate larger UI elements
-  const panelWidth = width < 600 ? Math.min(180, width * 0.28) : width < 900 ? Math.min(200, width * 0.24) : Math.min(220, width * 0.22);
+  // Increased widths to accommodate larger UI elements (15% increase applied)
+  const panelWidth = width < 600 ? Math.min(200, width * 0.30) : width < 900 ? Math.min(230, width * 0.26) : Math.min(250, width * 0.24);
   const isSmallScreen = width < 600;
   const isMediumScreen = width >= 600 && width < 900;
 
@@ -1125,7 +1125,7 @@ const startRecording = async () => {
           <Text style={styles.boothName} numberOfLines={1}>{device?.name || 'Booth'}</Text>
           <Text style={styles.boothSub}>Expo Recording</Text>
           <View style={styles.uploadModeBadge}>
-            <Ionicons name={autoUpload ? 'cloud' : 'save'} size={10} color={autoUpload ? '#10B981' : '#F59E0B'} />
+            <Ionicons name={autoUpload ? 'cloud' : 'save'} size={16} color={autoUpload ? '#10B981' : '#F59E0B'} />
             <Text style={[styles.uploadModeText, { color: autoUpload ? '#10B981' : '#F59E0B' }]}>
               {autoUpload ? 'Auto Upload' : 'Local Save'}
             </Text>
@@ -1133,7 +1133,7 @@ const startRecording = async () => {
           <View style={styles.storageBadge}>
             <Ionicons
               name={storageLocation === 'External' ? 'save' : 'phone-portrait'}
-              size={10}
+              size={16}
               color={storageLocation === 'External' ? '#10B981' : '#8B5CF6'}
             />
             <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#10B981' : '#8B5CF6' }]}>
@@ -1242,259 +1242,259 @@ const styles = StyleSheet.create({
     backgroundColor: '#0d0d0d', 
     borderBottomWidth: 1, 
     borderBottomColor: '#1a1a1a', 
-    paddingHorizontal: 20, 
-    paddingVertical: 12 
+    paddingHorizontal: 24, 
+    paddingVertical: 14 
   },
-  previewHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  previewLogo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  previewLogoText: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 1.5 },
-  previewLiveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' },
-  previewDivider: { width: 1, height: 28, backgroundColor: '#2a2a2a' },
-  previewTCBlock: { alignItems: 'flex-start', gap: 3 },
-  previewMetaLabel: { color: '#555', fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  previewTCVal: { color: '#EF4444', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  previewFPSVal: { color: '#E54B2A', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  previewHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  previewLogo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  previewLogoText: { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: 1.5 },
+  previewLiveDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444' },
+  previewDivider: { width: 1, height: 33, backgroundColor: '#2a2a2a' },
+  previewTCBlock: { alignItems: 'flex-start', gap: 4 },
+  previewMetaLabel: { color: '#555', fontSize: 12, fontWeight: '700', letterSpacing: 0.5 },
+  previewTCVal: { color: '#EF4444', fontSize: 21, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  previewFPSVal: { color: '#E54B2A', fontSize: 21, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   
   topBar: { 
     position: 'absolute', 
-    top: 16, 
-    left: 16, 
-    right: 16, 
+    top: 20, 
+    left: 20, 
+    right: 20, 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'flex-start',
-    gap: 12
+    gap: 15
   },
-  deviceSection: { gap: 8, marginTop: 18 },
+  deviceSection: { gap: 10, marginTop: 22 },
   idBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: 'rgba(0,0,0,0.85)', 
-    paddingHorizontal: 14, 
-    paddingVertical: 8, 
-    borderRadius: 8, 
-    gap: 7 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 10, 
+    gap: 9 
   },
-  idText: { color: '#fff', fontSize: 14, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  idText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   brandBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: 'rgba(229,75,42,0.4)', 
-    paddingHorizontal: 12, 
-    paddingVertical: 6, 
-    borderRadius: 8, 
-    gap: 6 
+    paddingHorizontal: 14, 
+    paddingVertical: 8, 
+    borderRadius: 10, 
+    gap: 8 
   },
-  brandText: { color: '#E54B2A', fontSize: 13, fontWeight: '800' },
+  brandText: { color: '#E54B2A', fontSize: 15, fontWeight: '800' },
   recBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     backgroundColor: '#DC2626', 
-    paddingHorizontal: 16, 
-    paddingVertical: 9, 
-    borderRadius: 8, 
-    gap: 8 
-  },
-  recDot: { width: 11, height: 11, borderRadius: 6, backgroundColor: '#fff' },
-  recText: { color: '#fff', fontSize: 14, fontWeight: '800', letterSpacing: 1.5 },
-  videoIndicator: { color: '#fff', fontSize: 11, fontWeight: '600', backgroundColor: '#E54B2A', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, marginLeft: 5 },
-  statusBadge: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 14, 
-    paddingVertical: 8, 
-    borderRadius: 8, 
-    gap: 7 
-  },
-  online: { backgroundColor: 'rgba(16,185,129,0.3)' },
-  offline: { backgroundColor: 'rgba(239,68,68,0.3)' },
-  statusDot: { width: 9, height: 9, borderRadius: 5 },
-  onlineDot: { backgroundColor: '#10B981' },
-  offlineDot: { backgroundColor: '#EF4444' },
-  statusText: { color: '#fff', fontSize: 13, fontWeight: '700' },
-  
-  tcBox: { 
-    position: 'absolute', 
-    top: 80, 
-    left: 16, 
-    backgroundColor: 'rgba(0,0,0,0.9)', 
-    padding: 14, 
-    borderRadius: 10, 
-    borderLeftWidth: 4, 
-    borderLeftColor: '#E54B2A' 
-  },
-  tcLabel: { color: '#666', fontSize: 11, fontWeight: '600', marginTop: 4 },
-  tcVal: { color: '#fff', fontSize: 17, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  tcDiv: { height: 1, backgroundColor: '#333', marginVertical: 7 },
-  
-  watermark: { 
-    position: 'absolute', 
-    bottom: 18, 
-    right: 18, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(229,75,42,0.95)', 
-    paddingHorizontal: 16, 
-    paddingVertical: 10, 
+    paddingHorizontal: 20, 
+    paddingVertical: 11, 
     borderRadius: 10, 
     gap: 10 
   },
-  wmIcon: { width: 28, height: 28, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
-  wmText: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 1.5 },
-  wmLive: { color: '#fff', fontSize: 11, fontWeight: '700', backgroundColor: '#EF4444', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, marginLeft: 4 },
+  recDot: { width: 13, height: 13, borderRadius: 7, backgroundColor: '#fff' },
+  recText: { color: '#fff', fontSize: 16, fontWeight: '800', letterSpacing: 1.5 },
+  videoIndicator: { color: '#fff', fontSize: 13, fontWeight: '600', backgroundColor: '#E54B2A', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 5, marginLeft: 7 },
+  statusBadge: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 16, 
+    paddingVertical: 10, 
+    borderRadius: 10, 
+    gap: 9 
+  },
+  online: { backgroundColor: 'rgba(16,185,129,0.3)' },
+  offline: { backgroundColor: 'rgba(239,68,68,0.3)' },
+  statusDot: { width: 11, height: 11, borderRadius: 6 },
+  onlineDot: { backgroundColor: '#10B981' },
+  offlineDot: { backgroundColor: '#EF4444' },
+  statusText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  
+  tcBox: { 
+    position: 'absolute', 
+    top: 92, 
+    left: 20, 
+    backgroundColor: 'rgba(0,0,0,0.9)', 
+    padding: 16, 
+    borderRadius: 12, 
+    borderLeftWidth: 4, 
+    borderLeftColor: '#E54B2A' 
+  },
+  tcLabel: { color: '#666', fontSize: 13, fontWeight: '600', marginTop: 5 },
+  tcVal: { color: '#fff', fontSize: 20, fontWeight: '600', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  tcDiv: { height: 1, backgroundColor: '#333', marginVertical: 9 },
+  
+  watermark: { 
+    position: 'absolute', 
+    bottom: 22, 
+    right: 22, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    backgroundColor: 'rgba(229,75,42,0.95)', 
+    paddingHorizontal: 20, 
+    paddingVertical: 12, 
+    borderRadius: 12, 
+    gap: 12 
+  },
+  wmIcon: { width: 33, height: 33, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  wmText: { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: 1.5 },
+  wmLive: { color: '#fff', fontSize: 13, fontWeight: '700', backgroundColor: '#EF4444', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 5, marginLeft: 5 },
   
   visitorBox: { 
     position: 'absolute', 
-    bottom: 18, 
-    left: 18, 
+    bottom: 22, 
+    left: 22, 
     backgroundColor: 'rgba(0,0,0,0.9)', 
-    paddingHorizontal: 18, 
-    paddingVertical: 12, 
-    borderRadius: 12, 
+    paddingHorizontal: 22, 
+    paddingVertical: 14, 
+    borderRadius: 14, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 12 
+    gap: 14 
   },
-  visitorNum: { color: '#fff', fontSize: 30, fontWeight: '800' },
-  visitorLabel: { color: '#666', fontSize: 14 },
+  visitorNum: { color: '#fff', fontSize: 35, fontWeight: '800' },
+  visitorLabel: { color: '#666', fontSize: 16 },
   
   durationBox: { 
     position: 'absolute', 
-    bottom: 18, 
+    bottom: 22, 
     alignSelf: 'center', 
     backgroundColor: 'rgba(0,0,0,0.85)', 
-    paddingHorizontal: 24, 
-    paddingVertical: 12, 
-    borderRadius: 10, 
+    paddingHorizontal: 28, 
+    paddingVertical: 14, 
+    borderRadius: 12, 
     borderWidth: 2, 
     borderColor: '#EF4444' 
   },
-  durationText: { color: '#EF4444', fontSize: 24, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  durationText: { color: '#EF4444', fontSize: 27, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   
-  uploadOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 28 },
+  uploadOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 33 },
   uploadBox: { 
     backgroundColor: '#0a0a0a', 
-    padding: 40, 
-    borderRadius: 20, 
+    padding: 46, 
+    borderRadius: 23, 
     alignItems: 'center', 
     borderWidth: 1, 
     borderColor: '#1a1a1a',
-    minWidth: 340
+    minWidth: 393
   },
-  uploadTitle: { color: '#fff', fontSize: 22, fontWeight: '600', marginTop: 16, marginBottom: 26 },
-  progressBar: { width: 280, height: 8, backgroundColor: '#1a1a1a', borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: '#E54B2A', borderRadius: 4 },
-  uploadPercent: { color: '#E54B2A', fontSize: 19, fontWeight: '700', marginTop: 14 },
+  uploadTitle: { color: '#fff', fontSize: 25, fontWeight: '600', marginTop: 19, marginBottom: 30 },
+  progressBar: { width: 323, height: 10, backgroundColor: '#1a1a1a', borderRadius: 5, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: '#E54B2A', borderRadius: 5 },
+  uploadPercent: { color: '#E54B2A', fontSize: 22, fontWeight: '700', marginTop: 16 },
   
   toast: { 
     position: 'absolute', 
-    bottom: 85, 
+    bottom: 99, 
     alignSelf: 'center', 
     backgroundColor: 'rgba(0,0,0,0.95)', 
-    paddingHorizontal: 28, 
-    paddingVertical: 16, 
-    borderRadius: 12, 
+    paddingHorizontal: 33, 
+    paddingVertical: 19, 
+    borderRadius: 14, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 14, 
+    gap: 16, 
     borderWidth: 1, 
     borderColor: '#10B981' 
   },
-  toastText: { color: '#fff', fontSize: 18, fontWeight: '600' },
+  toastText: { color: '#fff', fontSize: 21, fontWeight: '600' },
   
   panel: { 
     backgroundColor: '#0a0a0a', 
     borderLeftWidth: 1, 
     borderLeftColor: '#1a1a1a', 
-    padding: 20, 
+    padding: 24, 
     justifyContent: 'space-between' 
   },
-  boothName: { color: '#fff', fontSize: 20, fontWeight: '700', textAlign: 'center' },
-  boothSub: { color: '#666', fontSize: 15, textAlign: 'center', marginTop: 5 },
+  boothName: { color: '#fff', fontSize: 23, fontWeight: '700', textAlign: 'center' },
+  boothSub: { color: '#666', fontSize: 18, textAlign: 'center', marginTop: 7 },
   uploadModeBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: 7, 
-    marginTop: 10, 
-    paddingVertical: 7, 
-    paddingHorizontal: 12, 
+    gap: 9, 
+    marginTop: 12, 
+    paddingVertical: 9, 
+    paddingHorizontal: 14, 
     backgroundColor: 'rgba(255,255,255,0.05)', 
-    borderRadius: 7 
+    borderRadius: 9 
   },
-  uploadModeText: { fontSize: 15, fontWeight: '600' },
+  uploadModeText: { fontSize: 18, fontWeight: '600' },
   storageBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     justifyContent: 'center', 
-    gap: 7, 
-    marginTop: 7, 
-    paddingVertical: 6, 
-    paddingHorizontal: 12, 
+    gap: 9, 
+    marginTop: 9, 
+    paddingVertical: 8, 
+    paddingHorizontal: 14, 
     backgroundColor: 'rgba(255,255,255,0.05)', 
-    borderRadius: 7 
+    borderRadius: 9 
   },
-  storageBadgeText: { fontSize: 15, fontWeight: '600' },
+  storageBadgeText: { fontSize: 18, fontWeight: '600' },
   
-  section: { marginTop: 24 },
-  secLabel: { color: '#555', fontSize: 14, fontWeight: '700', marginBottom: 10, letterSpacing: 0.5 },
-  inputRow: { flexDirection: 'row', gap: 8 },
+  section: { marginTop: 28 },
+  secLabel: { color: '#555', fontSize: 16, fontWeight: '700', marginBottom: 12, letterSpacing: 0.5 },
+  inputRow: { flexDirection: 'row', gap: 10 },
   input: { 
     flex: 1, 
     backgroundColor: '#111', 
-    borderRadius: 9, 
-    paddingHorizontal: 14, 
-    paddingVertical: 12, 
+    borderRadius: 11, 
+    paddingHorizontal: 12, 
+    paddingVertical: 14, 
     color: '#fff', 
-    fontSize: 18, 
+    fontSize: 21, 
     borderWidth: 1, 
     borderColor: '#222' 
   },
   addBtn: { 
-    width: 52, 
-    height: 52, 
-    borderRadius: 9, 
+    width: 60, 
+    height: 60, 
+    borderRadius: 11, 
     backgroundColor: '#E54B2A', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  scanCount: { color: '#E54B2A', fontSize: 15, marginTop: 7, textAlign: 'center' },
+  scanCount: { color: '#E54B2A', fontSize: 18, marginTop: 9, textAlign: 'center' },
   
-  recSection: { alignItems: 'center', marginVertical: 14 },
+  recSection: { alignItems: 'center', marginVertical: 18 },
   recBtn: { 
-    width: 88, 
-    height: 88, 
-    borderRadius: 44, 
+    width: 117, 
+    height: 117, 
+    borderRadius: 59, 
     backgroundColor: 'rgba(229,75,42,0.2)', 
     justifyContent: 'center', 
     alignItems: 'center', 
-    borderWidth: 4, 
+    borderWidth: 5, 
     borderColor: '#E54B2A' 
   },
   recBtnActive: { backgroundColor: 'rgba(239,68,68,0.2)', borderColor: '#EF4444' },
   recBtnInner: { 
-    width: 66, 
-    height: 66, 
-    borderRadius: 33, 
+    width: 89, 
+    height: 89, 
+    borderRadius: 45, 
     backgroundColor: '#E54B2A', 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  recBtnInnerActive: { backgroundColor: '#EF4444', borderRadius: 10, width: 44, height: 44 },
-  recordIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#fff' },
-  stopIcon: { width: 20, height: 20, borderRadius: 3, backgroundColor: '#fff' },
-  recLabel: { color: '#888', fontSize: 19, fontWeight: '700', textAlign: 'center', marginTop: 10, letterSpacing: 0.5 },
+  recBtnInnerActive: { backgroundColor: '#EF4444', borderRadius: 14, width: 58, height: 58 },
+  recordIcon: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#fff' },
+  stopIcon: { width: 26, height: 26, borderRadius: 5, backgroundColor: '#fff' },
+  recLabel: { color: '#888', fontSize: 24, fontWeight: '700', textAlign: 'center', marginTop: 14, letterSpacing: 0.5 },
   
   actions: { 
     flexDirection: 'row', 
     justifyContent: 'space-around', 
-    paddingTop: 16, 
+    paddingTop: 20, 
     borderTopWidth: 1, 
     borderTopColor: '#1a1a1a',
-    marginTop: 6
+    marginTop: 8
   },
-  actBtn: { alignItems: 'center', padding: 10 },
-  actLabel: { color: '#888', fontSize: 14, marginTop: 6 },
+  actBtn: { alignItems: 'center', padding: 12 },
+  actLabel: { color: '#888', fontSize: 16, marginTop: 8 },
 
   // Exit modal (Enhanced spacing)
   exitOverlay: {
@@ -1511,32 +1511,32 @@ const styles = StyleSheet.create({
   },
   exitModal: { 
     width: '90%',
-    maxWidth: 480, 
+    maxWidth: 554, 
     backgroundColor: '#0f0f0f', 
-    borderRadius: 24, 
-    padding: 44, 
+    borderRadius: 27, 
+    padding: 50, 
     borderWidth: 1, 
     borderColor: '#2a2a2a' 
   },
-  exitTitle: { color: '#fff', fontSize: 32, fontWeight: '700', textAlign: 'center', marginBottom: 18 },
-  exitSub: { color: '#888', fontSize: 22, textAlign: 'center', marginBottom: 36, lineHeight: 32 },
-  exitBtnRow: { flexDirection: 'row', gap: 20 },
+  exitTitle: { color: '#fff', fontSize: 37, fontWeight: '700', textAlign: 'center', marginBottom: 21 },
+  exitSub: { color: '#888', fontSize: 25, textAlign: 'center', marginBottom: 42, lineHeight: 37 },
+  exitBtnRow: { flexDirection: 'row', gap: 23 },
   exitCancelBtn: { 
     flex: 1, 
-    paddingVertical: 20, 
-    borderRadius: 13, 
+    paddingVertical: 23, 
+    borderRadius: 15, 
     backgroundColor: '#1a1a1a', 
     alignItems: 'center', 
     borderWidth: 1, 
     borderColor: '#333' 
   },
-  exitCancelText: { color: '#888', fontSize: 22, fontWeight: '600' },
+  exitCancelText: { color: '#888', fontSize: 25, fontWeight: '600' },
   exitConfirmBtn: { 
     flex: 1, 
-    paddingVertical: 20, 
-    borderRadius: 13, 
+    paddingVertical: 23, 
+    borderRadius: 15, 
     backgroundColor: '#EF4444', 
     alignItems: 'center' 
   },
-  exitConfirmText: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  exitConfirmText: { color: '#fff', fontSize: 25, fontWeight: '700' },
 });
