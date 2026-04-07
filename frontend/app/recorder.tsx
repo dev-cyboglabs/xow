@@ -15,7 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
@@ -71,7 +71,9 @@ export default function RecorderScreen() {
   const router = useRouter();
   const { width, height } = useWindowDimensions();
   const [device, setDevice] = useState<Device | null>(null);
+  const deviceRef = useRef<Device | null>(null);
   const [isOnline, setIsOnline] = useState(true);
+  const isOnlineRef = useRef(true);
   const [isRecording, setIsRecording] = useState(false);
   const [currentRecording, setCurrentRecording] = useState<any>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -88,6 +90,7 @@ export default function RecorderScreen() {
   const [toastMessage, setToastMessage] = useState('');
   const [videoRecordingActive, setVideoRecordingActive] = useState(false);
   const [autoUpload, setAutoUpload] = useState(false);
+  const autoUploadRef = useRef(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [storageLocation, setStorageLocation] = useState<'Internal' | 'External'>('Internal');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
@@ -187,7 +190,9 @@ export default function RecorderScreen() {
     const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
     const name      = await AsyncStorage.getItem('xow_permanent_device_name');
     if (device_id) {
-      setDevice({ id: device_id, device_id, name: name || 'Booth' });
+      const d = { id: device_id, device_id, name: name || 'Booth' };
+      setDevice(d);
+      deviceRef.current = d;
     } else {
       router.replace('/');
     }
@@ -198,12 +203,20 @@ export default function RecorderScreen() {
       const saved = await AsyncStorage.getItem('xow_settings');
       if (saved) {
         const settings = JSON.parse(saved);
-        setAutoUpload(settings.autoUpload || false);
+        const value = settings.autoUpload || false;
+        setAutoUpload(value);
+        autoUploadRef.current = value;
       }
     } catch (e) {
       console.log('Load settings error:', e);
     }
   };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSettings();
+    }, [])
+  );
 
   const APP_PACKAGE = 'com.devcyboglabs.xowrecorder';
   const usbStorageModule = Platform.OS === 'android' ? NativeModules.UsbStorage : null;
@@ -333,8 +346,10 @@ export default function RecorderScreen() {
     try {
       await axios.get(`${API_URL}/api/health`, { timeout: 5000 });
       setIsOnline(true);
+      isOnlineRef.current = true;
     } catch {
       setIsOnline(false);
+      isOnlineRef.current = false;
     }
   };
 
@@ -685,7 +700,6 @@ const startRecording = async () => {
           await markSessionComplete(currentSessionIdRef.current);
           
           console.log(`✅ Session complete: ${metadata.chunks.length} chunks, ${recordingTimeRef.current}s total`);
-          showToast(`Recording saved: ${metadata.chunks.length} chunks`);
         }
       }
 
@@ -718,28 +732,22 @@ const startRecording = async () => {
       const existingRecordings = await getLocalRecordings();
       existingRecordings.unshift(localRecording);
       await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(existingRecordings));
-      
-      setSaveProgress(70);
 
-      if (autoUpload && isOnline && (finalChunksArray.length > 0 || savedAudioPath)) {
-        showToast('Uploading to cloud...');
-        setSaveProgress(80);
-        try {
-          await uploadRecordingToCloud(localRecording);
-          showToast('Upload complete');
-        } catch (uploadErr: any) {
-          console.log('Upload error:', uploadErr?.message || uploadErr);
-          showToast('Upload failed (saved locally)');
-        }
-      }
-
+      // Finish the save UI immediately — upload happens silently in background
       setSaveProgress(100);
       showToast('Recording saved');
       setCurrentRecording(null);
       setIsSaving(false);
-      
+
       // Clean up old incomplete sessions
       await cleanupOldSessions();
+
+      // Background upload — does not block or affect UI
+      if (autoUploadRef.current && isOnlineRef.current && (finalChunksArray.length > 0 || savedAudioPath)) {
+        uploadRecordingToCloud(localRecording)
+          .then(() => console.log('Background upload complete'))
+          .catch((uploadErr: any) => console.log('Background upload error:', uploadErr?.message || uploadErr));
+      }
     } catch (e: any) {
       console.error('Stop recording error:', e?.message || e);
       showToast('Save failed');
@@ -759,12 +767,13 @@ const startRecording = async () => {
   };
 
   const uploadRecordingToCloud = async (recording: LocalRecording) => {
-    if (!device) throw new Error('No device');
-    
+    const currentDevice = deviceRef.current;
+    if (!currentDevice) throw new Error('No device');
+
     console.log('Starting upload for recording:', recording.localId);
-    
+
     const res = await axios.post(`${API_URL}/api/recordings`, {
-      device_id: device.device_id,
+      device_id: currentDevice.device_id,
       expo_name: 'Expo 2025',
       booth_name: recording.boothName,
       start_time: recording.createdAt,

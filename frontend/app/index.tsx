@@ -241,7 +241,7 @@ export default function SetupScreen() {
       <View style={styles.rightPanel}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="link" size={18} color="#8B5CF6" />
+            <Ionicons name="link" size={32} color="#8B5CF6" />
             <Text style={styles.cardTitle}>Connect to Dashboard</Text>
           </View>
           <Text style={styles.cardSub}>
@@ -253,7 +253,7 @@ export default function SetupScreen() {
           </View>
 
           <View style={styles.timerRow}>
-            <Ionicons name="time-outline" size={12} color="#555" />
+            <Ionicons name="time-outline" size={22} color="#555" />
             <Text style={styles.timerText}>Refreshes in {formatTime(secondsLeft)}</Text>
           </View>
 
