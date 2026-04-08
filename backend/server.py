@@ -3198,3 +3198,7 @@ async def serve_home():
 @app.get("/api/dashboard")
 async def serve_dashboard():
     return FileResponse(ROOT_DIR / "static" / "dashboard.html")
+
+@app.get("/api/dashboard.js")
+async def serve_dashboard_js():
+    return FileResponse(ROOT_DIR / "static" / "dashboard.js", media_type="application/javascript")
