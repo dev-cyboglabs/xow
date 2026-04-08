@@ -2868,6 +2868,43 @@ async def get_dashboard_visitors(session_id: Optional[str] = None, user_id: Opti
 
     return result
 
+@api_router.get("/dashboard/session-videos")
+async def get_session_videos(session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """Get all recordings with videos for continuous playback, sorted chronologically"""
+    if session_id:
+        device_ids = await get_session_device_ids(session_id)
+    elif user_id:
+        device_ids = await get_linked_device_ids(user_id)
+    else:
+        device_ids = None
+    
+    query = {"device_id": {"$in": device_ids}} if device_ids is not None else {}
+    query["has_video"] = True
+    query["status"] = {"$in": ["completed", "processed"]}
+    
+    recordings = await db.recordings.find(query).sort("start_time", 1).to_list(None)
+    
+    result = []
+    total_duration = 0
+    
+    for r in recordings:
+        rec_data = {
+            "id": str(r['_id']),
+            "booth_name": r.get('booth_name', 'Unknown'),
+            "start_time": r.get('start_time').isoformat() + 'Z' if r.get('start_time') else None,
+            "duration": r.get('duration', 0),
+            "has_video": r.get('has_video', False),
+            "status": r.get('status', 'unknown')
+        }
+        result.append(rec_data)
+        total_duration += r.get('duration', 0)
+    
+    return {
+        "recordings": result,
+        "total_duration": total_duration,
+        "count": len(result)
+    }
+
 # ==================== MEDIA STREAMING ====================
 
 @api_router.get("/recordings/{recording_id}/video")

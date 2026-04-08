@@ -296,9 +296,184 @@
 
         function renderSessions() {
             return `<div class="fade space-y-6">
+                ${renderFullSessionPlayer()}
                 ${data.recordings.length === 0 ? '<div class="text-gray-500 text-center py-16">No sessions recorded yet</div>' : 
                 data.recordings.map(r => renderSessionCard(r)).join('')}
             </div>`;
+        }
+
+        function renderFullSessionPlayer() {
+            if (!data.recordings || data.recordings.length === 0) return '';
+            
+            return `
+                <div class="card rounded-2xl overflow-hidden mb-6">
+                    <div class="bg-gradient-to-r from-orange-500 to-red-600 p-6">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-4">
+                                <div class="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                                    <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h2 class="text-2xl font-bold text-white">Full Session Playback</h2>
+                                    <p class="text-white/80 text-sm mt-1">Watch all recordings in continuous sequence</p>
+                                </div>
+                            </div>
+                            <button onclick="playFullSession()" 
+                                    class="px-6 py-3 bg-white text-orange-600 rounded-xl font-semibold hover:bg-orange-50 transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
+                                <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
+                                </svg>
+                                Play All Sessions
+                            </button>
+                        </div>
+                    </div>
+                    <div id="session-player-container" class="hidden"></div>
+                </div>
+            `;
+        }
+
+        async function playFullSession() {
+            try {
+                const sp = sessionParam();
+                const response = await fetch(`${API}/dashboard/session-videos${sp}`);
+                const sessionData = await response.json();
+                
+                if (!sessionData.recordings || sessionData.recordings.length === 0) {
+                    alert('No videos available for playback');
+                    return;
+                }
+                
+                openSessionVideoPlayer(sessionData.recordings, sessionData.total_duration);
+            } catch (error) {
+                console.error('Error loading session videos:', error);
+                alert('Failed to load session videos');
+            }
+        }
+
+        function openSessionVideoPlayer(recordings, totalDuration) {
+            let currentIndex = 0;
+            let globalTime = 0;
+            
+            const modal = document.createElement('div');
+            modal.id = 'session-video-modal';
+            modal.className = 'fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center p-4';
+            modal.innerHTML = `
+                <div class="w-full max-w-7xl">
+                    <div class="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
+                        <div class="relative">
+                            <video id="session-video-player" 
+                                   class="w-full aspect-video bg-black" 
+                                   controls 
+                                   autoplay>
+                                <source src="${API}/recordings/${recordings[0].id}/video" type="video/mp4">
+                            </video>
+                            <button onclick="closeSessionVideoPlayer()" 
+                                    class="absolute top-4 right-4 w-12 h-12 rounded-full bg-black/50 hover:bg-black/70 backdrop-blur-sm flex items-center justify-center text-white transition-all">
+                                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="p-6 bg-gray-800">
+                            <div class="flex items-center justify-between mb-4">
+                                <div>
+                                    <div class="text-white text-lg font-semibold" id="session-current-recording">
+                                        ${recordings[0].booth_name || 'Recording 1'}
+                                    </div>
+                                    <div class="text-gray-400 text-sm mt-1" id="session-recording-info">
+                                        Recording 1 of ${recordings.length}
+                                    </div>
+                                </div>
+                                <div class="text-right">
+                                    <div class="text-white text-2xl font-bold" id="session-global-time">
+                                        ${formatTime(0)}
+                                    </div>
+                                    <div class="text-gray-400 text-sm">
+                                        / ${formatTime(totalDuration)}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                                <div id="session-progress-bar" class="bg-gradient-to-r from-orange-500 to-red-600 h-full transition-all" style="width: 0%"></div>
+                            </div>
+                            <div class="mt-4 flex items-center gap-2 text-xs text-gray-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                                </svg>
+                                Videos will play continuously. Close this window to stop playback.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            const videoPlayer = document.getElementById('session-video-player');
+            const globalTimeDisplay = document.getElementById('session-global-time');
+            const progressBar = document.getElementById('session-progress-bar');
+            const currentRecordingDisplay = document.getElementById('session-current-recording');
+            const recordingInfoDisplay = document.getElementById('session-recording-info');
+            
+            // Auto-advance to next video when current ends
+            videoPlayer.addEventListener('ended', () => {
+                currentIndex++;
+                if (currentIndex < recordings.length) {
+                    globalTime += recordings[currentIndex - 1].duration;
+                    videoPlayer.src = `${API}/recordings/${recordings[currentIndex].id}/video`;
+                    videoPlayer.play();
+                    currentRecordingDisplay.textContent = recordings[currentIndex].booth_name || `Recording ${currentIndex + 1}`;
+                    recordingInfoDisplay.textContent = `Recording ${currentIndex + 1} of ${recordings.length}`;
+                } else {
+                    // Session complete
+                    setTimeout(() => {
+                        modal.remove();
+                    }, 2000);
+                }
+            });
+            
+            // Update global time and progress during playback
+            videoPlayer.addEventListener('timeupdate', () => {
+                const baseTime = recordings.slice(0, currentIndex).reduce((sum, r) => sum + r.duration, 0);
+                globalTime = baseTime + videoPlayer.currentTime;
+                globalTimeDisplay.textContent = formatTime(globalTime);
+                
+                const progressPercent = (globalTime / totalDuration) * 100;
+                progressBar.style.width = progressPercent + '%';
+            });
+            
+            // Handle errors
+            videoPlayer.addEventListener('error', (e) => {
+                console.error('Video playback error:', e);
+                // Try to skip to next video
+                if (currentIndex < recordings.length - 1) {
+                    currentIndex++;
+                    videoPlayer.src = `${API}/recordings/${recordings[currentIndex].id}/video`;
+                    videoPlayer.play();
+                }
+            });
+        }
+
+        function closeSessionVideoPlayer() {
+            const modal = document.getElementById('session-video-modal');
+            if (modal) {
+                const video = document.getElementById('session-video-player');
+                if (video) video.pause();
+                modal.remove();
+            }
+        }
+
+        function formatTime(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            if (h > 0) {
+                return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            }
+            return `${m}:${s.toString().padStart(2, '0')}`;
         }
 
         function renderSessionCard(r) {
