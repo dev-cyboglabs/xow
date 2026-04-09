@@ -19,6 +19,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
+import { Audio } from 'expo-av';
+import XowLogo from '../assets/images/xow-logo.svg';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
@@ -96,6 +98,7 @@ export default function RecorderScreen() {
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
   const [recordingChunks, setRecordingChunks] = useState<ChunkType[]>([]);
   const toastAnim = useRef(new Animated.Value(0)).current;
+  const blinkAnim = useRef(new Animated.Value(1)).current;
   
   const cameraRef = useRef<CameraView>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -458,6 +461,21 @@ const startRecording = async () => {
   if (!device) return;
 
     try {
+      // Play camera shutter sound
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/sounds/camera-sfx1.mp3')
+        );
+        await sound.playAsync();
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            sound.unloadAsync();
+          }
+        });
+      } catch (error) {
+        console.log('Error playing camera sound:', error);
+      }
+      
       isRecordingRef.current = true;
       setIsRecording(true);
       setFrameCount(0);
@@ -497,6 +515,23 @@ const startRecording = async () => {
       latestFpsRef.current = 0;
       fpsSamplesRef.current = [];
       setFps(0);
+      
+      // Start blinking animation for live dot
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(blinkAnim, {
+            toValue: 0.2,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+          Animated.timing(blinkAnim, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+      
       timerRef.current = setInterval(() => setRecordingTime(p => p + 1), 1000);
       frameTimerRef.current = setInterval(() => {
         frameCountRef.current += 1;
@@ -580,12 +615,32 @@ const startRecording = async () => {
   const stopRecording = async () => {
     if (!currentRecording) return;
     
+    // Play camera shutter sound
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../assets/sounds/camera-sfx1.mp3')
+      );
+      await sound.playAsync();
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.log('Error playing camera sound:', error);
+    }
+    
     setIsSaving(true);
     setSaveProgress(0);
     
     try {
       isRecordingRef.current = false;
       setIsRecording(false);
+      
+      // Stop blinking animation and reset
+      blinkAnim.stopAnimation();
+      blinkAnim.setValue(1);
+      
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
@@ -983,6 +1038,22 @@ const startRecording = async () => {
     setBarcodeInput('');
     lastBarcodeRef.current = bc;
     
+    // Play visitor entry sound
+    try {
+      const { sound } = await Audio.Sound.createAsync(
+        require('../assets/sounds/visitor-log.mp3')
+      );
+      await sound.playAsync();
+      // Unload sound after playing to free memory
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.log('Error playing visitor sound:', error);
+    }
+    
     // Clear the last barcode after 2 seconds to allow re-scanning
     setTimeout(() => {
       if (lastBarcodeRef.current === bc) {
@@ -1034,11 +1105,6 @@ const startRecording = async () => {
         {isRecording && (
           <View style={styles.previewHeader}>
             <View style={styles.previewHeaderLeft}>
-              <View style={styles.previewLogo}>
-                <Ionicons name="videocam" size={14} color="#fff" />
-                <Text style={styles.previewLogoText}>XoW</Text>
-                <View style={styles.previewLiveDot} />
-              </View>
               <View style={styles.previewDivider} />
               <View style={styles.previewTCBlock}>
                 <Text style={styles.previewMetaLabel}>TIMECODE</Text>
@@ -1061,13 +1127,13 @@ const startRecording = async () => {
         <View style={styles.topBar}>
           <View style={styles.deviceSection}>
             <View style={styles.idBadge}>
-              <Ionicons name="hardware-chip" size={10} color="#E54B2A" />
+              <Ionicons name="hardware-chip" size={14} color="#E54B2A" />
               <Text style={styles.idText}>{device?.device_id || '---'}</Text>
             </View>
           </View>
           {isRecording && (
             <View style={styles.recBadge}>
-              <View style={styles.recDot} />
+              <Animated.View style={[styles.recDot, { opacity: blinkAnim }]} />
               <Text style={styles.recText}>REC</Text>
               {videoRecordingActive && <Text style={styles.videoIndicator}>VIDEO</Text>}
             </View>
@@ -1086,19 +1152,13 @@ const startRecording = async () => {
           <Text style={styles.tcVal}>{formatTime(currentTime)}</Text>
         </View>
 
-        {/* Watermark */}
-        <View style={styles.watermark}>
-          <View style={styles.wmIcon}>
-            <Ionicons name="videocam" size={12} color="#fff" />
-          </View>
-          <Text style={styles.wmText}>XoW</Text>
-          {isRecording && <Text style={styles.wmLive}>LIVE</Text>}
-        </View>
+        {/* Logo Watermark */}
+        <XowLogo width={80} height={80} style={styles.watermark} />
 
         {/* Visitor Count */}
         {isRecording && (
           <View style={styles.visitorBox}>
-            <Ionicons name="people" size={16} color="#E54B2A" />
+            <Ionicons name="people" size={28} color="#E54B2A" />
             <Text style={styles.visitorNum}>{String(barcodeCount)}</Text>
             <Text style={styles.visitorLabel}>visitors</Text>
           </View>
@@ -1201,7 +1261,7 @@ const startRecording = async () => {
               ) : isRecording ? (
                 <View style={styles.stopIcon} />
               ) : (
-                <View style={styles.recordIcon} />
+                <Animated.View style={[styles.recordIcon, { opacity: blinkAnim }]} />
               )}
             </View>
           </TouchableOpacity>
@@ -1346,14 +1406,7 @@ const styles = StyleSheet.create({
   watermark: { 
     position: 'absolute', 
     bottom: 22, 
-    right: 22, 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    backgroundColor: 'rgba(229,75,42,0.95)', 
-    paddingHorizontal: 20, 
-    paddingVertical: 12, 
-    borderRadius: 12, 
-    gap: 12 
+    right: 22
   },
   wmIcon: { width: 33, height: 33, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
   wmText: { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: 1.5 },
@@ -1364,14 +1417,14 @@ const styles = StyleSheet.create({
     bottom: 22, 
     left: 22, 
     backgroundColor: 'rgba(0,0,0,0.9)', 
-    paddingHorizontal: 22, 
+    paddingHorizontal: 16, 
     paddingVertical: 14, 
-    borderRadius: 14, 
+    borderRadius: 12, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 14 
+    gap: 12 
   },
-  visitorNum: { color: '#fff', fontSize: 35, fontWeight: '800' },
+  visitorNum: { color: '#fff', fontSize: 28, fontWeight: '800' },
   visitorLabel: { color: '#666', fontSize: 16 },
   
   durationBox: { 

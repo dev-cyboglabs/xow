@@ -84,6 +84,8 @@ export default function GalleryScreen() {
   const [deviceId, setDeviceId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number>(0); // 0–1, video chunk progress
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [resumableUploads, setResumableUploads] = useState<Record<string, { percentage: number; totalChunks: number; nextChunk: number }>>({});
   const [autoUploadingId, setAutoUploadingId] = useState<string | null>(null);
   const [autoUploadProgress, setAutoUploadProgress] = useState<number>(0); // 0–1
   const autoUploadStateRef = useRef<{ localId: string; progress: number } | null>(null);
@@ -118,6 +120,43 @@ export default function GalleryScreen() {
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
+  
+  // Check for existing resumable uploads on mount
+  useEffect(() => {
+    const checkResumableUploads = async () => {
+      try {
+        const localRecordings = await getLocalRecordings();
+        const resumable: Record<string, { percentage: number; totalChunks: number; nextChunk: number }> = {};
+        
+        for (const recording of localRecordings) {
+          if (!recording.isUploaded) {
+            const resumeKey = `xow_upload_${recording.localId}`;
+            const savedResume = await AsyncStorage.getItem(resumeKey);
+            if (savedResume) {
+              const resumeState = JSON.parse(savedResume);
+              if (resumeState?.nextChunk > 0 && resumeState?.totalChunks > 0) {
+                const percentage = Math.round((resumeState.nextChunk / resumeState.totalChunks) * 100);
+                resumable[recording.localId] = {
+                  percentage,
+                  totalChunks: resumeState.totalChunks,
+                  nextChunk: resumeState.nextChunk
+                };
+              }
+            }
+          }
+        }
+        
+        if (Object.keys(resumable).length > 0) {
+          setResumableUploads(resumable);
+          console.log(`Found ${Object.keys(resumable).length} resumable uploads`);
+        }
+      } catch (e) {
+        console.error('Error checking resumable uploads:', e);
+      }
+    };
+    
+    checkResumableUploads();
+  }, []);
 
   // Poll for background auto-upload state written by recorder screen
   useEffect(() => {
@@ -516,6 +555,7 @@ export default function GalleryScreen() {
 
     setUploadingId(recording.localId);
     setUploadProgress(0);
+    setUploadError(null);
 
     const resumeKey = `xow_upload_${recording.localId}`;
 
@@ -528,6 +568,7 @@ export default function GalleryScreen() {
       const resumeState = savedResume ? JSON.parse(savedResume) : null;
 
       if (resumeState?.recordingId && resumeState.nextChunk > 0) {
+        console.log(`Resume state found: ${resumeState.nextChunk}/${resumeState.totalChunks} chunks uploaded`);
         // Verify the recording still exists on the server
         try {
           await axios.get(`${API_URL}/api/recordings/${resumeState.recordingId}`, { timeout: 8000 });
@@ -721,13 +762,48 @@ export default function GalleryScreen() {
       // Set 100% immediately before the alert so user sees the transition 99% → 100% → Alert
       setUploadProgress(1);
       Alert.alert('Upload Complete', 'Recording uploaded to cloud successfully!');
+      
+      // Clear resume state from resumableUploads
+      setResumableUploads(prev => {
+        const updated = { ...prev };
+        delete updated[recording.localId];
+        return updated;
+      });
+      
       fetchRecordings();
     } catch (e: any) {
       console.error('Upload error:', e);
-      Alert.alert(
-        'Upload Failed',
-        `${e?.message || 'Failed to upload'}\n\nTap Upload again to resume.`
-      );
+      
+      // Check if there's resume state to show
+      const savedResume = await AsyncStorage.getItem(resumeKey);
+      const resumeState = savedResume ? JSON.parse(savedResume) : null;
+      
+      if (resumeState?.nextChunk > 0 && resumeState?.totalChunks > 0) {
+        const percentage = Math.round((resumeState.nextChunk / resumeState.totalChunks) * 100);
+        setResumableUploads(prev => ({
+          ...prev,
+          [recording.localId]: {
+            percentage,
+            totalChunks: resumeState.totalChunks,
+            nextChunk: resumeState.nextChunk
+          }
+        }));
+        setUploadError(`Upload interrupted at ${percentage}%. Tap Resume to continue.`);
+        Alert.alert(
+          'Upload Interrupted',
+          `${percentage}% uploaded\n\nTap Resume to continue.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Resume', onPress: () => uploadToCloud(recording) }
+          ]
+        );
+      } else {
+        setUploadError(e?.message || 'Upload failed');
+        Alert.alert(
+          'Upload Failed',
+          `${e?.message || 'Failed to upload'}\n\nPlease try again.`
+        );
+      }
     } finally {
       setUploadingId(null);
       setUploadProgress(0);
@@ -873,29 +949,37 @@ export default function GalleryScreen() {
               </TouchableOpacity>
             )}
             {isLocal && (
-              <TouchableOpacity
-                style={styles.uploadBtn}
-                onPress={() => uploadToCloud(localItem)}
-                disabled={uploadingId === localItem.localId || autoUploadingId === localItem.localId}
-              >
-                {(uploadingId === localItem.localId || autoUploadingId === localItem.localId) ? (
-                  (() => {
-                    const prog = uploadingId === localItem.localId ? uploadProgress : autoUploadProgress;
-                    return prog > 0 ? (
-                      <Text style={[styles.uploadBtnText, { color: '#10B981' }]}>
-                        {Math.round(prog * 100)}%
-                      </Text>
-                    ) : (
-                      <ActivityIndicator size="small" color="#10B981" />
-                    );
-                  })()
-                ) : (
-                  <>
-                    <Ionicons name="cloud-upload" size={23} color="#10B981" />
-                    <Text style={styles.uploadBtnText}>Upload</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
+                <TouchableOpacity
+                  style={[
+                    styles.uploadBtn,
+                    resumableUploads[localItem.localId] && !(uploadingId === localItem.localId || autoUploadingId === localItem.localId) && styles.uploadBtnResume
+                  ]}
+                  onPress={() => uploadToCloud(localItem)}
+                  disabled={uploadingId === localItem.localId || autoUploadingId === localItem.localId}
+                >
+                  {(uploadingId === localItem.localId || autoUploadingId === localItem.localId) ? (
+                    (() => {
+                      const prog = uploadingId === localItem.localId ? uploadProgress : autoUploadProgress;
+                      return prog > 0 ? (
+                        <Text style={[styles.uploadBtnText, { color: '#10B981' }]}>{Math.round(prog * 100)}%</Text>
+                      ) : (
+                        <ActivityIndicator size="small" color="#10B981" />
+                      );
+                    })()
+                  ) : resumableUploads[localItem.localId] ? (
+                    <>
+                      <Ionicons name="play-circle" size={23} color="#F59E0B" />
+                      <Text style={[styles.uploadBtnText, { color: '#F59E0B' }]}>Resume ({resumableUploads[localItem.localId].percentage}%)</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Ionicons name="cloud-upload" size={23} color="#10B981" />
+                      <Text style={styles.uploadBtnText}>Upload</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
             )}
             <TouchableOpacity
               style={styles.deleteBtn}
@@ -997,7 +1081,7 @@ export default function GalleryScreen() {
             <Text style={styles.sideStatLabel}>Cloud</Text>
           </View>
           <View style={styles.sideStat}>
-            <Text style={[styles.sideStatNum, { color: '#E54B2A', fontSize: 14 }]}>{fmtDur(totalRecordingsDuration)}</Text>
+            <Text style={[styles.sideStatNum, { color: '#E54B2A', fontSize: 20 }]}>{fmtDur(totalRecordingsDuration)}</Text>
             <Text style={styles.sideStatLabel}>Duration</Text>
           </View>
         </View>
@@ -1026,14 +1110,14 @@ export default function GalleryScreen() {
             style={[styles.filterTab, viewMode === 'local' && styles.filterTabActive]}
             onPress={() => setViewMode('local')}
           >
-            <Ionicons name="save" size={12} color={viewMode === 'local' ? '#E54B2A' : '#666'} />
+            <Ionicons name="save" size={22} color={viewMode === 'local' ? '#E54B2A' : '#666'} />
             <Text style={[styles.filterTabText, viewMode === 'local' && styles.filterTabTextActive]}>Local ({localCount})</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.filterTab, viewMode === 'cloud' && styles.filterTabActive]}
             onPress={() => setViewMode('cloud')}
           >
-            <Ionicons name="cloud" size={12} color={viewMode === 'cloud' ? '#E54B2A' : '#666'} />
+            <Ionicons name="cloud" size={22} color={viewMode === 'cloud' ? '#E54B2A' : '#666'} />
             <Text style={[styles.filterTabText, viewMode === 'cloud' && styles.filterTabTextActive]}>Cloud ({cloudCount})</Text>
           </TouchableOpacity>
         </View>
@@ -1234,7 +1318,12 @@ const styles = StyleSheet.create({
   previewBtnText: { color: '#E54B2A', fontSize: 18, fontWeight: '600' },
   reprocessBtn: { padding: 12, backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 8 },
   uploadBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, backgroundColor: 'rgba(16,185,129,0.15)', borderRadius: 8 },
+  uploadBtnResume: { backgroundColor: 'rgba(245,158,11,0.2)', borderWidth: 1, borderColor: '#F59E0B' },
   uploadBtnText: { color: '#10B981', fontSize: 18, fontWeight: '600' },
+  progressCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(16,185,129,0.3)', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#10B981' },
+  progressText: { color: '#10B981', fontSize: 12, fontWeight: '700' },
+  resumeInfo: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingHorizontal: 8 },
+  resumeInfoText: { color: '#F59E0B', fontSize: 12, fontWeight: '500' },
   deleteBtn: { padding: 12 },
 
   // Media Row

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+import asyncio
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorGridFSBucket
@@ -66,6 +67,26 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Notification system for real-time updates
+dashboard_update_events = {}  # {session_id: asyncio.Event}
+
+def notify_dashboard_update(session_id: str = None):
+    """Notify all connected dashboards that data has changed"""
+    logger.info(f"[Notification] Triggering update for session_id: {session_id}")
+    
+    # Create event if it doesn't exist
+    if session_id and session_id not in dashboard_update_events:
+        dashboard_update_events[session_id] = asyncio.Event()
+    
+    if session_id and session_id in dashboard_update_events:
+        dashboard_update_events[session_id].set()
+        logger.info(f"[Notification] Event set for session_id: {session_id}")
+    
+    # Also notify global listeners
+    if None in dashboard_update_events:
+        dashboard_update_events[None].set()
+        logger.info(f"[Notification] Global event set")
 
 # Pydantic models
 class DeviceCreate(BaseModel):
@@ -1829,6 +1850,18 @@ async def complete_recording(recording_id: str, body: Optional[RecordingComplete
             }}
         )
 
+        # Notify dashboard immediately when recording completes
+        logger.info(f"[Complete] Recording completed, checking for device: {recording.get('device_id')}")
+        device = await db.devices.find_one({"device_id": recording.get('device_id')})
+        logger.info(f"[Complete] Device found: {device is not None}, dashboard_session_id: {device.get('dashboard_session_id') if device else None}")
+        if device:
+            if device.get('dashboard_session_id'):
+                logger.info(f"[Complete] Calling notify_dashboard_update for session: {device.get('dashboard_session_id')}")
+                notify_dashboard_update(device['dashboard_session_id'])
+            if device.get('user_id'):
+                logger.info(f"[Complete] Calling notify_dashboard_update for user: {device.get('user_id')}")
+                notify_dashboard_update(device['user_id'])
+
         updated = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         return serialize_doc(updated)
     except Exception as e:
@@ -1962,6 +1995,14 @@ async def upload_video(
                 }}
             )
 
+            # Notify dashboard immediately after upload
+            device = await db.devices.find_one({"device_id": recording.get('device_id')})
+            if device:
+                if device.get('dashboard_session_id'):
+                    notify_dashboard_update(device['dashboard_session_id'])
+                if device.get('user_id'):
+                    notify_dashboard_update(device['user_id'])
+
             # All heavy processing (overlay, remux, head count, audio) runs in background
             if background_tasks:
                 background_tasks.add_task(
@@ -2018,6 +2059,14 @@ async def upload_video(
                         "status": "processing"
                     }}
                 )
+
+                # Notify dashboard immediately after all chunks uploaded
+                device = await db.devices.find_one({"device_id": recording.get('device_id')})
+                if device:
+                    if device.get('dashboard_session_id'):
+                        notify_dashboard_update(device['dashboard_session_id'])
+                    if device.get('user_id'):
+                        notify_dashboard_update(device['user_id'])
 
                 if background_tasks:
                     background_tasks.add_task(
@@ -2539,6 +2588,15 @@ Rules:
         logger.info(f"Recording {recording_id} processed: {visitor_count_final} visitors, {total_speakers_final} total speakers")
         logger.info(f"Transcription with diarization completed for recording {recording_id}")
         
+        # Notify dashboard of update
+        recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
+        if recording and recording.get('device_id'):
+            device = await db.devices.find_one({"device_id": recording['device_id']})
+            if device and device.get('dashboard_session_id'):
+                notify_dashboard_update(device['dashboard_session_id'])
+            if device and device.get('user_id'):
+                notify_dashboard_update(device['user_id'])
+        
     except Exception as e:
         logger.error(f"Diarization error: {e}")
         await db.recordings.update_one(
@@ -2904,6 +2962,39 @@ async def get_session_videos(session_id: Optional[str] = None, user_id: Optional
         "total_duration": total_duration,
         "count": len(result)
     }
+
+@api_router.get("/dashboard/wait-for-update")
+async def wait_for_dashboard_update(session_id: Optional[str] = None, user_id: Optional[str] = None, timeout: int = 30):
+    """Long-polling endpoint - waits for data changes before responding"""
+    # Create event for this request
+    event_key = session_id if session_id else user_id if user_id else None
+    logger.info(f"[Long-poll] Client waiting for updates, event_key: {event_key}")
+    
+    if event_key not in dashboard_update_events:
+        dashboard_update_events[event_key] = asyncio.Event()
+        logger.info(f"[Long-poll] Created new event for {event_key}")
+    
+    event = dashboard_update_events[event_key]
+    
+    # Check if event is already set (notification came before this request)
+    if event.is_set():
+        logger.info(f"[Long-poll] Event already set, returning immediately")
+        event.clear()
+        return {"updated": True}
+    
+    try:
+        # Wait for notification or timeout
+        logger.info(f"[Long-poll] Waiting for notification (timeout: {timeout}s)...")
+        await asyncio.wait_for(event.wait(), timeout=timeout)
+        logger.info(f"[Long-poll] Notification received!")
+        event.clear()  # Reset for next wait
+        return {"updated": True}
+    except asyncio.TimeoutError:
+        logger.info(f"[Long-poll] Timeout reached, no updates")
+        return {"updated": False}
+    except asyncio.CancelledError:
+        logger.info(f"[Long-poll] Request cancelled")
+        raise
 
 # ==================== MEDIA STREAMING ====================
 

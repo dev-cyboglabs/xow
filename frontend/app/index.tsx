@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import XowLogo from '../assets/images/xow-logo-light.svg';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 
@@ -216,10 +217,12 @@ export default function SetupScreen() {
     <View style={[styles.container, { width, height }]}>
       {/* Left branding panel */}
       <View style={styles.leftPanel}>
-        <View style={styles.logo}>
-          <Ionicons name="videocam" size={48} color="#fff" />
-        </View>
-        <Text style={styles.brandName}>XoW</Text>
+        <XowLogo
+          width={280}
+          height={280}
+          style={styles.logo}
+        />
+        
         <Text style={styles.tagline}>Booth Recording System</Text>
         <View style={styles.features}>
           <View style={styles.feature}>
@@ -275,7 +278,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' },
   container: { flex: 1, flexDirection: 'row', backgroundColor: '#000' },
 
-  logo: { width: 100, height: 100, borderRadius: 22, backgroundColor: '#E54B2A', justifyContent: 'center', alignItems: 'center', marginBottom: 18 },
+  logo: { marginBottom: -70 },
   brandName: { fontSize: 70, fontWeight: '800', color: '#fff' },
   tagline: { fontSize: 22, color: '#666', marginBottom: 35 },
 

@@ -78,6 +78,7 @@
         let currentRecordingId = null;
         let devicesData = { devices: [], count: 0 };
         let devicePollInterval = null;
+        let sessionsLongPollActive = false;
         let currentDuration = 0;
         let timeUpdateHandler = null;
         let speakerSegmentsFlat = [];
@@ -200,8 +201,14 @@
             if (v === 'devices') {
                 loadDevices().then(() => render());
                 startDevicePolling();
+                stopSessionsLongPoll();
+            } else if (v === 'sessions') {
+                stopDevicePolling();
+                render();
+                startSessionsLongPoll();
             } else {
                 stopDevicePolling();
+                stopSessionsLongPoll();
                 render();
             }
         }
@@ -4292,7 +4299,43 @@
         window.setActiveRecording = setActiveRecording;
         window.stopActiveRecording = stopActiveRecording;
 
-        window.addEventListener('beforeunload', stopDevicePolling);
+        async function startSessionsLongPoll() {
+            if (sessionsLongPollActive) return;
+            sessionsLongPollActive = true;
+            console.log('[Real-time] Starting long-poll for sessions updates...');
+            
+            while (sessionsLongPollActive && view === 'sessions') {
+                try {
+                    const sp = sessionParam();
+                    console.log('[Real-time] Waiting for data changes...');
+                    const response = await fetch(`${API}/dashboard/wait-for-update${sp}&timeout=30`);
+                    const result = await response.json();
+                    
+                    if (result.updated && view === 'sessions') {
+                        console.log('[Real-time] Data changed! Fetching updates...');
+                        await fetchData();
+                        render();
+                    }
+                } catch (error) {
+                    console.error('[Real-time] Long-poll error:', error);
+                    // Wait a bit before retrying on error
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            }
+            console.log('[Real-time] Long-poll stopped');
+        }
+
+        function stopSessionsLongPoll() {
+            if (sessionsLongPollActive) {
+                console.log('[Real-time] Stopping long-poll');
+                sessionsLongPollActive = false;
+            }
+        }
+
+        window.addEventListener('beforeunload', () => {
+            stopDevicePolling();
+            stopSessionsLongPoll();
+        });
 
         // Keyboard shortcut to close modals
         document.addEventListener('keydown', (e) => {

@@ -230,7 +230,7 @@ export default function SettingsScreen() {
           {/* Device Info Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="phone-portrait" size={16} color="#E54B2A" />
+              <Ionicons name="phone-portrait" size={22} color="#E54B2A" />
               <Text style={styles.sectionTitle}>Device Info</Text>
             </View>
             <View style={styles.card}>
@@ -240,7 +240,7 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Device ID</Text>
-                <Text style={[styles.infoValue, { fontFamily: 'monospace', fontSize: 12 }]}>{deviceId || '—'}</Text>
+                <Text style={[styles.infoValue, { fontFamily: 'monospace', fontSize: 18 }]}>{deviceId || '—'}</Text>
               </View>
             </View>
           </View>
@@ -248,7 +248,7 @@ export default function SettingsScreen() {
           {/* Cloud Sync Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="cloud" size={16} color="#3B82F6" />
+              <Ionicons name="cloud" size={22} color="#3B82F6" />
               <Text style={styles.sectionTitle}>Cloud Sync</Text>
             </View>
             <View style={styles.card}>
@@ -279,7 +279,7 @@ export default function SettingsScreen() {
           {/* Storage Location Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="folder" size={16} color="#10B981" />
+              <Ionicons name="folder" size={22} color="#10B981" />
               <Text style={styles.sectionTitle}>Storage Location</Text>
             </View>
             <View style={styles.card}>
@@ -287,7 +287,7 @@ export default function SettingsScreen() {
                 style={[styles.locationOption, settings.storageLocation === 'internal' && styles.locationActive]}
                 onPress={() => setStorageLocation('internal')}
               >
-                <Ionicons name="phone-portrait" size={18} color={settings.storageLocation === 'internal' ? '#E54B2A' : '#666'} />
+                <Ionicons name="phone-portrait" size={42} color={settings.storageLocation === 'internal' ? '#E54B2A' : '#666'} />
                 <View style={styles.locationInfo}>
                   <Text style={[styles.locationTitle, settings.storageLocation === 'internal' && styles.locationTitleActive]}>
                     Internal Storage
@@ -295,7 +295,7 @@ export default function SettingsScreen() {
                   <Text style={styles.locationDesc}>Audio files saved to device memory</Text>
                 </View>
                 {settings.storageLocation === 'internal' && (
-                  <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
+                  <Ionicons name="checkmark-circle" size={28} color="#E54B2A" />
                 )}
               </TouchableOpacity>
 
@@ -318,7 +318,7 @@ export default function SettingsScreen() {
                 }}
                 disabled={!externalAvailable}
               >
-                <Ionicons name="save" size={18} color={!externalAvailable ? '#444' : settings.storageLocation === 'external' ? '#E54B2A' : '#666'} />
+                <Ionicons name="save" size={42} color={!externalAvailable ? '#444' : settings.storageLocation === 'external' ? '#E54B2A' : '#666'} />
                 <View style={styles.locationInfo}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                     <Text style={[
@@ -347,7 +347,7 @@ export default function SettingsScreen() {
                   </Text>
                 </View>
                 {settings.storageLocation === 'external' && externalAvailable && (
-                  <Ionicons name="checkmark-circle" size={20} color="#E54B2A" />
+                  <Ionicons name="checkmark-circle" size={28} color="#E54B2A" />
                 )}
               </TouchableOpacity>
 
@@ -363,7 +363,7 @@ export default function SettingsScreen() {
           {/* Storage Info */}
           <View style={styles.section}>
             <View style={styles.infoCard}>
-              <Ionicons name="information-circle" size={22} color="#F59E0B" />
+              <Ionicons name="information-circle" size={18} color="#F59E0B" style={{ marginTop: 4 }} />
               <Text style={styles.infoText}>
                 Videos are saved to your device's Gallery (DCIM/Movies) and are accessible from your phone's Photos/Gallery app.
                 Audio files are saved to the selected storage location for processing.
@@ -435,6 +435,6 @@ const styles = StyleSheet.create({
   needsAccessBadgeText: { color: '#F59E0B', fontSize: 15, fontWeight: '700' },
 
   // Info Card
-  infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 20, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 12, gap: 17 },
-  infoText: { flex: 1, color: '#F59E0B', fontSize: 16, lineHeight: 26 },
+  infoCard: { flexDirection: 'row', alignItems: 'flex-start', padding: 18, backgroundColor: 'rgba(245,158,11,0.1)', borderRadius: 12, gap: 7 },
+  infoText: { flex: 1, color: '#F59E0B', fontSize: 14, lineHeight: 26 },
 });
