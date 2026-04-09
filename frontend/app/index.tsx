@@ -179,21 +179,8 @@ export default function SetupScreen() {
 
   const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-  // ── Loading / Registering ──────────────────────────────────────────────────
-  if (status === 'checking' || status === 'registering') {
-    return (
-      <View style={[styles.center, { width, height }]}>
-        <View style={styles.logo}>
-          <Ionicons name="videocam" size={28} color="#fff" />
-        </View>
-        <Text style={styles.brandName}>XoW</Text>
-        <ActivityIndicator color="#E54B2A" size="large" style={{ marginTop: 24 }} />
-        <Text style={styles.loadingText}>
-          {status === 'checking' ? 'Starting up…' : 'Setting up your device…'}
-        </Text>
-      </View>
-    );
-  }
+  // Show pairing screen immediately, even while checking/registering
+  const isLoading = status === 'checking' || status === 'registering';
 
   // ── Error ──────────────────────────────────────────────────────────────────
   if (status === 'error') {
@@ -261,12 +248,14 @@ export default function SetupScreen() {
           </View>
 
           <Text style={styles.hint}>
-            Waiting for pairing… The app will open automatically once connected.
+            {isLoading ? 'Initializing device…' : 'Waiting for pairing… The app will open automatically once connected.'}
           </Text>
 
           <View style={styles.waitingRow}>
             <ActivityIndicator color="#8B5CF6" size="small" />
-            <Text style={styles.waitingText}>Waiting for connection</Text>
+            <Text style={styles.waitingText}>
+              {isLoading ? 'Setting up' : 'Waiting for connection'}
+            </Text>
           </View>
         </View>
       </View>

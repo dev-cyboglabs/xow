@@ -20,7 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useAudioRecorder, RecordingPresets, AudioModule } from 'expo-audio';
 import { Audio } from 'expo-av';
-import XowLogo from '../assets/images/xow-logo.svg';
+// Logo removed - using text instead
 import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import axios from 'axios';
@@ -1153,7 +1153,9 @@ const startRecording = async () => {
         </View>
 
         {/* Logo Watermark */}
-        <XowLogo width={80} height={80} style={styles.watermark} />
+        <View style={styles.watermark}>
+          <Text style={styles.logoText}>XOW</Text>
+        </View>
 
         {/* Visitor Count */}
         {isRecording && (
@@ -1406,7 +1408,17 @@ const styles = StyleSheet.create({
   watermark: { 
     position: 'absolute', 
     bottom: 22, 
-    right: 22
+    right: 22,
+    backgroundColor: '#E54B2A',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+  logoText: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: '800',
+    letterSpacing: 2
   },
   wmIcon: { width: 33, height: 33, borderRadius: 9, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
   wmText: { color: '#fff', fontSize: 23, fontWeight: '800', letterSpacing: 1.5 },

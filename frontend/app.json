@@ -4,7 +4,7 @@
     "slug": "xow-recorder",
     "version": "1.0.0",
     "orientation": "landscape",
-    "icon": "./assets/images/xow-logo.png", //splash screen intro logo
+    "icon": "./assets/images/xow-light.png", //splash screen intro logo
     "scheme": "xow",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -21,7 +21,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/xow-logo-light.svg", 
+        "foregroundImage": "./assets/images/adaptive-icon.png", 
         "backgroundColor": "#000"
       },
       "permissions": [
@@ -45,7 +45,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/xow-logo-light.svg"
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -63,15 +63,6 @@
           "photosPermission": "XoW needs access to save videos and audio to your gallery",
           "savePhotosPermission": "XoW needs permission to save recordings to your device",
           "isAccessMediaLocationEnabled": true
-        }
-      ],
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/xow-logo-light.png",
-          "imageWidth": 280,
-          "resizeMode": "contain",
-          "backgroundColor": "#000"
         }
       ]
     ],
