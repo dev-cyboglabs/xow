@@ -97,12 +97,20 @@ export default function SettingsScreen() {
       setUsbAttached(physicallyPresent);
 
       if (!physicallyPresent) {
-        // Nothing plugged in — clear everything
+        // Nothing plugged in — clear everything and auto-switch to internal
         setExternalAvailable(false);
         setNeedsUsbAccess(false);
         setVolumeLabel('');
         const stale = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
         if (stale) await AsyncStorage.removeItem(EXTERNAL_STORAGE_URI_KEY);
+        // Auto-switch setting to internal if it was external
+        const saved = await AsyncStorage.getItem('xow_settings');
+        const current = saved ? JSON.parse(saved) : { autoUpload: false, storageLocation: 'internal' };
+        if (current.storageLocation !== 'internal') {
+          const updated = { ...current, storageLocation: 'internal' };
+          await AsyncStorage.setItem('xow_settings', JSON.stringify(updated));
+          setSettings(updated);
+        }
         console.log('✗ No removable storage mounted');
         return;
       }
@@ -117,6 +125,14 @@ export default function SettingsScreen() {
       if (storedUri) {
         setExternalAvailable(true);
         setNeedsUsbAccess(false);
+        // Auto-switch setting to external
+        const saved = await AsyncStorage.getItem('xow_settings');
+        const current = saved ? JSON.parse(saved) : { autoUpload: false, storageLocation: 'internal' };
+        if (current.storageLocation !== 'external') {
+          const updated = { ...current, storageLocation: 'external' };
+          await AsyncStorage.setItem('xow_settings', JSON.stringify(updated));
+          setSettings(updated);
+        }
         console.log('✓ External storage available (SAF permission stored)');
         return;
       }
@@ -127,6 +143,14 @@ export default function SettingsScreen() {
         if (nativePath) {
           setExternalAvailable(true);
           setNeedsUsbAccess(false);
+          // Auto-switch setting to external
+          const saved = await AsyncStorage.getItem('xow_settings');
+          const current = saved ? JSON.parse(saved) : { autoUpload: false, storageLocation: 'internal' };
+          if (current.storageLocation !== 'external') {
+            const updated = { ...current, storageLocation: 'external' };
+            await AsyncStorage.setItem('xow_settings', JSON.stringify(updated));
+            setSettings(updated);
+          }
           console.log('✓ External storage writable via native path:', nativePath);
           return;
         }
