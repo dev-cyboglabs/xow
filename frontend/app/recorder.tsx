@@ -95,7 +95,6 @@ export default function RecorderScreen() {
   const autoUploadRef = useRef(false);
   const [showExitModal, setShowExitModal] = useState(false);
   const [storageLocation, setStorageLocation] = useState<'Internal' | 'External'>('Internal');
-  const [storagePath, setStoragePath] = useState<string>('Internal/XoW');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
   const [recordingChunks, setRecordingChunks] = useState<ChunkType[]>([]);
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -143,14 +142,10 @@ export default function RecorderScreen() {
       if (ext) {
         lastExternalRef.current = ext;
         setStorageLocation('External');
-        setStoragePath(ext.replace('file://', '').replace(/\/Android\/data\/.*\/files/, '').replace('/XoW', '') + '/XoW');
         AsyncStorage.getItem('xow_settings').then(saved => {
           const s = saved ? JSON.parse(saved) : { autoUpload: false };
           AsyncStorage.setItem('xow_settings', JSON.stringify({ ...s, storageLocation: 'external' }));
         });
-      } else {
-        const internal = `Internal/XoW`;
-        setStoragePath(internal);
       }
     });
     // Start watching for USB/SD plug-unplug events every 3s
@@ -291,14 +286,11 @@ export default function RecorderScreen() {
       if (external && !prev) {
         lastExternalRef.current = external;
         setStorageLocation('External');
-        const shortPath = external.replace('file://', '').replace(/\/Android\/data\/[^/]+\/files/, '') + '/XoW';
-        setStoragePath(shortPath);
         await persistStorageSetting('external');
         showToast('External storage connected – saving to External');
       } else if (!external && prev) {
         lastExternalRef.current = null;
         setStorageLocation('Internal');
-        setStoragePath('Internal/XoW');
         await persistStorageSetting('internal');
         showToast('External storage removed – saving to Internal');
       } else if (external) {
@@ -1242,14 +1234,9 @@ const startRecording = async () => {
               size={16}
               color={storageLocation === 'External' ? '#10B981' : '#8B5CF6'}
             />
-            <View>
-              <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#10B981' : '#8B5CF6' }]}>
-                {storageLocation}
-              </Text>
-              <Text style={{ color: storageLocation === 'External' ? '#059669' : '#6D28D9', fontSize: 10, marginTop: 1 }} numberOfLines={1}>
-                {storagePath}
-              </Text>
-            </View>
+            <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#10B981' : '#8B5CF6' }]}>
+              {storageLocation}
+            </Text>
           </View>
         </View>
 

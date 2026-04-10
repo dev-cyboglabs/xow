@@ -47,3 +47,6 @@ cd android && ./gradlew assembleRelease
 1. rm -rf android
 2. npx expo prebuild --clean --platform android
 3. cd android && ./gradlew assembleRelease
+
+# Rebuild
+1. cd /Users/KABILAN/Desktop/xow/frontend/android && ./gradlew assembleRelease 2>&1 | tail -15
