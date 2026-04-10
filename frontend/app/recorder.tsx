@@ -137,14 +137,18 @@ export default function RecorderScreen() {
     clockRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
     const connInterval = setInterval(checkConnection, 10000);
 
-    // Initial external storage check
-    detectExternalStorage().then(ext => {
-      if (ext) {
-        lastExternalRef.current = ext;
-        setStorageLocation('External');
-        AsyncStorage.getItem('xow_settings').then(saved => {
-          const s = saved ? JSON.parse(saved) : { autoUpload: false };
-          AsyncStorage.setItem('xow_settings', JSON.stringify({ ...s, storageLocation: 'external' }));
+    // Initial external storage check — update display badge from saved setting
+    AsyncStorage.getItem('xow_settings').then(saved => {
+      const s = saved ? JSON.parse(saved) : { storageLocation: 'internal' };
+      if (s.storageLocation === 'external') {
+        detectExternalStorage().then(ext => {
+          if (ext) {
+            lastExternalRef.current = ext;
+            setStorageLocation('External');
+          } else {
+            // Saved as external but device not present — fall back to internal
+            setStorageLocation('Internal');
+          }
         });
       }
     });

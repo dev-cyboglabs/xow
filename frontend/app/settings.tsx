@@ -125,14 +125,6 @@ export default function SettingsScreen() {
       if (storedUri) {
         setExternalAvailable(true);
         setNeedsUsbAccess(false);
-        // Auto-switch setting to external
-        const saved = await AsyncStorage.getItem('xow_settings');
-        const current = saved ? JSON.parse(saved) : { autoUpload: false, storageLocation: 'internal' };
-        if (current.storageLocation !== 'external') {
-          const updated = { ...current, storageLocation: 'external' };
-          await AsyncStorage.setItem('xow_settings', JSON.stringify(updated));
-          setSettings(updated);
-        }
         console.log('✓ External storage available (SAF permission stored)');
         return;
       }
@@ -143,14 +135,6 @@ export default function SettingsScreen() {
         if (nativePath) {
           setExternalAvailable(true);
           setNeedsUsbAccess(false);
-          // Auto-switch setting to external
-          const saved = await AsyncStorage.getItem('xow_settings');
-          const current = saved ? JSON.parse(saved) : { autoUpload: false, storageLocation: 'internal' };
-          if (current.storageLocation !== 'external') {
-            const updated = { ...current, storageLocation: 'external' };
-            await AsyncStorage.setItem('xow_settings', JSON.stringify(updated));
-            setSettings(updated);
-          }
           console.log('✓ External storage writable via native path:', nativePath);
           return;
         }
