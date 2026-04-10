@@ -58,16 +58,22 @@ export default function SetupScreen() {
 
   const init = async () => {
     try {
+      console.log('🔧 Starting initialization...');
+      console.log('🌐 Backend URL:', API_URL);
       setStatus('checking');
       const { device_id, password } = await getOrCreateCredentials();
+      console.log('📱 Device ID:', device_id);
 
       // Try to reset pairing (also confirms the device exists on the server).
       try {
+        console.log('🔄 Attempting to remove pairing...');
         const res = await axios.post(
           `${API_URL}/api/devices/${device_id}/remove-pairing?password=${password}`
         );
+        console.log('✅ Remove pairing response:', res.data);
         const code = res.data?.new_pairing_code || '------';
         const secs  = res.data?.expires_in_seconds ?? 300;
+        console.log('🔑 Pairing code:', code);
         // Always sync the server-assigned name so it stays up to date
         if (res.data?.name) {
           await AsyncStorage.setItem(DEVICE_NAME_KEY, res.data.name);
@@ -77,20 +83,26 @@ export default function SetupScreen() {
         setStatus('ready');
         return;
       } catch (err: any) {
+        console.log('❌ Remove pairing failed:', err.message);
+        console.log('📊 Error response:', err.response?.data);
         const statusCode = err?.response?.status;
+        console.log('🔢 Status code:', statusCode);
 
-        if (statusCode === 401 || statusCode === 404) {
-          // Device not found on server — register with the SAME permanent credentials.
+        if (statusCode === 401 || statusCode === 404 || statusCode === 500) {
+          // Device not found or server error — register with the SAME permanent credentials.
+          console.log('📝 Device not found or server error, registering...');
           await registerDevice(device_id, password);
           return;
         }
 
         // Network / server unreachable — show pairing screen without a live code.
+        console.log('⚠️ Network issue, showing default pairing screen');
         setPairingCode('------');
         startCountdown(300);
         setStatus('ready');
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.log('💥 Init error:', e.message);
       setStatus('error');
       setErrorMsg('Could not connect to server. Make sure the server is running.');
     }
@@ -99,20 +111,25 @@ export default function SetupScreen() {
   const registerDevice = async (device_id: string, password: string) => {
     setStatus('registering');
     try {
+      console.log('📝 Registering device...');
       const res = await axios.post(`${API_URL}/api/auth/register`, {
         device_id,
         password,
         name: 'Booth',  // backend will overwrite with auto-assigned sequential name
       });
+      console.log('✅ Registration response:', res.data);
       const device = res.data;
       // Persist the server-assigned booth name permanently
       const assignedName = device.name || 'Booth';
       await AsyncStorage.setItem(DEVICE_NAME_KEY, assignedName);
       const code = device.pairing_code || '------';
+      console.log('🔑 New pairing code:', code);
       setPairingCode(code);
       startCountdown(300);
       setStatus('ready');
     } catch (e: any) {
+      console.log('❌ Registration failed:', e.message);
+      console.log('📊 Error response:', e.response?.data);
       setStatus('error');
       setErrorMsg(e.response?.data?.detail || 'Registration failed. Please retry.');
     }

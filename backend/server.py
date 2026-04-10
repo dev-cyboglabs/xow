@@ -62,7 +62,13 @@ logger = logging.getLogger(__name__)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://exhibitonwatch.in",
+        "https://exhibitonwatch.in",
+        "http://www.exhibitonwatch.in",
+        "https://www.exhibitonwatch.in",
+        "*"  # Allow all for mobile app
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -3279,6 +3285,9 @@ async def translate_transcript(recording_id: str, target_language: str = "en"):
 
 # Include the router in the main app
 app.include_router(api_router)
+
+# Mount static assets directory
+app.mount("/assets", StaticFiles(directory=ROOT_DIR / "static" / "assets"), name="assets")
 
 # Serve home page
 @app.get("/api/home")
