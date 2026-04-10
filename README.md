@@ -39,3 +39,11 @@ cd android && ./gradlew assembleRelease
 
 # APK Location
 /Users/KABILAN/Desktop/xow/frontend/android/app/build/outputs/apk/release/app-release.apk
+
+
+
+
+ # Build Apk
+1. rm -rf android
+2. npx expo prebuild --clean --platform android
+3. cd android && ./gradlew assembleRelease

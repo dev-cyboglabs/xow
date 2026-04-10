@@ -4,10 +4,15 @@
     "slug": "xow-recorder",
     "version": "1.0.0",
     "orientation": "landscape",
-    "icon": "./assets/images/xow-light.png", //splash screen intro logo
+    "icon": "./assets/images/xow-logo-light.png",
     "scheme": "xow",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/images/xow-logo-light.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
     "ios": {
       "supportsTablet": true,
       "requireFullScreen": true,
