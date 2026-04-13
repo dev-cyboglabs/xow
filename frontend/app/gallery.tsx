@@ -1143,7 +1143,7 @@ export default function GalleryScreen() {
                   : 'Start recording to capture booth conversations'}
             </Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => router.back()}>
-              <Ionicons name="videocam" size={16} color="#fff" />
+              <Ionicons name="videocam" size={20} color="#fff" />
               <Text style={styles.emptyBtnText}>Start Recording</Text>
             </TouchableOpacity>
           </View>
