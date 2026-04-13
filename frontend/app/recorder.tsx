@@ -116,6 +116,7 @@ export default function RecorderScreen() {
   const videoUriRef = useRef<string | null>(null);
   const chunkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const currentSessionIdRef = useRef<string | null>(null);
+  const sessionStorageDirRef = useRef<string>(`${FileSystem.documentDirectory}chunks`);
   const chunkStartTimeRef = useRef<number>(0);
   const isRecordingRef = useRef(false);
   const videoRecordingActiveRef = useRef(false);
@@ -137,21 +138,6 @@ export default function RecorderScreen() {
     clockRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
     const connInterval = setInterval(checkConnection, 10000);
 
-    // Initial external storage check — update display badge from saved setting
-    AsyncStorage.getItem('xow_settings').then(saved => {
-      const s = saved ? JSON.parse(saved) : { storageLocation: 'internal' };
-      if (s.storageLocation === 'external') {
-        detectExternalStorage().then(ext => {
-          if (ext) {
-            lastExternalRef.current = ext;
-            setStorageLocation('External');
-          } else {
-            // Saved as external but device not present — fall back to internal
-            setStorageLocation('Internal');
-          }
-        });
-      }
-    });
     // Start watching for USB/SD plug-unplug events every 3s
     startStorageWatcher();
 
@@ -220,6 +206,7 @@ export default function RecorderScreen() {
         const value = settings.autoUpload || false;
         setAutoUpload(value);
         autoUploadRef.current = value;
+        setStorageLocation(settings.storageLocation === 'external' ? 'External' : 'Internal');
       }
     } catch (e) {
       console.log('Load settings error:', e);
@@ -420,7 +407,7 @@ export default function RecorderScreen() {
 
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
-      const baseDir = `${FileSystem.documentDirectory}chunks`;
+      const baseDir = `${sessionStorageDirRef.current}/chunks`;
       await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
 
       const savedPath = await saveChunkFile(
@@ -520,6 +507,10 @@ const startRecording = async () => {
       currentChunkIndexRef.current = 0;
       recordingChunksRef.current = [];
       chunkStartTimeRef.current = Date.now();
+
+      // Resolve storage directory once for this session (internal or external)
+      const { dir: resolvedDir } = await getStorageDir();
+      sessionStorageDirRef.current = resolvedDir;
 
       // Create initial metadata
       const metadata: RecordingMetadata = {
@@ -693,8 +684,8 @@ const startRecording = async () => {
             const chunkEndTime = Date.now();
             const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
             
-            // Use documentDirectory which is always writable
-            const baseDir = `${FileSystem.documentDirectory}chunks`;
+            // Use resolved session storage dir (internal or external)
+            const baseDir = `${sessionStorageDirRef.current}/chunks`;
             await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
             
             const savedPath = await saveChunkFile(
@@ -751,7 +742,7 @@ const startRecording = async () => {
       // Save audio to app directory
       if (audioUri) {
         try {
-          const audioDir = `${FileSystem.documentDirectory}audio`;
+          const audioDir = `${sessionStorageDirRef.current}/audio`;
           await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => {});
           const dest = `${audioDir}/XoW_${timestamp}.m4a`;
           await FileSystem.copyAsync({ from: audioUri, to: dest });
@@ -1145,7 +1136,7 @@ const startRecording = async () => {
 
         {/* Camera feed */}
         <View style={styles.cameraViewWrapper}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" mode="video" />
+        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" mode="video" mute={true} />
 
         {/* Top Bar */}
         <View style={styles.topBar}>
