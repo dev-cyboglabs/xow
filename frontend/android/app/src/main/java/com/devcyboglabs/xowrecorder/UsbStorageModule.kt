@@ -134,6 +134,50 @@ class UsbStorageModule(private val reactContext: ReactApplicationContext) :
         }
     }
 
+    // ─── Internal storage path ───────────────────────────────────────────────
+
+    /**
+     * Returns the app-specific files dir on the PRIMARY (phone) internal storage
+     * AND creates the XoW/Videos and XoW/Audio subdirectories using Java File API.
+     *
+     * Path: /storage/emulated/0/Android/data/com.devcyboglabs.xowrecorder/files
+     * Visible: Files app → Internal Storage → Android → data → com.pkg → files → XoW
+     */
+    @ReactMethod
+    fun getInternalStoragePath(promise: Promise) {
+        try {
+            // getExternalFilesDir(null) = primary emulated storage app-specific dir
+            // This is /storage/emulated/0/Android/data/com.pkg/files — always writable
+            val dir = reactContext.getExternalFilesDir(null)
+                ?: reactContext.filesDir  // true fallback (internal private)
+
+            if (!dir.exists()) dir.mkdirs()
+
+            // Pre-create XoW/Videos and XoW/Audio so they appear in the file manager
+            File(dir, "XoW/Videos").mkdirs()
+            File(dir, "XoW/Audio").mkdirs()
+
+            promise.resolve("file://${dir.absolutePath}")
+        } catch (e: Exception) {
+            promise.reject("STORAGE_ERROR", e.message ?: "Unknown error", e)
+        }
+    }
+
+    /**
+     * Creates a directory (and all parents) using Java File API.
+     * Returns true if the directory exists after the call.
+     */
+    @ReactMethod
+    fun mkdirs(path: String, promise: Promise) {
+        try {
+            val dir = File(path.removePrefix("file://"))
+            dir.mkdirs()
+            promise.resolve(dir.exists())
+        } catch (e: Exception) {
+            promise.reject("MKDIRS_ERROR", e.message ?: "Unknown error", e)
+        }
+    }
+
     // ─── File copy ───────────────────────────────────────────────────────────
 
     /**

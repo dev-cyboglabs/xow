@@ -306,41 +306,85 @@ export default function RecorderScreen() {
     return destPath;
   };
 
+  /** Creates a directory using native Java mkdirs — works on all Android paths. */
+  const nativeMkdirs = async (path: string): Promise<void> => {
+    if (Platform.OS === 'android' && usbStorageModule?.mkdirs) {
+      await usbStorageModule.mkdirs(path);
+    } else {
+      await nativeMkdirs(path);
+    }
+  };
+
   /**
    * Returns the base XoW directory for this recording session.
-   * External → SD card/Android/data/com.devcyboglabs.xowrecorder/files/XoW
-   *            (app-specific external dir — writable on ALL Android versions, no extra permissions)
-   * Internal → app documentDirectory/XoW
+   *
+   * External selected + SD card present:
+   *   → SD card/XoW/  (public, visible in Files app)
+   *     i.e. /storage/XXXX-XXXX/XoW  (MANAGE_EXTERNAL_STORAGE granted)
+   *       or /storage/XXXX-XXXX/Android/data/com.pkg/files/XoW  (fallback)
+   *
+   * Internal selected (or no SD card):
+   *   → Phone Internal/Android/data/com.devcyboglabs.xowrecorder/files/XoW
+   *     i.e. /storage/emulated/0/Android/data/com.pkg/files/XoW
+   *     Visible in Files app → Internal Storage → Android → data → com.pkg → files → XoW
+   *     NOT app cache — survives "Clear Cache", only removed by "Clear Data" or uninstall.
    */
   const getStorageDir = async (): Promise<{ dir: string; label: string }> => {
     if (Platform.OS === 'android') {
-      if (usbStorageModule?.getWritableExternalStoragePath) {
+      // Read user's setting
+      let preferExternal = false;
+      try {
+        const saved = await AsyncStorage.getItem('xow_settings');
+        if (saved) {
+          const s = JSON.parse(saved);
+          preferExternal = s.storageLocation === 'external';
+        }
+      } catch (_) {}
+
+      if (preferExternal) {
+        // Try external SD card / USB
         try {
-          const extBase: string | null = await usbStorageModule.getWritableExternalStoragePath();
+          const extBase: string | null = usbStorageModule?.getWritableExternalStoragePath
+            ? await usbStorageModule.getWritableExternalStoragePath()
+            : null;
           if (extBase) {
             const xowDir = `${extBase}/XoW`;
-            // Create via native copyFile trick: copy a 0-byte placeholder to force dir creation,
-            // then just rely on mkdirs inside copyFile. Instead: use makeDirectoryAsync —
-            // it works on app-specific external paths even on Android 13.
-            await FileSystem.makeDirectoryAsync(xowDir, { intermediates: true });
+            await nativeMkdirs(xowDir);
             lastExternalRef.current = xowDir;
-            console.log('Storage: using external →', xowDir);
+            console.log('Storage: external →', xowDir);
             return { dir: xowDir, label: 'External Storage' };
           }
         } catch (e) {
-          console.log('External storage setup failed, using internal:', e);
+          console.log('External storage setup failed, falling back to internal:', e);
         }
+        showToast('External storage not available, using internal');
       }
 
+      // Internal — use app-specific dir on phone storage (visible in Files app)
       lastExternalRef.current = null;
-      const internal = `${FileSystem.documentDirectory}XoW`;
-      await FileSystem.makeDirectoryAsync(internal, { intermediates: true }).catch(() => {});
-      console.log('Storage: using internal →', internal);
-      return { dir: internal, label: 'Internal Storage' };
+      try {
+        const internalBase: string | null = usbStorageModule?.getInternalStoragePath
+          ? await usbStorageModule.getInternalStoragePath()
+          : null;
+        if (internalBase) {
+          const xowDir = `${internalBase}/XoW`;
+          await nativeMkdirs(xowDir);
+          console.log('Storage: internal →', xowDir);
+          return { dir: xowDir, label: 'Internal Storage' };
+        }
+      } catch (e) {
+        console.log('Internal storage path error:', e);
+      }
+
+      // Ultimate fallback (should never reach here)
+      const fallback = `${FileSystem.documentDirectory}XoW`;
+      await nativeMkdirs(fallback);
+      console.log('Storage: fallback →', fallback);
+      return { dir: fallback, label: 'Internal Storage' };
     }
     // iOS
     const iosDir = `${FileSystem.documentDirectory}XoW`;
-    await FileSystem.makeDirectoryAsync(iosDir, { intermediates: true }).catch(() => {});
+    await nativeMkdirs(iosDir);
     return { dir: iosDir, label: 'Internal Storage' };
   };
 
@@ -439,7 +483,7 @@ export default function RecorderScreen() {
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
       const baseDir = `${sessionStorageDirRef.current}/Videos`;
-      await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
+      await nativeMkdirs(baseDir);
       const chunkDest = `${baseDir}/chunk_${sessionId}_${activeChunkIndex}.mp4`;
       const savedPath = await nativeCopyFile(videoUriRef.current, chunkDest);
 
@@ -712,7 +756,7 @@ const startRecording = async () => {
             
             // Use resolved session storage dir (internal or external)
             const baseDir = `${sessionStorageDirRef.current}/Videos`;
-            await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
+            await nativeMkdirs(baseDir);
             const finalDest = `${baseDir}/chunk_${currentSessionIdRef.current}_${currentChunkIndexRef.current}.mp4`;
             const savedPath = await nativeCopyFile(videoUri, finalDest);
             
@@ -764,7 +808,7 @@ const startRecording = async () => {
       if (audioUri) {
         try {
           const audioDir = `${sessionStorageDirRef.current}/Audio`;
-          await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => {});
+          await nativeMkdirs(audioDir);
           const dest = `${audioDir}/XoW_${timestamp}.m4a`;
           await nativeCopyFile(audioUri, dest);
           savedAudioPath = dest;
