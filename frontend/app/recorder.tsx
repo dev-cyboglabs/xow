@@ -27,7 +27,6 @@ import axios from 'axios';
 import {
   saveChunkMetadata,
   getSessionMetadata,
-  saveChunkFile,
   getFileSize,
   markSessionComplete,
   cleanupOldSessions,
@@ -219,7 +218,7 @@ export default function RecorderScreen() {
     }, [])
   );
 
-  const APP_PACKAGE = 'com.devcyboglabs.xowrecorder';
+
   const usbStorageModule = Platform.OS === 'android' ? NativeModules.UsbStorage : null;
 
   /**
@@ -294,36 +293,49 @@ export default function RecorderScreen() {
    * Returns the storage directory based on user preference in settings.
    * Falls back to auto-detection if preference not set or external storage unavailable.
    */
+  /**
+   * Reliable file copy using native Java IO (works on all Android versions).
+   * FileSystem.copyAsync can fail silently on Android 13 for cross-storage copies.
+   */
+  const nativeCopyFile = async (sourceUri: string, destPath: string): Promise<string> => {
+    if (Platform.OS === 'android' && usbStorageModule?.copyFile) {
+      return await usbStorageModule.copyFile(sourceUri, destPath);
+    }
+    // iOS or fallback
+    await FileSystem.copyAsync({ from: sourceUri, to: destPath });
+    return destPath;
+  };
+
+  /**
+   * Returns the base XoW directory for this recording session.
+   * External → SD card/Android/data/com.devcyboglabs.xowrecorder/files/XoW
+   *            (app-specific external dir — writable on ALL Android versions, no extra permissions)
+   * Internal → app documentDirectory/XoW
+   */
   const getStorageDir = async (): Promise<{ dir: string; label: string }> => {
     if (Platform.OS === 'android') {
-      // Load user's storage preference from settings
-      let preferredLocation: 'internal' | 'external' = 'internal';
-      try {
-        const saved = await AsyncStorage.getItem('xow_settings');
-        if (saved) {
-          const settings = JSON.parse(saved);
-          preferredLocation = settings.storageLocation || 'internal';
+      if (usbStorageModule?.getWritableExternalStoragePath) {
+        try {
+          const extBase: string | null = await usbStorageModule.getWritableExternalStoragePath();
+          if (extBase) {
+            const xowDir = `${extBase}/XoW`;
+            // Create via native copyFile trick: copy a 0-byte placeholder to force dir creation,
+            // then just rely on mkdirs inside copyFile. Instead: use makeDirectoryAsync —
+            // it works on app-specific external paths even on Android 13.
+            await FileSystem.makeDirectoryAsync(xowDir, { intermediates: true });
+            lastExternalRef.current = xowDir;
+            console.log('Storage: using external →', xowDir);
+            return { dir: xowDir, label: 'External Storage' };
+          }
+        } catch (e) {
+          console.log('External storage setup failed, using internal:', e);
         }
-      } catch (e) {
-        console.log('Failed to load storage preference:', e);
       }
 
-      // If user prefers external storage, try to use it
-      if (preferredLocation === 'external') {
-        const external = await detectExternalStorage();
-        if (external) {
-          lastExternalRef.current = external;
-          return { dir: external, label: 'External Storage' };
-        }
-        lastExternalRef.current = null;
-        // External not available, fall back to internal with warning
-        console.log('External storage preferred but not available, using internal');
-        showToast('External storage not found, using internal');
-      }
-
-      // Use internal storage (either preferred or fallback)
-      const internal = `file:///storage/emulated/0/Android/data/${APP_PACKAGE}/files/XoW`;
+      lastExternalRef.current = null;
+      const internal = `${FileSystem.documentDirectory}XoW`;
       await FileSystem.makeDirectoryAsync(internal, { intermediates: true }).catch(() => {});
+      console.log('Storage: using internal →', internal);
       return { dir: internal, label: 'Internal Storage' };
     }
     // iOS
@@ -352,8 +364,27 @@ export default function RecorderScreen() {
     if (!audioStatus.granted) {
       Alert.alert('Permission Required', 'Microphone access is needed for recording.');
     }
-    // MediaLibrary permissions removed - causing config issues
-    // Gallery save will still work via try-catch when saving videos
+    // Request MANAGE_EXTERNAL_STORAGE so videos save publicly to SD card on Android 11+
+    if (Platform.OS === 'android' && usbStorageModule?.hasManageStoragePermission) {
+      try {
+        const hasPermission: boolean = await usbStorageModule.hasManageStoragePermission();
+        if (!hasPermission) {
+          Alert.alert(
+            'Storage Permission Required',
+            'To save videos directly to your SD card, please grant "All files access" in the next screen.',
+            [
+              {
+                text: 'Grant Access',
+                onPress: () => usbStorageModule.requestManageStoragePermission().catch(() => {}),
+              },
+              { text: 'Skip', style: 'cancel' },
+            ]
+          );
+        }
+      } catch (e) {
+        console.log('Storage permission check error:', e);
+      }
+    }
   };
 
   const checkConnection = async () => {
@@ -407,15 +438,10 @@ export default function RecorderScreen() {
 
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
-      const baseDir = `${sessionStorageDirRef.current}/chunks`;
+      const baseDir = `${sessionStorageDirRef.current}/Videos`;
       await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
-
-      const savedPath = await saveChunkFile(
-        videoUriRef.current,
-        sessionId,
-        activeChunkIndex,
-        baseDir
-      );
+      const chunkDest = `${baseDir}/chunk_${sessionId}_${activeChunkIndex}.mp4`;
+      const savedPath = await nativeCopyFile(videoUriRef.current, chunkDest);
 
       const fileSize = await getFileSize(savedPath);
       const chunk: ChunkType = {
@@ -685,15 +711,10 @@ const startRecording = async () => {
             const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
             
             // Use resolved session storage dir (internal or external)
-            const baseDir = `${sessionStorageDirRef.current}/chunks`;
+            const baseDir = `${sessionStorageDirRef.current}/Videos`;
             await FileSystem.makeDirectoryAsync(baseDir, { intermediates: true }).catch(() => {});
-            
-            const savedPath = await saveChunkFile(
-              videoUri,
-              currentSessionIdRef.current,
-              currentChunkIndexRef.current,
-              baseDir
-            );
+            const finalDest = `${baseDir}/chunk_${currentSessionIdRef.current}_${currentChunkIndexRef.current}.mp4`;
+            const savedPath = await nativeCopyFile(videoUri, finalDest);
             
             const fileSize = await getFileSize(savedPath);
             
@@ -742,10 +763,10 @@ const startRecording = async () => {
       // Save audio to app directory
       if (audioUri) {
         try {
-          const audioDir = `${sessionStorageDirRef.current}/audio`;
+          const audioDir = `${sessionStorageDirRef.current}/Audio`;
           await FileSystem.makeDirectoryAsync(audioDir, { intermediates: true }).catch(() => {});
           const dest = `${audioDir}/XoW_${timestamp}.m4a`;
-          await FileSystem.copyAsync({ from: audioUri, to: dest });
+          await nativeCopyFile(audioUri, dest);
           savedAudioPath = dest;
           console.log('✓ Audio saved:', dest);
         } catch (e: any) {
