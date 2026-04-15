@@ -93,7 +93,12 @@ export default function SettingsScreen() {
         volumes = await usbStorageModule.getRemovableVolumes();
       }
 
-      const physicallyPresent = volumes.length > 0;
+      let nativePath: string | null = null;
+      if (usbStorageModule?.getWritableExternalStoragePath) {
+        nativePath = await usbStorageModule.getWritableExternalStoragePath();
+      }
+
+      const physicallyPresent = volumes.length > 0 || Boolean(nativePath);
       setUsbAttached(physicallyPresent);
 
       if (!physicallyPresent) {
@@ -116,9 +121,16 @@ export default function SettingsScreen() {
       }
 
       // Something is mounted — try to get a writable path
-      const label = volumes[0]?.description || 'USB Drive';
+      const label = volumes[0]?.description || (nativePath?.split('/').pop() || 'External Storage');
       setVolumeLabel(label);
       console.log(`✓ Removable volume detected: ${label}`);
+
+      if (nativePath) {
+        setExternalAvailable(true);
+        setNeedsUsbAccess(false);
+        console.log('✓ External storage writable via native path:', nativePath);
+        return;
+      }
 
       // Check for a previously granted SAF URI first
       const storedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
@@ -127,17 +139,6 @@ export default function SettingsScreen() {
         setNeedsUsbAccess(false);
         console.log('✓ External storage available (SAF permission stored)');
         return;
-      }
-
-      // Try to get a writable app-specific path directly
-      if (usbStorageModule?.getWritableExternalStoragePath) {
-        const nativePath = await usbStorageModule.getWritableExternalStoragePath();
-        if (nativePath) {
-          setExternalAvailable(true);
-          setNeedsUsbAccess(false);
-          console.log('✓ External storage writable via native path:', nativePath);
-          return;
-        }
       }
 
       // Volume is mounted but app cannot write directly — user must grant SAF access

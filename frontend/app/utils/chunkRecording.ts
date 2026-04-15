@@ -1,7 +1,8 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
-const CHUNK_DURATION_MS = 5 * 60 * 1000; // 5 minutes per chunk
+const CHUNK_DURATION_MS = 1 * 60 * 1000; // 1 minute per chunk
 const METADATA_STORAGE_KEY = 'xow_recording_metadata';
 
 export interface VideoChunk {
@@ -11,6 +12,74 @@ export interface VideoChunk {
   startTime: number;
   endTime: number;
   fileSize: number;
+}
+
+function normalizeFileUri(path: string): string {
+  if (!path || path.startsWith('file://') || path.startsWith('content://') || path.startsWith('http')) {
+    return path;
+  }
+  return `file://${path}`;
+}
+
+async function copyToPlayableCache(fileUri: string): Promise<string> {
+  const cacheRoot = `${FileSystem.cacheDirectory}xow_preview`;
+  await FileSystem.makeDirectoryAsync(cacheRoot, { intermediates: true });
+
+  const safeName = fileUri.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-120) || `preview_${Date.now()}.mp4`;
+  const targetUri = `${cacheRoot}/${safeName}`;
+
+  const [sourceInfo, targetInfo] = await Promise.all([
+    FileSystem.getInfoAsync(fileUri),
+    FileSystem.getInfoAsync(targetUri),
+  ]);
+
+  const sourceSize = sourceInfo.exists && 'size' in sourceInfo ? sourceInfo.size : 0;
+  const targetSize = targetInfo.exists && 'size' in targetInfo ? targetInfo.size : 0;
+
+  if (!targetInfo.exists || sourceSize !== targetSize || targetSize < 1024) {
+    await FileSystem.copyAsync({ from: fileUri, to: targetUri });
+  }
+
+  return targetUri;
+}
+
+export async function ensurePlayableUri(path: string): Promise<string> {
+  if (!path) return path;
+  
+  // Already a content URI or HTTP URL - return as-is
+  if (path.startsWith('content://') || path.startsWith('http')) {
+    return path;
+  }
+  
+  // Ensure path has file:// prefix for getContentUriAsync
+  let fileUri = normalizeFileUri(path);
+  
+  if (Platform.OS === 'android') {
+    try {
+      const cachedUri = await copyToPlayableCache(fileUri);
+      const contentUri = await FileSystem.getContentUriAsync(cachedUri);
+      if (contentUri) {
+        console.log(`✓ Using cached playable URI: ${contentUri}`);
+        return contentUri;
+      }
+      return cachedUri;
+    } catch (error) {
+      console.log('Unable to prepare cached playable URI for chunk:', error);
+    }
+
+    try {
+      const contentUri = await FileSystem.getContentUriAsync(fileUri);
+      if (contentUri) {
+        console.log(`✓ Converted to content URI: ${contentUri}`);
+        return contentUri;
+      }
+    } catch (error) {
+      console.log('Unable to derive content URI for chunk:', error);
+    }
+  }
+  
+  // Fallback to file:// URI
+  return fileUri;
 }
 
 export interface RecordingMetadata {
@@ -188,13 +257,78 @@ export async function cleanupOldSessions(): Promise<void> {
   }
 }
 
+/**
+ * Recover incomplete sessions after crash/shutdown
+ * Returns array of local recording objects that can be added to gallery
+ */
+export async function recoverIncompleteSessions(): Promise<any[]> {
+  try {
+    const all = await getAllMetadata();
+    const recovered: any[] = [];
+    
+    for (const [sessionId, metadata] of Object.entries(all)) {
+      // Only recover sessions that have chunks but are not marked complete
+      if (!metadata.isComplete && metadata.chunks.length > 0) {
+        console.log(`🔄 Recovering session ${sessionId}: ${metadata.chunks.length} chunks`);
+        
+        // Verify chunk files exist
+        const validChunks = [];
+        for (const chunk of metadata.chunks) {
+          try {
+            const info = await FileSystem.getInfoAsync(chunk.filePath);
+            const size = info.exists && 'size' in info ? info.size : 0;
+            if (info.exists && size >= 1024) {
+              validChunks.push(chunk);
+            } else {
+              console.log(`⚠️ Skipping invalid chunk file: ${chunk.filePath} (${size} bytes)`);
+            }
+          } catch (e) {
+            console.log(`⚠️ Chunk file missing: ${chunk.filePath}`);
+          }
+        }
+        
+        if (validChunks.length > 0) {
+          // Calculate total duration
+          const totalDuration = validChunks.reduce((sum, chunk) => sum + chunk.duration, 0);
+          
+          // Create local recording entry
+          const firstChunkPath = validChunks[0].filePath;
+
+          const localRecording = {
+            id: '',
+            localId: `recovered_${sessionId}`,
+            videoPath: firstChunkPath,
+            audioPath: metadata.audioPath, // Will be null for incomplete sessions
+            barcodeScansList: metadata.barcodeScansList || [],
+            duration: Math.floor(totalDuration),
+            createdAt: metadata.createdAt,
+            isUploaded: false,
+            boothName: 'Recovered Recording',
+            deviceId: '',
+            fps: 30,
+            fpsTimeline: [],
+            videoChunks: validChunks,
+            isChunked: true,
+          };
+          
+          recovered.push(localRecording);
+          console.log(`✅ Recovered ${validChunks.length} chunks (${Math.floor(totalDuration)}s)`);
+        }
+        
+        // Mark as complete to avoid re-recovery
+        metadata.isComplete = true;
+        await saveChunkMetadata(metadata);
+      }
+    }
+    
+    return recovered;
+  } catch (error) {
+    console.error('Failed to recover sessions:', error);
+    return [];
+  }
+}
+
 export const CHUNK_CONFIG = {
   DURATION_MS: CHUNK_DURATION_MS,
   DURATION_SECONDS: CHUNK_DURATION_MS / 1000,
 };
-
-// Expo Router treats files under app/ as routes. Provide a no-op default export
-// so this utility file does not trigger missing default export warnings.
-export default function ChunkRecordingUtilsRoute() {
-  return null;
-}

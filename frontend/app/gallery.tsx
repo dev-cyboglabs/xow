@@ -20,6 +20,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import { Video, ResizeMode } from 'expo-av';
 import axios from 'axios';
+import { recoverIncompleteSessions, ensurePlayableUri } from './utils/chunkRecording';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
@@ -197,6 +198,24 @@ export default function GalleryScreen() {
 
   const fetchRecordings = async () => {
     try {
+      // Recover crashed/incomplete sessions — skip any whose chunks already
+      // exist in the gallery (written by upsertLocalRecording during recording)
+      const recovered = await recoverIncompleteSessions();
+      if (recovered.length > 0) {
+        const existing = await getLocalRecordings();
+        const existingChunkPaths = new Set(
+          existing.flatMap(r => (r.videoChunks || []).map(c => c.filePath))
+        );
+        const newRecovered = recovered.filter(
+          r => !r.videoChunks?.some((c: VideoChunk) => existingChunkPaths.has(c.filePath))
+        );
+        if (newRecovered.length > 0) {
+          const combined = [...newRecovered, ...existing];
+          await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(combined));
+          console.log(`✅ Recovered ${newRecovered.length} new incomplete recording(s)`);
+        }
+      }
+      
       // Get local recordings
       const localRecordings = await getLocalRecordings();
       
@@ -299,7 +318,7 @@ export default function GalleryScreen() {
     pendingSeekMsRef.current = localMs;
     pendingSeekResumeRef.current = shouldResume;
     setCurrentChunkIndex(targetChunkIndex);
-    setPreviewUri(allChunks[targetChunkIndex].filePath);
+    setPreviewUri(normalizeUri(allChunks[targetChunkIndex].filePath));
     setIsPlaying(shouldResume);
   };
 
@@ -320,35 +339,57 @@ export default function GalleryScreen() {
     }
   };
 
+  // Ensure local file paths have file:// prefix so expo-av can load them on Android
+  const normalizeUri = (path: string): string => {
+    if (!path) return path;
+    if (path.startsWith('file://') || path.startsWith('content://') || path.startsWith('http')) {
+      return path;
+    }
+    return `file://${path}`;
+  };
+
   const openPreview = async (recording: CombinedRecording) => {
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
-      
+
       // Handle chunked recordings - set up sequential playback
       if (localRec.isChunked && localRec.videoChunks && localRec.videoChunks.length > 0) {
         try {
           console.log(`Opening chunked recording with ${localRec.videoChunks.length} chunks (total: ${localRec.duration}s)`);
-          
+
           // Sort chunks by index
           const sortedChunks = [...localRec.videoChunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
-          
+
           // Verify first chunk exists
           const firstChunk = sortedChunks[0];
           const fileInfo = await FileSystem.getInfoAsync(firstChunk.filePath);
-          
+
           if (fileInfo.exists) {
+            console.log(`📁 First chunk file exists, size: ${('size' in fileInfo ? fileInfo.size : 'unknown')} bytes`);
+            console.log(`📁 Original chunk path: ${firstChunk.filePath}`);
+            
+            // Convert all chunk paths to playable URIs (content:// on Android)
+            const playableChunks = await Promise.all(
+              sortedChunks.map(async (chunk) => ({
+                ...chunk,
+                filePath: await ensurePlayableUri(chunk.filePath),
+              }))
+            );
+            
             // Set up for sequential chunk playback
-            setAllChunks(sortedChunks);
+            setAllChunks(playableChunks);
             setCurrentChunkIndex(0);
             setIsChunkedPlayback(true);
             const offsets: number[] = [];
             let acc = 0;
-            for (const chunk of sortedChunks) {
+            for (const chunk of playableChunks) {
               offsets.push(acc);
               acc += chunk.duration || 0;
             }
             setChunkStartOffsets(offsets);
-            setPreviewUri(firstChunk.filePath);
+            const firstPlayableUri = await ensurePlayableUri(firstChunk.filePath);
+            console.log(`🎬 Playing chunk with URI: ${firstPlayableUri}`);
+            setPreviewUri(firstPlayableUri);
             setVideoPosition(0);
             setVideoDuration(0);
             setGlobalDuration(localRec.duration || Math.floor(acc));
@@ -466,6 +507,17 @@ export default function GalleryScreen() {
   };
 
   const handlePlaybackStatusUpdate = (status: any) => {
+    if (!status.isLoaded) {
+      if (status.error) {
+        console.error('Video load error:', status.error, '| URI:', previewUri);
+        Alert.alert(
+          'Cannot Play Video',
+          `The player could not open this video chunk.\n\n${status.error}`,
+          [{ text: 'OK', onPress: closePreview }]
+        );
+      }
+      return;
+    }
     if (status.isLoaded) {
       if (pendingSeekMsRef.current !== null && videoRef.current) {
         const ms = pendingSeekMsRef.current;
@@ -515,7 +567,7 @@ export default function GalleryScreen() {
             console.log(`Auto-playing next chunk: ${nextIndex + 1}/${allChunks.length}`);
             const nextChunk = allChunks[nextIndex];
             setCurrentChunkIndex(nextIndex);
-            setPreviewUri(nextChunk.filePath);
+            setPreviewUri(normalizeUri(nextChunk.filePath));
             setVideoHasEnded(false);
             setIsPlaying(true);
           } else {
@@ -916,7 +968,9 @@ export default function GalleryScreen() {
     const dateStr = isLocal ? localItem.createdAt : cloudItem.start_time;
     const duration = isLocal ? localItem.duration : cloudItem.duration;
     const hasVideo = isLocal ? !!localItem.videoPath : cloudItem.has_video;
-    const hasAudio = isLocal ? !!localItem.audioPath : cloudItem.has_audio;
+    const hasAudio = isLocal
+      ? (localItem.isChunked ? true : !!localItem.audioPath)
+      : cloudItem.has_audio;
     const barcodeCount = isLocal ? (localItem.barcodeScansList?.length || 0) : (cloudItem.barcode_scans?.length || 0);
     // For cloud recordings, prefer AI-detected head count; fall back to barcode scans count
     const visitorCount = isLocal
@@ -1193,6 +1247,10 @@ export default function GalleryScreen() {
                     shouldPlay={isPlaying}
                     isLooping={false}
                     onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
+                    onError={(error) => {
+                      console.error('❌ Video playback error:', error, 'URI:', previewUri);
+                      Alert.alert('Playback Error', 'Unable to play this video chunk.');
+                    }}
                   />
                 )}
                 

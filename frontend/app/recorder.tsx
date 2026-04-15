@@ -27,7 +27,6 @@ import axios from 'axios';
 import {
   saveChunkMetadata,
   getSessionMetadata,
-  getFileSize,
   markSessionComplete,
   cleanupOldSessions,
   CHUNK_CONFIG,
@@ -77,6 +76,7 @@ export default function RecorderScreen() {
   const isOnlineRef = useRef(true);
   const [isRecording, setIsRecording] = useState(false);
   const [currentRecording, setCurrentRecording] = useState<any>(null);
+  const currentRecordingRef = useRef<any>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [frameCount, setFrameCount] = useState(0);
   const [fps, setFps] = useState(0);
@@ -175,6 +175,10 @@ export default function RecorderScreen() {
     barcodeScansRef.current = barcodeScans;
   }, [barcodeScans]);
 
+  useEffect(() => {
+    currentRecordingRef.current = currentRecording;
+  }, [currentRecording]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setToastVisible(true);
@@ -229,12 +233,11 @@ export default function RecorderScreen() {
   const detectExternalStorage = async (): Promise<string | null> => {
     if (Platform.OS !== 'android') return null;
     try {
-      // Gate: confirm a removable volume is physically present
+      // Detect removable storage via mounted volumes or app-specific external path
       let volumes: Array<{ description: string }> = [];
       if (usbStorageModule?.getRemovableVolumes) {
         volumes = await usbStorageModule.getRemovableVolumes();
       }
-      if (volumes.length === 0) return null;
 
       // Prefer native file:// path — supports direct FileSystem.copyAsync (no base64 OOM for large files)
       if (usbStorageModule?.getWritableExternalStoragePath) {
@@ -244,6 +247,8 @@ export default function RecorderScreen() {
           return nativePath;
         }
       }
+
+      if (volumes.length === 0) return null;
 
       // Fall back to SAF content:// URI only if native path unavailable
       const grantedUri = await AsyncStorage.getItem(EXTERNAL_STORAGE_URI_KEY);
@@ -311,7 +316,7 @@ export default function RecorderScreen() {
     if (Platform.OS === 'android' && usbStorageModule?.mkdirs) {
       await usbStorageModule.mkdirs(path);
     } else {
-      await nativeMkdirs(path);
+      await FileSystem.makeDirectoryAsync(path, { intermediates: true });
     }
   };
 
@@ -362,6 +367,15 @@ export default function RecorderScreen() {
 
       // Internal — use app-specific dir on phone storage (visible in Files app)
       lastExternalRef.current = null;
+      try {
+        const documentBase = `${FileSystem.documentDirectory}XoW`;
+        await nativeMkdirs(documentBase);
+        console.log('Storage: internal →', documentBase);
+        return { dir: documentBase, label: 'Internal Storage' };
+      } catch (e) {
+        console.log('Internal document storage path error:', e);
+      }
+
       try {
         const internalBase: string | null = usbStorageModule?.getInternalStoragePath
           ? await usbStorageModule.getInternalStoragePath()
@@ -453,6 +467,155 @@ export default function RecorderScreen() {
   const formatDate = (d: Date) => d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
   const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
+  const toFileUri = (path: string): string => {
+    if (!path || path.startsWith('file://') || path.startsWith('content://') || path.startsWith('http')) {
+      return path;
+    }
+    return `file://${path}`;
+  };
+
+  const upsertLocalRecordingEntry = async (
+    chunks: ChunkType[],
+    audioPath: string | null = null
+  ): Promise<LocalRecording | null> => {
+    const activeRecording = currentRecordingRef.current;
+    if (!activeRecording?.localId || chunks.length === 0) {
+      return null;
+    }
+
+    try {
+      const saved = await AsyncStorage.getItem('xow_local_recordings');
+      const existingRecordings: LocalRecording[] = saved ? JSON.parse(saved) : [];
+      const existingIndex = existingRecordings.findIndex(r => r.localId === activeRecording.localId);
+      const existingRecording = existingIndex >= 0 ? existingRecordings[existingIndex] : null;
+      const averageFps =
+        fpsSamplesRef.current.length > 0
+          ? Math.round(
+              fpsSamplesRef.current.reduce((sum, sample) => sum + sample, 0) /
+                fpsSamplesRef.current.length
+            )
+          : latestFpsRef.current || fps || existingRecording?.fps || 30;
+
+      const localRecording: LocalRecording = {
+        id: existingRecording?.id || '',
+        localId: activeRecording.localId,
+        videoPath: chunks[0]?.filePath || existingRecording?.videoPath || null,
+        audioPath: audioPath ?? existingRecording?.audioPath ?? null,
+        barcodeScansList: barcodeScansRef.current,
+        duration:
+          recordingTimeRef.current > 0
+            ? recordingTimeRef.current
+            : Math.floor(chunks.reduce((sum, chunk) => sum + (chunk.duration || 0), 0)),
+        createdAt: activeRecording.createdAt || existingRecording?.createdAt || new Date().toISOString(),
+        isUploaded: existingRecording?.isUploaded || false,
+        boothName: deviceRef.current?.name || existingRecording?.boothName || 'Unknown Booth',
+        deviceId: deviceRef.current?.device_id || existingRecording?.deviceId || '',
+        fps: averageFps,
+        fpsTimeline: fpsSamplesRef.current.length > 0 ? [...fpsSamplesRef.current] : existingRecording?.fpsTimeline || [],
+        videoChunks: chunks,
+        isChunked: true,
+      };
+
+      if (existingIndex >= 0) {
+        existingRecordings[existingIndex] = localRecording;
+      } else {
+        existingRecordings.unshift(localRecording);
+      }
+
+      await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(existingRecordings));
+      return localRecording;
+    } catch (error) {
+      console.log('Failed to upsert local recording entry:', error);
+      return null;
+    }
+  };
+
+  const waitForFileReady = async (fileUri: string, minSize = 1024): Promise<number> => {
+    let lastSize = -1;
+    let stableReads = 0;
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      try {
+        const info = await FileSystem.getInfoAsync(toFileUri(fileUri));
+        const size = info.exists && 'size' in info ? info.size : 0;
+        if (info.exists && size >= minSize) {
+          if (size === lastSize) {
+            stableReads += 1;
+          } else {
+            lastSize = size;
+            stableReads = 0;
+          }
+
+          if (stableReads >= 2) {
+            return size;
+          }
+        } else {
+          lastSize = -1;
+          stableReads = 0;
+        }
+      } catch (error) {
+        console.log('File readiness check error:', error);
+        lastSize = -1;
+        stableReads = 0;
+      }
+      await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    throw new Error(`File not ready: ${fileUri}`);
+  };
+
+  const persistVideoChunk = async (sourceUri: string, destPath: string): Promise<{ savedPath: string; fileSize: number }> => {
+    const sourceSize = await waitForFileReady(sourceUri);
+    console.log(`📁 Source chunk ready: ${sourceUri} (${sourceSize} bytes)`);
+
+    const lastSlash = destPath.lastIndexOf('/');
+    if (lastSlash !== -1) {
+      const parentDir = destPath.slice(0, lastSlash);
+      await nativeMkdirs(parentDir);
+    }
+
+    const srcFileUri = toFileUri(sourceUri);
+    const destFileUri = toFileUri(destPath);
+
+    try {
+      await FileSystem.deleteAsync(destFileUri, { idempotent: true });
+    } catch (_) {}
+
+    let persistedPath = destFileUri;
+    let sourceDeleted = false;
+
+    // Prefer atomic move (same-filesystem rename) — zero corruption risk
+    try {
+      await FileSystem.moveAsync({ from: srcFileUri, to: destFileUri });
+      sourceDeleted = true;
+      console.log(`📁 Chunk moved (atomic): ${destFileUri}`);
+    } catch (moveError) {
+      console.log('Atomic move failed, trying native copy:', moveError);
+      // Fall back to native copy (needed for cross-filesystem / external storage)
+      try {
+        const nativePath = await nativeCopyFile(sourceUri, destPath);
+        persistedPath = toFileUri(nativePath);
+        console.log(`📁 Chunk copied (native): ${persistedPath}`);
+      } catch (copyError) {
+        console.log('Native copy failed, trying expo copy:', copyError);
+        await FileSystem.copyAsync({ from: srcFileUri, to: destFileUri });
+        persistedPath = destFileUri;
+        console.log(`📁 Chunk copied (expo): ${persistedPath}`);
+      }
+    }
+
+    if (!sourceDeleted) {
+      try {
+        await FileSystem.deleteAsync(srcFileUri, { idempotent: true });
+      } catch (_) {}
+    }
+
+    const destSize = await waitForFileReady(persistedPath, sourceSize);
+    if (destSize < sourceSize) {
+      throw new Error(`Chunk copy incomplete: source=${sourceSize} dest=${destSize}`);
+    }
+    console.log(`📁 Persisted chunk ready: ${persistedPath} (${destSize} bytes)`);
+    return { savedPath: persistedPath, fileSize: destSize };
+  };
+
   /**
    * Save current chunk and start a new one
    * This is called automatically every CHUNK_DURATION_MS during recording
@@ -471,23 +634,32 @@ export default function RecorderScreen() {
 
       console.log(`🔄 Rotating to chunk ${nextChunkIndex}...`);
 
-      // Stop current recording and wait for URI from recordAsync promise
+      // Stop current recording — poll up to 10 s for the URI (same as stopRecording)
       cameraRef.current.stopRecording();
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      for (let i = 0; i < 100; i++) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        if (videoUriRef.current) break;
+      }
 
       if (!videoUriRef.current) {
         console.warn('No video URI available after stopping chunk');
         return;
       }
 
+      const srcUri = videoUriRef.current;
+
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
-      const baseDir = `${sessionStorageDirRef.current}/Videos`;
-      await nativeMkdirs(baseDir);
-      const chunkDest = `${baseDir}/chunk_${sessionId}_${activeChunkIndex}.mp4`;
-      const savedPath = await nativeCopyFile(videoUriRef.current, chunkDest);
 
-      const fileSize = await getFileSize(savedPath);
+      // Save rotation chunks to documentDirectory — this is always writable and
+      // readable by expo-file-system/expo-av, unlike external app storage paths
+      // which can silently produce corrupt files on some Android versions.
+      const chunkBaseDir = `${sessionStorageDirRef.current}/Videos`;
+      await nativeMkdirs(chunkBaseDir);
+      const chunkDest = `${chunkBaseDir}/chunk_${sessionId}_${activeChunkIndex}.mp4`;
+
+      const { savedPath, fileSize } = await persistVideoChunk(srcUri, chunkDest);
+      console.log(`✅ Chunk saved successfully: ${savedPath} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
       const chunk: ChunkType = {
         chunkIndex: activeChunkIndex,
         filePath: savedPath,
@@ -509,6 +681,8 @@ export default function RecorderScreen() {
         await saveChunkMetadata(metadata);
       }
 
+      await upsertLocalRecordingEntry(updatedChunks);
+
       console.log(`✓ Chunk ${activeChunkIndex} saved: ${(fileSize / 1024 / 1024).toFixed(2)}MB`);
       showToast(`Chunk ${activeChunkIndex + 1} saved`);
 
@@ -521,7 +695,7 @@ export default function RecorderScreen() {
       if (cameraRef.current && isRecordingRef.current && videoRecordingActiveRef.current) {
         console.log(`Starting chunk ${nextChunkIndex} recording...`);
         cameraRef.current
-          .recordAsync({ maxDuration: CHUNK_CONFIG.DURATION_SECONDS })
+          .recordAsync()
           .then((result) => {
             if (result?.uri) {
               videoUriRef.current = result.uri;
@@ -539,9 +713,20 @@ export default function RecorderScreen() {
   };
 
 const startRecording = async () => {
-  if (!device) return;
+  console.log('🎬 startRecording called');
+  if (!device) {
+    console.log('⚠️ No device, returning');
+    return;
+  }
+  
+  // Prevent re-entry
+  if (isRecordingRef.current) {
+    console.log('⚠️ Recording already in progress, ignoring duplicate call');
+    return;
+  }
 
     try {
+      console.log('🎬 Starting recording setup...');
       // Play camera shutter sound
       try {
         const { sound } = await Audio.Sound.createAsync(
@@ -557,6 +742,7 @@ const startRecording = async () => {
         console.log('Error playing camera sound:', error);
       }
       
+      console.log('Step 1: Setting recording state');
       isRecordingRef.current = true;
       setIsRecording(true);
       setFrameCount(0);
@@ -566,10 +752,14 @@ const startRecording = async () => {
       recordingStartTime.current = Date.now();
       videoUriRef.current = null;
 
+      console.log('Step 2: Creating local ID');
       const localId = `rec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      setCurrentRecording({ localId });
+      const createdAt = new Date().toISOString();
+      const nextRecording = { localId, createdAt };
+      setCurrentRecording(nextRecording);
+      currentRecordingRef.current = nextRecording;
 
-      // Initialize chunked recording
+      console.log('Step 3: Initialize chunked recording');
       const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       currentSessionIdRef.current = sessionId;
       setCurrentChunkIndex(0);
@@ -578,11 +768,11 @@ const startRecording = async () => {
       recordingChunksRef.current = [];
       chunkStartTimeRef.current = Date.now();
 
-      // Resolve storage directory once for this session (internal or external)
+      console.log('Step 4: Resolve storage directory');
       const { dir: resolvedDir } = await getStorageDir();
       sessionStorageDirRef.current = resolvedDir;
 
-      // Create initial metadata
+      console.log('Step 5: Create initial metadata');
       const metadata: RecordingMetadata = {
         sessionId,
         chunks: [],
@@ -592,6 +782,7 @@ const startRecording = async () => {
         audioPath: null,
         barcodeScansList: [],
       };
+      console.log('Step 6: Save chunk metadata');
       await saveChunkMetadata(metadata);
       console.log(`📹 Chunked recording session started: ${sessionId}`);
 
@@ -631,7 +822,7 @@ const startRecording = async () => {
         lastFpsFrameRef.current = current;
       }, 1000);
 
-      // Set up automatic chunk rotation timer (every 5 minutes)
+      // Set up automatic chunk rotation timer (every 1 minute)
       chunkTimerRef.current = setInterval(() => {
         rotateVideoChunk();
       }, CHUNK_CONFIG.DURATION_MS);
@@ -655,8 +846,8 @@ const startRecording = async () => {
         }
         
         try {
-          // Record first chunk with maxDuration = chunk duration
-          cameraRef.current.recordAsync({ maxDuration: CHUNK_CONFIG.DURATION_SECONDS }).then((result) => {
+          // Record first chunk without maxDuration - timer will handle rotation
+          cameraRef.current.recordAsync().then((result) => {
             console.log('Video chunk 0 recording result:', result);
             if (result?.uri) {
               videoUriRef.current = result.uri;
@@ -754,13 +945,10 @@ const startRecording = async () => {
             const chunkEndTime = Date.now();
             const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
             
-            // Use resolved session storage dir (internal or external)
-            const baseDir = `${sessionStorageDirRef.current}/Videos`;
-            await nativeMkdirs(baseDir);
-            const finalDest = `${baseDir}/chunk_${currentSessionIdRef.current}_${currentChunkIndexRef.current}.mp4`;
-            const savedPath = await nativeCopyFile(videoUri, finalDest);
-            
-            const fileSize = await getFileSize(savedPath);
+            const finalBaseDir = `${sessionStorageDirRef.current}/Videos`;
+            await nativeMkdirs(finalBaseDir);
+            const finalDest = `${finalBaseDir}/chunk_${currentSessionIdRef.current}_${currentChunkIndexRef.current}.mp4`;
+            const { savedPath, fileSize } = await persistVideoChunk(videoUri, finalDest);
             
             const finalChunk: ChunkType = {
               chunkIndex: currentChunkIndexRef.current,
@@ -810,12 +998,12 @@ const startRecording = async () => {
           const audioDir = `${sessionStorageDirRef.current}/Audio`;
           await nativeMkdirs(audioDir);
           const dest = `${audioDir}/XoW_${timestamp}.m4a`;
-          await nativeCopyFile(audioUri, dest);
-          savedAudioPath = dest;
-          console.log('✓ Audio saved:', dest);
+          const copiedAudioPath = await nativeCopyFile(audioUri, dest);
+          savedAudioPath = toFileUri(copiedAudioPath);
+          console.log('✓ Audio saved:', savedAudioPath);
         } catch (e: any) {
           console.log('Audio copy error:', e?.message || e);
-          savedAudioPath = audioUri;
+          savedAudioPath = toFileUri(audioUri);
         }
       }
 
@@ -840,38 +1028,16 @@ const startRecording = async () => {
 
       setSaveProgress(60);
 
-      // Save to local recordings list with chunk information
-      const localRecording: LocalRecording = {
-        id: '',
-        localId: currentRecording.localId,
-        videoPath: finalChunksArray.length > 0 ? finalChunksArray[0].filePath : null, // Use first chunk for preview
-        audioPath: savedAudioPath,
-        barcodeScansList: barcodeScansRef.current,
-        duration: recordingTimeRef.current,
-        createdAt: new Date().toISOString(),
-        isUploaded: false,
-        boothName: device?.name || 'Unknown Booth',
-        deviceId: device?.device_id || '',
-        fps:
-          fpsSamplesRef.current.length > 0
-            ? Math.round(
-                fpsSamplesRef.current.reduce((sum, sample) => sum + sample, 0) /
-                  fpsSamplesRef.current.length
-              )
-            : latestFpsRef.current || fps || 30,
-        fpsTimeline: [...fpsSamplesRef.current],
-        videoChunks: finalChunksArray,
-        isChunked: true,
-      };
-
-      const existingRecordings = await getLocalRecordings();
-      existingRecordings.unshift(localRecording);
-      await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(existingRecordings));
+      const localRecording = await upsertLocalRecordingEntry(finalChunksArray, savedAudioPath);
+      if (!localRecording) {
+        throw new Error('Failed to save local recording entry');
+      }
 
       // Finish the save UI immediately — upload happens silently in background
       setSaveProgress(100);
       showToast('Recording saved');
       setCurrentRecording(null);
+      currentRecordingRef.current = null;
       setIsSaving(false);
 
       // Clean up old incomplete sessions
@@ -1201,7 +1367,13 @@ const startRecording = async () => {
 
         {/* Camera feed */}
         <View style={styles.cameraViewWrapper}>
-        <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="back" mode="video" mute={true} />
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            mode="video"
+            mute={false}
+          />
 
         {/* Top Bar */}
         <View style={styles.topBar}>
