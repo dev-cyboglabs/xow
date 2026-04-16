@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ActivityIndicator,
   useWindowDimensions,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -34,6 +35,7 @@ export default function SetupScreen() {
   const [pairingCode, setPairingCode] = useState('------');
   const [secondsLeft, setSecondsLeft] = useState(300);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showNetworkError, setShowNetworkError] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -95,10 +97,9 @@ export default function SetupScreen() {
           return;
         }
 
-        // Network / server unreachable — show pairing screen without a live code.
-        console.log('⚠️ Network issue, showing default pairing screen');
-        setPairingCode('------');
-        startCountdown(300);
+        // Network / server unreachable — show network error modal
+        console.log('⚠️ Network issue, showing network error modal');
+        setShowNetworkError(true);
         setStatus('ready');
       }
     } catch (e: any) {
@@ -130,8 +131,14 @@ export default function SetupScreen() {
     } catch (e: any) {
       console.log('❌ Registration failed:', e.message);
       console.log('📊 Error response:', e.response?.data);
-      setStatus('error');
-      setErrorMsg(e.response?.data?.detail || 'Registration failed. Please retry.');
+      // Check if it's a network error
+      if (!e.response) {
+        setShowNetworkError(true);
+        setStatus('ready');
+      } else {
+        setStatus('error');
+        setErrorMsg(e.response?.data?.detail || 'Registration failed. Please retry.');
+      }
     }
   };
 
@@ -162,12 +169,20 @@ export default function SetupScreen() {
       const code = res.data?.new_pairing_code || '------';
       const secs = res.data?.expires_in_seconds ?? 300;
       
-      setPairingCode(code);
-      startCountdown(secs);
-    } catch (error) {
-      // If regeneration fails, try again in 5 minutes
-      setPairingCode('------');
-      startCountdown(300);
+      if (!res.data) {
+        setShowNetworkError(true);
+      } else {
+        setPairingCode(code);
+        startCountdown(secs);
+      }
+    } catch (e: any) {
+      // If regeneration fails due to network, show error modal
+      if (!e.response) {
+        setShowNetworkError(true);
+      } else {
+        setPairingCode('------');
+        startCountdown(300);
+      }
     }
   };
 
@@ -276,6 +291,42 @@ export default function SetupScreen() {
           </View>
         </View>
       </View>
+
+      {/* Network Error Modal */}
+      <Modal
+        visible={showNetworkError}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowNetworkError(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconContainer}>
+              <Ionicons name="cloud-offline" size={60} color="#EF4444" />
+            </View>
+            <Text style={styles.modalTitle}>Network Connection Error</Text>
+            <Text style={styles.modalMessage}>
+              Unable to connect to the server. Please check your network connection and try again.
+            </Text>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => {
+                setShowNetworkError(false);
+                init();
+              }}
+            >
+              <Ionicons name="refresh" size={24} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.modalButtonText}>Retry Connection</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowNetworkError(false)}
+            >
+              <Text style={styles.modalCancelText}>Dismiss</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -316,4 +367,15 @@ const styles = StyleSheet.create({
 
   waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
   waitingText: { color: '#555', fontSize: 22 },
+
+  // Network Error Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalContent: { backgroundColor: '#0a0a0a', borderRadius: 24, padding: 40, width: '100%', maxWidth: 500, borderWidth: 1, borderColor: '#1a1a1a', alignItems: 'center' },
+  modalIconContainer: { marginBottom: 24, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 60, width: 120, height: 120, justifyContent: 'center', alignItems: 'center' },
+  modalTitle: { color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
+  modalMessage: { color: '#888', fontSize: 20, lineHeight: 30, textAlign: 'center', marginBottom: 32 },
+  modalButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#E54B2A', paddingVertical: 18, paddingHorizontal: 36, borderRadius: 14, width: '100%', marginBottom: 12 },
+  modalButtonText: { color: '#fff', fontSize: 22, fontWeight: '600' },
+  modalCancelButton: { paddingVertical: 14, paddingHorizontal: 24 },
+  modalCancelText: { color: '#666', fontSize: 20, fontWeight: '500' },
 });

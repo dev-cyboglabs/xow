@@ -3286,19 +3286,32 @@ async def translate_transcript(recording_id: str, target_language: str = "en"):
 # Include the router in the main app
 app.include_router(api_router)
 
-# Mount static assets directory
-app.mount("/assets", StaticFiles(directory=ROOT_DIR / "static" / "assets"), name="assets")
+# Mount static assets directory only if it exists
+assets_dir = ROOT_DIR / "static" / "assets"
+if assets_dir.exists() and assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+else:
+    logger.warning(f"Static assets directory not found: {assets_dir}")
 
 # Serve home page
 @app.get("/api/home")
 async def serve_home():
-    return FileResponse(ROOT_DIR / "static" / "index.html")
+    home_path = ROOT_DIR / "static" / "index.html"
+    if not home_path.exists():
+        raise HTTPException(status_code=404, detail="Home page not found")
+    return FileResponse(home_path)
 
 # Serve dashboard
 @app.get("/api/dashboard")
 async def serve_dashboard():
-    return FileResponse(ROOT_DIR / "static" / "dashboard.html")
+    dashboard_path = ROOT_DIR / "static" / "dashboard.html"
+    if not dashboard_path.exists():
+        raise HTTPException(status_code=404, detail="Dashboard not found")
+    return FileResponse(dashboard_path)
 
 @app.get("/api/dashboard.js")
 async def serve_dashboard_js():
-    return FileResponse(ROOT_DIR / "static" / "dashboard.js", media_type="application/javascript")
+    js_path = ROOT_DIR / "static" / "dashboard.js"
+    if not js_path.exists():
+        raise HTTPException(status_code=404, detail="Dashboard JS not found")
+    return FileResponse(js_path, media_type="application/javascript")
