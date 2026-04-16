@@ -16,7 +16,12 @@ load_dotenv(ROOT_DIR / '.env')
 
 # Import the merge function from server
 sys.path.insert(0, str(ROOT_DIR))
-from server import merge_chunks_and_process, db, client
+from server import merge_chunks_and_process
+
+# Create new MongoDB client for this script
+mongo_url = os.environ['MONGO_URL']
+client = AsyncIOMotorClient(mongo_url)
+db = client[os.environ['DB_NAME']]
 
 async def manual_merge(recording_id: str):
     """Manually trigger merge for a recording with unmerged chunks"""
