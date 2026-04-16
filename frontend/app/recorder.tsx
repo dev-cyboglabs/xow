@@ -689,12 +689,15 @@ export default function RecorderScreen() {
       currentChunkIndexRef.current = nextChunkIndex;
       setCurrentChunkIndex(nextChunkIndex);
 
-      // Start next chunk - add small delay to ensure previous chunk is fully finalized
+      // Start next chunk - add delay to ensure previous chunk is fully finalized
       videoUriRef.current = null;
-      chunkStartTimeRef.current = Date.now();
+      videoRecordingActiveRef.current = false; // Mark as stopped
       
-      // Wait 500ms to ensure camera is ready and previous file is fully written
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait 1 second to ensure camera is ready and previous file is fully written
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      chunkStartTimeRef.current = Date.now();
+      videoRecordingActiveRef.current = true; // Mark as recording again
       
       if (cameraRef.current && isRecordingRef.current && videoRecordingActiveRef.current) {
         console.log(`Starting chunk ${nextChunkIndex} recording...`);
