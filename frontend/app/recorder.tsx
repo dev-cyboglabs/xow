@@ -647,6 +647,12 @@ export default function RecorderScreen() {
       }
 
       const srcUri = videoUriRef.current;
+      
+      // CRITICAL: Wait for expo-camera to fully finalize the MP4 file
+      // The URI is returned before the file is completely written to disk
+      // Without this delay, the MP4 will be missing the moov atom (metadata)
+      console.log('Waiting for MP4 file to finalize...');
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
@@ -939,6 +945,12 @@ const startRecording = async () => {
             }
           }
           videoUri = videoUriRef.current;
+
+          // CRITICAL: Wait for expo-camera to fully finalize the MP4 file
+          if (videoUri) {
+            console.log('Waiting for final MP4 file to finalize...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
 
           // Save the final chunk to storage
           if (videoUri) {
