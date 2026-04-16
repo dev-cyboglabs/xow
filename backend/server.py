@@ -863,6 +863,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
     tmp_path = None
     chunk_files = []
     concat_list_path = None
+    processed_files = [] #temp
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
@@ -884,10 +885,46 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             logger.info(f"Downloaded chunk {ref.get('chunk_index', 0)} for recording {recording_id}: "
                        f"{os.path.getsize(chunk_tmp.name)} bytes")
 
+        # Try to make each chunk playable if needed
+        for src in chunk_files:
+            repaired = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
+            repaired.close()
+            remux_cmd = [
+                'ffmpeg', '-y',
+                '-err_detect', 'ignore_err',
+                '-i', src,
+                '-c', 'copy',
+                '-movflags', 'faststart',
+                repaired.name
+            ]
+            remux = subprocess.run(remux_cmd, capture_output=True, text=True, timeout=180)
+            if remux.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                processed_files.append(repaired.name)
+                continue
+            reenc = subprocess.run([
+                'ffmpeg', '-y',
+                '-fflags', '+genpts',
+                '-i', src,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',
+                '-movflags', 'faststart',
+                repaired.name
+            ], capture_output=True, text=True, timeout=300)
+            if reenc.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                processed_files.append(repaired.name)
+            else:
+                try:
+                    if os.path.exists(repaired.name):
+                        os.unlink(repaired.name)
+                except Exception:
+                    pass
+                processed_files.append(src)
+
         # Create FFmpeg concat file list
         concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
         concat_list_path = concat_list.name
-        for chunk_file in chunk_files:
+        for chunk_file in processed_files or chunk_files: #for chunk_file in chunk_files:
             # Escape single quotes in file paths for FFmpeg
             escaped_path = chunk_file.replace("'", "'\\''")
             concat_list.write(f"file '{escaped_path}'\n")
@@ -911,9 +948,23 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
         
-        if result.returncode != 0:
-            logger.error(f"FFmpeg merge failed: {result.stderr}")
-            raise Exception(f"FFmpeg merge failed: {result.stderr}")
+        if result.returncode != 0: 
+            logger.error(f"FFmpeg merge failed (copy). Retrying with re-encode.")
+            ffmpeg_cmd_reencode = [
+                'ffmpeg', '-y',
+                '-f', 'concat',
+                '-safe', '0',
+                '-i', concat_list_path,
+                '-c:v', 'libx264',
+                '-preset', 'ultrafast',
+                '-crf', '23',
+                '-movflags', 'faststart',
+                tmp_path
+            ]
+            result2 = subprocess.run(ffmpeg_cmd_reencode, capture_output=True, text=True, timeout=900)
+            if result2.returncode != 0:
+                logger.error(f"FFmpeg merge failed: {result2.stderr}")
+                raise Exception(f"FFmpeg merge failed: {result2.stderr}")
 
         logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: "
                     f"{os.path.getsize(tmp_path)} bytes")
@@ -945,6 +996,13 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         # Clean up individual chunk files
         for chunk_file in chunk_files:
             if os.path.exists(chunk_file):
+                try:
+                    os.unlink(chunk_file)
+                except Exception:
+                    pass
+        # Clean up processed files
+        for chunk_file in processed_files:
+            if os.path.exists(chunk_file) and chunk_file not in chunk_files:
                 try:
                     os.unlink(chunk_file)
                 except Exception:
