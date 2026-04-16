@@ -689,9 +689,13 @@ export default function RecorderScreen() {
       currentChunkIndexRef.current = nextChunkIndex;
       setCurrentChunkIndex(nextChunkIndex);
 
-      // Start next chunk
+      // Start next chunk - add small delay to ensure previous chunk is fully finalized
       videoUriRef.current = null;
       chunkStartTimeRef.current = Date.now();
+      
+      // Wait 500ms to ensure camera is ready and previous file is fully written
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       if (cameraRef.current && isRecordingRef.current && videoRecordingActiveRef.current) {
         console.log(`Starting chunk ${nextChunkIndex} recording...`);
         cameraRef.current
@@ -705,6 +709,11 @@ export default function RecorderScreen() {
           })
           .catch((err: any) => {
             console.log('Chunk recording error:', err?.message || err);
+            // If chunk recording fails, try to recover by stopping the whole recording
+            if (isRecordingRef.current) {
+              console.error('Critical: chunk recording failed, stopping recording');
+              stopRecording();
+            }
           });
       }
     } catch (e: any) {
