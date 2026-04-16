@@ -796,7 +796,11 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
         else:
             recording_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        logger.info(f"Adding video overlay for recording {recording_id}")
+        try:
+            in_size = os.path.getsize(video_path)
+        except Exception:
+            in_size = -1
+        logger.info(f"Adding video overlay for recording {recording_id} (input_size={in_size} bytes)")
         overlay_path = await add_video_overlay_file(video_path, ext, booth_name, recording_time)
 
         logger.info(f"Remuxing video for recording {recording_id}")
@@ -815,6 +819,12 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
                 f"video_{recording_id}.{ext}", f,
                 metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
             )
+        try:
+            finfo = await db.fs.files.find_one({"_id": ObjectId(processed_video_id)})
+            flen = finfo.get('length', 0) if finfo else 0
+            logger.info(f"[Pipeline] Uploaded processed video for {recording_id}: id={processed_video_id}, size={flen} bytes")
+        except Exception as e:
+            logger.warning(f"[Pipeline] Could not read processed size for {recording_id}: {e}")
 
         # Mark video as stored first so the recording is accessible even if AI counting is slow
         await db.recordings.update_one(
@@ -865,6 +875,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
     concat_list_path = None
     processed_files = [] #temp
     try:
+        logger.info(f"[Merge] Start merge for {recording_id}: chunks={len(chunk_refs)}, ext={ext}, mime={mime}")
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             return
@@ -886,6 +897,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                        f"{os.path.getsize(chunk_tmp.name)} bytes")
 
         # Try to make each chunk playable if needed
+        logger.info(f"[Merge] Preparing {len(chunk_files)} downloaded chunk files for {recording_id}")
         for src in chunk_files:
             repaired = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
             repaired.close()
@@ -949,7 +961,9 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
         
         if result.returncode != 0: 
-            logger.error(f"FFmpeg merge failed (copy). Retrying with re-encode.")
+            tail = "\n".join(result.stderr.splitlines()[-5:])
+            logger.error(f"FFmpeg merge failed (copy) for {recording_id}: {tail}")
+            logger.info(f"Retrying merge with re-encode for {recording_id}...")
             ffmpeg_cmd_reencode = [
                 'ffmpeg', '-y',
                 '-f', 'concat',
@@ -963,11 +977,12 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             ]
             result2 = subprocess.run(ffmpeg_cmd_reencode, capture_output=True, text=True, timeout=900)
             if result2.returncode != 0:
-                logger.error(f"FFmpeg merge failed: {result2.stderr}")
+                tail2 = "\n".join(result2.stderr.splitlines()[-5:])
+                logger.error(f"FFmpeg merge failed (re-encode) for {recording_id}: {tail2}")
                 raise Exception(f"FFmpeg merge failed: {result2.stderr}")
 
-        logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: "
-                    f"{os.path.getsize(tmp_path)} bytes")
+        merged_size = os.path.getsize(tmp_path)
+        logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
 
         # Clean up GridFS chunks and refs
         for ref in chunk_refs:
@@ -2103,6 +2118,13 @@ async def upload_video(
                 metadata={"recording_id": recording_id, "type": "video", "mime_type": mime}
             )
 
+            try:
+                raw_info = await db.fs.files.find_one({"_id": ObjectId(raw_video_id)})
+                raw_len = raw_info.get('length', 0) if raw_info else 0
+                logger.info(f"[Upload] Stored single-file video for {recording_id}: id={raw_video_id}, size={raw_len} bytes, mime={mime}")
+            except Exception as e:
+                logger.warning(f"[Upload] Could not read raw video size for {recording_id}: {e}")
+
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
                 {"$set": {
@@ -2144,6 +2166,13 @@ async def upload_video(
                 io.BytesIO(video_data),
                 metadata={"recording_id": recording_id, "chunk_index": chunk_index, "type": "video_chunk"}
             )
+
+            try:
+                ci = await db.fs.files.find_one({"_id": ObjectId(chunk_gridfs_id)})
+                clen = ci.get('length', 0) if ci else 0
+                logger.info(f"[Upload] Stored chunk {chunk_index+1}/{total_chunks} for {recording_id}: id={chunk_gridfs_id}, size={clen} bytes")
+            except Exception as e:
+                logger.warning(f"[Upload] Could not read chunk size for {recording_id} idx={chunk_index}: {e}")
 
             await db.video_chunk_refs.update_one(
                 {"recording_id": recording_id, "chunk_index": chunk_index},
@@ -2190,6 +2219,7 @@ async def upload_video(
                     background_tasks.add_task(
                         merge_chunks_and_process, recording_id, chunk_refs, ext, mime
                     )
+                    logger.info(f"[Merge] Scheduled merge for {recording_id}: {len(chunk_refs)} chunks, ext={ext}, mime={mime}")
 
         logger.info(f"Video received for recording {recording_id}: {ext} ({mime}), processing in background")
         return {"success": True, "message": "Video received, processing in background", "format": mime}
@@ -3122,10 +3152,12 @@ async def get_video(recording_id: str, request: Request):
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording or not recording.get('video_file_id'):
+            logger.warning(f"[Stream] Video not found for {recording_id}: recording or video_file_id missing")
             raise HTTPException(status_code=404, detail="Video not found")
         
         file_info = await db.fs.files.find_one({"_id": ObjectId(recording['video_file_id'])})
         file_size = file_info.get('length', 0) if file_info else 0
+        logger.info(f"[Stream] Open video {recording_id}: file_id={recording['video_file_id']}, size={file_size}")
         
         mime_type = recording.get('video_mime_type')
         if not mime_type and file_info:
@@ -3149,6 +3181,7 @@ async def get_video(recording_id: str, request: Request):
             content_length = end - start + 1
             content = await grid_out.read(content_length)
             
+            logger.info(f"[Stream] 206 {recording_id} bytes {start}-{end}/{file_size}")
             return Response(
                 content=content,
                 status_code=206,
@@ -3165,6 +3198,7 @@ async def get_video(recording_id: str, request: Request):
             )
         else:
             content = await grid_out.read()
+            logger.info(f"[Stream] 200 {recording_id} full file served: {file_size} bytes")
             return Response(
                 content=content,
                 media_type=mime_type,
