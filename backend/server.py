@@ -3098,7 +3098,11 @@ async def get_video(recording_id: str, request: Request):
                 headers={
                     "Content-Range": f"bytes {start}-{end}/{file_size}",
                     "Accept-Ranges": "bytes",
-                    "Content-Length": str(content_length)
+                    "Content-Length": str(content_length),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
                 }
             )
         else:
@@ -3108,7 +3112,11 @@ async def get_video(recording_id: str, request: Request):
                 media_type=mime_type,
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Content-Length": str(file_size)
+                    "Content-Length": str(file_size),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
                 }
             )
     except HTTPException:
@@ -3151,7 +3159,11 @@ async def get_audio(recording_id: str, request: Request):
                 headers={
                     "Content-Range": f"bytes {start}-{end}/{file_size}",
                     "Accept-Ranges": "bytes",
-                    "Content-Length": str(content_length)
+                    "Content-Length": str(content_length),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
                 }
             )
         else:
@@ -3161,7 +3173,11 @@ async def get_audio(recording_id: str, request: Request):
                 media_type="audio/mp4",
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Content-Length": str(file_size)
+                    "Content-Length": str(file_size),
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Allow-Methods": "GET, OPTIONS",
+                    "Access-Control-Allow-Headers": "Range, Content-Type",
+                    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
                 }
             )
     except HTTPException:
