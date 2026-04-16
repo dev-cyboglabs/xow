@@ -859,23 +859,61 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
 
 
 async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str, mime: str):
-    """Stream GridFS video chunks into a temp file, then run the processing pipeline."""
+    """Stream GridFS video chunks into temp files, merge with FFmpeg, then run the processing pipeline."""
     tmp_path = None
+    chunk_files = []
+    concat_list_path = None
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             return
 
-        # Stream all chunks → single temp file (no full memory load)
-        with tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False) as tmp_file:
-            tmp_path = tmp_file.name
-            for ref in chunk_refs:
-                grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
-                while True:
-                    block = await grid_out.read(1024 * 1024)  # 1MB at a time
-                    if not block:
-                        break
-                    tmp_file.write(block)
+        # Download each chunk to a separate temp file
+        for ref in chunk_refs:
+            chunk_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
+            chunk_files.append(chunk_tmp.name)
+            
+            grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
+            while True:
+                block = await grid_out.read(1024 * 1024)  # 1MB at a time
+                if not block:
+                    break
+                chunk_tmp.write(block)
+            chunk_tmp.close()
+            
+            logger.info(f"Downloaded chunk {ref.get('chunk_index', 0)} for recording {recording_id}: "
+                       f"{os.path.getsize(chunk_tmp.name)} bytes")
+
+        # Create FFmpeg concat file list
+        concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+        concat_list_path = concat_list.name
+        for chunk_file in chunk_files:
+            # Escape single quotes in file paths for FFmpeg
+            escaped_path = chunk_file.replace("'", "'\\''")
+            concat_list.write(f"file '{escaped_path}'\n")
+        concat_list.close()
+
+        # Merge chunks using FFmpeg concat demuxer
+        merged_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
+        tmp_path = merged_tmp.name
+        merged_tmp.close()
+
+        logger.info(f"Merging {len(chunk_refs)} chunks for recording {recording_id} using FFmpeg...")
+        
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concat_list_path,
+            '-c', 'copy',  # Copy streams without re-encoding
+            tmp_path
+        ]
+        
+        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode != 0:
+            logger.error(f"FFmpeg merge failed: {result.stderr}")
+            raise Exception(f"FFmpeg merge failed: {result.stderr}")
 
         logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: "
                     f"{os.path.getsize(tmp_path)} bytes")
@@ -897,9 +935,25 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             {"$set": {"status": "error", "error": str(e)}}
         )
     finally:
+        # Clean up merged file
         if tmp_path and os.path.exists(tmp_path):
             try:
                 os.unlink(tmp_path)
+            except Exception:
+                pass
+        
+        # Clean up individual chunk files
+        for chunk_file in chunk_files:
+            if os.path.exists(chunk_file):
+                try:
+                    os.unlink(chunk_file)
+                except Exception:
+                    pass
+        
+        # Clean up concat list file
+        if concat_list_path and os.path.exists(concat_list_path):
+            try:
+                os.unlink(concat_list_path)
             except Exception:
                 pass
 
