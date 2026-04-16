@@ -648,6 +648,28 @@ export default function RecorderScreen() {
 
       const srcUri = videoUriRef.current;
 
+      // Wait for file to be completely written by checking size stability
+      let stableSize = 0;
+      let attempts = 0;
+      while (attempts < 20) {
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(srcUri);
+          const currentSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+          if (currentSize > 0 && currentSize === stableSize) {
+            // Size hasn't changed for 2 checks - file is stable
+            console.log(`✓ Chunk file stable: ${(currentSize / 1024 / 1024).toFixed(2)}MB`);
+            break;
+          }
+          stableSize = currentSize;
+          await new Promise(resolve => setTimeout(resolve, 200));
+          attempts++;
+        } catch (e) {
+          console.warn('File check error:', e);
+          await new Promise(resolve => setTimeout(resolve, 200));
+          attempts++;
+        }
+      }
+
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
 
@@ -954,6 +976,27 @@ const startRecording = async () => {
 
           // Save the final chunk to storage
           if (videoUri) {
+            // Wait for final chunk file to be completely written
+            let stableSize = 0;
+            let attempts = 0;
+            while (attempts < 20) {
+              try {
+                const fileInfo = await FileSystem.getInfoAsync(videoUri);
+                const currentSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
+                if (currentSize > 0 && currentSize === stableSize) {
+                  console.log(`✓ Final chunk file stable: ${(currentSize / 1024 / 1024).toFixed(2)}MB`);
+                  break;
+                }
+                stableSize = currentSize;
+                await new Promise(resolve => setTimeout(resolve, 200));
+                attempts++;
+              } catch (e) {
+                console.warn('Final chunk file check error:', e);
+                await new Promise(resolve => setTimeout(resolve, 200));
+                attempts++;
+              }
+            }
+
             const chunkEndTime = Date.now();
             const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
             
