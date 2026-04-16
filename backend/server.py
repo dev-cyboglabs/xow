@@ -868,10 +868,10 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         if not recording:
             return
 
-        # Download each chunk to a separate temp file and repair if corrupted
+        # Download each chunk to a separate temp file
         for ref in chunk_refs:
             chunk_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
-            raw_chunk_path = chunk_tmp.name
+            chunk_files.append(chunk_tmp.name)
             
             grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
             while True:
@@ -882,70 +882,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             chunk_tmp.close()
             
             logger.info(f"Downloaded chunk {ref.get('chunk_index', 0)} for recording {recording_id}: "
-                       f"{os.path.getsize(raw_chunk_path)} bytes")
-            
-            # Repair corrupted MP4 chunk (missing moov atom) using FFmpeg
-            # This happens when expo-camera stops recording without properly finalizing the file
-            # Try method 1: Use -f h264 to read raw H.264 stream and rebuild MP4
-            repaired_chunk = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
-            repaired_chunk.close()
-            
-            logger.info(f"Repairing chunk {ref.get('chunk_index', 0)} with FFmpeg (raw H.264 recovery)...")
-            repair_cmd = [
-                'ffmpeg', '-y',
-                '-f', 'h264',  # Force H.264 raw format
-                '-i', raw_chunk_path,
-                '-c:v', 'copy',  # Copy video stream
-                '-movflags', 'faststart',  # Move moov atom to beginning
-                repaired_chunk.name
-            ]
-            
-            repair_result = subprocess.run(repair_cmd, capture_output=True, text=True, timeout=120)
-            
-            # Check if repair was successful
-            if repair_result.returncode == 0 and os.path.getsize(repaired_chunk.name) > 1024:
-                logger.info(f"✓ Chunk {ref.get('chunk_index', 0)} repaired successfully: "
-                           f"{os.path.getsize(repaired_chunk.name)} bytes")
-                chunk_files.append(repaired_chunk.name)
-                # Delete raw chunk
-                try:
-                    os.unlink(raw_chunk_path)
-                except Exception:
-                    pass
-            else:
-                # Method 1 failed, try method 2: Re-encode the video
-                logger.warning(f"Raw H.264 recovery failed for chunk {ref.get('chunk_index', 0)}, trying re-encode...")
-                
-                reencode_cmd = [
-                    'ffmpeg', '-y',
-                    '-err_detect', 'ignore_err',
-                    '-fflags', '+genpts',  # Generate presentation timestamps
-                    '-i', raw_chunk_path,
-                    '-c:v', 'libx264',  # Re-encode with H.264
-                    '-preset', 'ultrafast',  # Fast encoding
-                    '-crf', '23',  # Quality
-                    '-movflags', 'faststart',
-                    repaired_chunk.name
-                ]
-                
-                reencode_result = subprocess.run(reencode_cmd, capture_output=True, text=True, timeout=180)
-                
-                if reencode_result.returncode == 0 and os.path.getsize(repaired_chunk.name) > 1024:
-                    logger.info(f"✓ Chunk {ref.get('chunk_index', 0)} repaired via re-encode: "
-                               f"{os.path.getsize(repaired_chunk.name)} bytes")
-                    chunk_files.append(repaired_chunk.name)
-                    try:
-                        os.unlink(raw_chunk_path)
-                    except Exception:
-                        pass
-                else:
-                    logger.error(f"❌ All repair methods failed for chunk {ref.get('chunk_index', 0)}, skipping this chunk")
-                    # Don't add this chunk to the list - skip it entirely
-                    try:
-                        os.unlink(repaired_chunk.name)
-                        os.unlink(raw_chunk_path)
-                    except Exception:
-                        pass
+                       f"{os.path.getsize(chunk_tmp.name)} bytes")
 
         # Create FFmpeg concat file list
         concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
