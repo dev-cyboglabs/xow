@@ -902,34 +902,28 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
 
         # Try to make each chunk playable if needed
         logger.info(f"[Merge] Preparing {len(chunk_files)} downloaded chunk files for {recording_id}")
-        for src in chunk_files:
+        for i, src in enumerate(chunk_files):
+            src_size = os.path.getsize(src)
+            logger.info(f"[Repair] Chunk {i}: {src_size} bytes")
+            
             repaired = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
             repaired.close()
-            remux_cmd = [
+            
+            # Try remux with error detection disabled
+            remux = subprocess.run([
                 'ffmpeg', '-y',
                 '-err_detect', 'ignore_err',
                 '-i', src,
                 '-c', 'copy',
                 '-movflags', 'faststart',
                 repaired.name
-            ]
-            remux = subprocess.run(remux_cmd, capture_output=True, text=True, timeout=180)
-            if remux.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
-                processed_files.append(repaired.name)
-                continue
-            reenc = subprocess.run([
-                'ffmpeg', '-y',
-                '-fflags', '+genpts',
-                '-i', src,
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',
-                '-crf', '23',
-                '-movflags', 'faststart',
-                repaired.name
             ], capture_output=True, text=True, timeout=300)
-            if reenc.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+            
+            if remux.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                logger.info(f"[Repair] Chunk {i} remuxed successfully: {os.path.getsize(repaired.name)} bytes")
                 processed_files.append(repaired.name)
             else:
+                logger.warning(f"[Repair] Chunk {i} remux failed, trying H.264 fallback")
                 # Final fallback: try to read as raw H.264 stream and re-encode
                 h264_try = subprocess.run([
                     'ffmpeg', '-y',
@@ -942,8 +936,10 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                     repaired.name
                 ], capture_output=True, text=True, timeout=300)
                 if h264_try.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                    logger.info(f"[Repair] Chunk {i} H.264 fallback succeeded: {os.path.getsize(repaired.name)} bytes")
                     processed_files.append(repaired.name)
                 else:
+                    logger.error(f"[Repair] Chunk {i} all repair attempts failed, using original corrupt file")
                     try:
                         if os.path.exists(repaired.name):
                             os.unlink(repaired.name)

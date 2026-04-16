@@ -618,10 +618,10 @@ export default function RecorderScreen() {
 
   /**
    * Save current chunk and start a new one
-   * This is called automatically every CHUNK_DURATION_MS during recording
+   * Called when camera auto-stops after maxDuration
    */
   const rotateVideoChunk = async () => {
-    if (!cameraRef.current || !videoRecordingActiveRef.current || !currentSessionIdRef.current || !isRecordingRef.current) {
+    if (!cameraRef.current || !currentSessionIdRef.current || !isRecordingRef.current) {
       console.log('Chunk rotation skipped: camera not ready or not recording');
       return;
     }
@@ -634,41 +634,14 @@ export default function RecorderScreen() {
 
       console.log(`🔄 Rotating to chunk ${nextChunkIndex}...`);
 
-      // Stop current recording — poll up to 10 s for the URI (same as stopRecording)
-      cameraRef.current.stopRecording();
-      for (let i = 0; i < 100; i++) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        if (videoUriRef.current) break;
-      }
-
+      // videoUriRef should already be set by recordAsync completion
       if (!videoUriRef.current) {
-        console.warn('No video URI available after stopping chunk');
+        console.warn('No video URI available for chunk rotation');
         return;
       }
 
       const srcUri = videoUriRef.current;
-
-      // Wait for file to be completely written by checking size stability
-      let stableSize = 0;
-      let attempts = 0;
-      while (attempts < 20) {
-        try {
-          const fileInfo = await FileSystem.getInfoAsync(srcUri);
-          const currentSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-          if (currentSize > 0 && currentSize === stableSize) {
-            // Size hasn't changed for 2 checks - file is stable
-            console.log(`✓ Chunk file stable: ${(currentSize / 1024 / 1024).toFixed(2)}MB`);
-            break;
-          }
-          stableSize = currentSize;
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
-        } catch (e) {
-          console.warn('File check error:', e);
-          await new Promise(resolve => setTimeout(resolve, 200));
-          attempts++;
-        }
-      }
+      console.log(`✓ Chunk ${activeChunkIndex} completed by camera: ${srcUri}`);
 
       const chunkEndTime = Date.now();
       const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
@@ -711,30 +684,31 @@ export default function RecorderScreen() {
       currentChunkIndexRef.current = nextChunkIndex;
       setCurrentChunkIndex(nextChunkIndex);
 
-      // Start next chunk - add delay to ensure previous chunk is fully finalized
+      // Start next chunk with maxDuration - camera will auto-finalize
       videoUriRef.current = null;
-      videoRecordingActiveRef.current = false; // Mark as stopped
-      
-      // Wait 1 second to ensure camera is ready and previous file is fully written
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
       chunkStartTimeRef.current = Date.now();
-      videoRecordingActiveRef.current = true; // Mark as recording again
+      videoRecordingActiveRef.current = true;
       
-      if (cameraRef.current && isRecordingRef.current && videoRecordingActiveRef.current) {
+      if (cameraRef.current && isRecordingRef.current) {
         console.log(`Starting chunk ${nextChunkIndex} recording...`);
+        const maxDurationSeconds = CHUNK_CONFIG.DURATION_MS / 1000;
         cameraRef.current
-          .recordAsync()
-          .then((result) => {
+          .recordAsync({ maxDuration: maxDurationSeconds })
+          .then(async (result) => {
             if (result?.uri) {
               videoUriRef.current = result.uri;
               console.log(`Video chunk ${nextChunkIndex} recording result:`, result);
               console.log(`Video chunk ${nextChunkIndex} URI saved:`, result.uri);
+              
+              // Auto-rotate to next chunk when this one completes
+              if (isRecordingRef.current) {
+                await rotateVideoChunk();
+              }
             }
           })
           .catch((err: any) => {
             console.log('Chunk recording error:', err?.message || err);
-            // If chunk recording fails, try to recover by stopping the whole recording
+            // If chunk recording fails, stop the whole recording
             if (isRecordingRef.current) {
               console.error('Critical: chunk recording failed, stopping recording');
               stopRecording();
@@ -856,10 +830,7 @@ const startRecording = async () => {
         lastFpsFrameRef.current = current;
       }, 1000);
 
-      // Set up automatic chunk rotation timer (every 1 minute)
-      chunkTimerRef.current = setInterval(() => {
-        rotateVideoChunk();
-      }, CHUNK_CONFIG.DURATION_MS);
+      // Chunk rotation now handled by maxDuration in recordAsync - camera auto-finalizes properly
 
       // Show Android Expo Go limitation notice
       if (Platform.OS === 'android' && __DEV__) {
@@ -880,12 +851,19 @@ const startRecording = async () => {
         }
         
         try {
-          // Record first chunk without maxDuration - timer will handle rotation
-          cameraRef.current.recordAsync().then((result) => {
+          // Record first chunk with maxDuration - camera will auto-finalize properly
+          const maxDurationSeconds = CHUNK_CONFIG.DURATION_MS / 1000;
+          cameraRef.current.recordAsync({ maxDuration: maxDurationSeconds }).then(async (result) => {
             console.log('Video chunk 0 recording result:', result);
             if (result?.uri) {
               videoUriRef.current = result.uri;
               console.log('Video chunk 0 URI saved:', result.uri);
+              
+              // Camera stopped automatically with proper finalization - save and start next
+              if (isRecordingRef.current) {
+                console.log('Auto-rotating after chunk 0 completed');
+                await rotateVideoChunk();
+              }
             }
           }).catch((err: any) => {
             console.log('Video chunk recording error:', err?.message || err);
@@ -976,27 +954,6 @@ const startRecording = async () => {
 
           // Save the final chunk to storage
           if (videoUri) {
-            // Wait for final chunk file to be completely written
-            let stableSize = 0;
-            let attempts = 0;
-            while (attempts < 20) {
-              try {
-                const fileInfo = await FileSystem.getInfoAsync(videoUri);
-                const currentSize = fileInfo.exists && 'size' in fileInfo ? fileInfo.size : 0;
-                if (currentSize > 0 && currentSize === stableSize) {
-                  console.log(`✓ Final chunk file stable: ${(currentSize / 1024 / 1024).toFixed(2)}MB`);
-                  break;
-                }
-                stableSize = currentSize;
-                await new Promise(resolve => setTimeout(resolve, 200));
-                attempts++;
-              } catch (e) {
-                console.warn('Final chunk file check error:', e);
-                await new Promise(resolve => setTimeout(resolve, 200));
-                attempts++;
-              }
-            }
-
             const chunkEndTime = Date.now();
             const chunkDuration = (chunkEndTime - chunkStartTimeRef.current) / 1000;
             
