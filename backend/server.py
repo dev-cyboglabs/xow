@@ -783,7 +783,7 @@ async def process_video_audio_file(recording_id: str, video_path: str, video_for
 
 
 async def _run_video_pipeline(recording_id: str, video_path: str,
-                               raw_video_id_to_delete: str, ext: str, mime: str, recording: dict):
+                               raw_video_id_to_delete: str, ext: str, mime: str, recording: dict, cleanup_temp_path: bool = False):
     """Core pipeline: overlay → remux → upload to GridFS → head count → audio. File-path based."""
     overlay_path = None
     remux_path = None
@@ -820,9 +820,12 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
             logger.warning(f"[Pipeline] Could not read processed size for {recording_id}: {e}")
 
         # Mark video as stored first so the recording is accessible even if AI counting is slow
+        update_fields = {"video_file_id": str(processed_video_id)}
+        if cleanup_temp_path:
+            update_fields["interim_temp_path"] = None
         await db.recordings.update_one(
             {"_id": ObjectId(recording_id)},
-            {"$set": {"video_file_id": str(processed_video_id)}}
+            {"$set": update_fields}
         )
 
         # Now it is safe to delete the previous interim/raw GridFS entry if provided
@@ -1042,7 +1045,27 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         merged_size = os.path.getsize(tmp_path)
         logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
 
-        # Publish merged video immediately so dashboard can play while heavy processing runs
+        # Store temp path for immediate streaming while GridFS upload happens in background
+        await db.recordings.update_one(
+            {"_id": ObjectId(recording_id)},
+            {"$set": {
+                "interim_temp_path": tmp_path,
+                "has_video": True,
+                "video_mime_type": mime
+            }}
+        )
+        try:
+            device = await db.devices.find_one({"device_id": recording.get('device_id')})
+            if device:
+                if device.get('dashboard_session_id'):
+                    notify_dashboard_update(device['dashboard_session_id'])
+                if device.get('user_id'):
+                    notify_dashboard_update(device['user_id'])
+        except Exception:
+            pass
+        logger.info(f"[Merge] Interim temp path set for {recording_id}: {tmp_path}, size={merged_size}")
+
+        # Upload to GridFS in background (non-blocking for dashboard)
         interim_id = None
         try:
             with open(tmp_path, 'rb') as f:
@@ -1052,20 +1075,11 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                 )
             await db.recordings.update_one(
                 {"_id": ObjectId(recording_id)},
-                {"$set": {"video_file_id": str(interim_id), "has_video": True, "video_mime_type": mime}}
+                {"$set": {"video_file_id": str(interim_id)}}
             )
-            try:
-                device = await db.devices.find_one({"device_id": recording.get('device_id')})
-                if device:
-                    if device.get('dashboard_session_id'):
-                        notify_dashboard_update(device['dashboard_session_id'])
-                    if device.get('user_id'):
-                        notify_dashboard_update(device['user_id'])
-            except Exception:
-                pass
-            logger.info(f"[Merge] Interim video published for {recording_id}: id={interim_id}, size={merged_size}")
+            logger.info(f"[Merge] Interim video uploaded to GridFS for {recording_id}: id={interim_id}")
         except Exception as pub_err:
-            logger.warning(f"[Merge] Failed to publish interim video for {recording_id}: {pub_err}")
+            logger.warning(f"[Merge] Failed to upload interim video to GridFS for {recording_id}: {pub_err}")
 
         # Clean up GridFS chunks and refs
         for ref in chunk_refs:
@@ -1075,7 +1089,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                 logger.warning(f"Could not delete chunk {ref['gridfs_id']}: {e}")
         await db.video_chunk_refs.delete_many({"recording_id": recording_id})
 
-        await _run_video_pipeline(recording_id, tmp_path, str(interim_id) if interim_id else None, ext, mime, recording)
+        await _run_video_pipeline(recording_id, tmp_path, str(interim_id) if interim_id else None, ext, mime, recording, cleanup_temp_path=True)
 
     except Exception as e:
         logger.error(f"Chunk merge error for {recording_id}: {e}")
@@ -3240,8 +3254,64 @@ async def get_video(recording_id: str, request: Request):
     """Stream video file with range support"""
     try:
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
-        if not recording or not recording.get('video_file_id'):
-            logger.warning(f"[Stream] Video not found for {recording_id}: recording or video_file_id missing")
+        if not recording:
+            logger.warning(f"[Stream] Recording not found: {recording_id}")
+            raise HTTPException(status_code=404, detail="Recording not found")
+        
+        # Check if interim temp file is available (immediate playback)
+        interim_temp_path = recording.get('interim_temp_path')
+        if interim_temp_path and os.path.exists(interim_temp_path):
+            logger.info(f"[Stream] Serving from temp file for {recording_id}: {interim_temp_path}")
+            file_size = os.path.getsize(interim_temp_path)
+            mime_type = recording.get('video_mime_type', 'video/mp4')
+            range_header = request.headers.get('range')
+            
+            if range_header:
+                range_match = range_header.replace('bytes=', '').split('-')
+                start = int(range_match[0]) if range_match[0] else 0
+                end = int(range_match[1]) if len(range_match) > 1 and range_match[1] else file_size - 1
+                start = max(0, min(start, file_size - 1))
+                end = max(start, min(end, file_size - 1))
+                
+                with open(interim_temp_path, 'rb') as f:
+                    f.seek(start)
+                    content = f.read(end - start + 1)
+                
+                logger.info(f"[Stream] 206 (temp) {recording_id} bytes {start}-{end}/{file_size}")
+                return Response(
+                    content=content,
+                    status_code=206,
+                    media_type=mime_type,
+                    headers={
+                        "Content-Range": f"bytes {start}-{end}/{file_size}",
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": str(end - start + 1),
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, OPTIONS",
+                        "Access-Control-Allow-Headers": "Range, Content-Type",
+                        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+                    }
+                )
+            else:
+                with open(interim_temp_path, 'rb') as f:
+                    content = f.read()
+                logger.info(f"[Stream] 200 (temp) {recording_id} full file served: {file_size} bytes")
+                return Response(
+                    content=content,
+                    media_type=mime_type,
+                    headers={
+                        "Accept-Ranges": "bytes",
+                        "Content-Length": str(file_size),
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, OPTIONS",
+                        "Access-Control-Allow-Headers": "Range, Content-Type",
+                        "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges"
+                    }
+                )
+        
+        # Fall back to GridFS if temp file not available
+        if not recording.get('video_file_id'):
+            logger.warning(f"[Stream] Video not found for {recording_id}: no video_file_id or temp path")
             raise HTTPException(status_code=404, detail="Video not found")
         
         file_info = await db.fs.files.find_one({"_id": ObjectId(recording['video_file_id'])})
