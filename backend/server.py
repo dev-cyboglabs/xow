@@ -973,6 +973,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             '-safe', '0',
             '-i', concat_list_path,
             '-c', 'copy',  # Copy streams without re-encoding
+            '-movflags', 'faststart',  # Ensure moov atom at start for web playback
             tmp_path
         ]
         
@@ -1043,7 +1044,20 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                     raise Exception(f"Byte-join fallback failed: {jerr}")
 
         merged_size = os.path.getsize(tmp_path)
-        logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
+        
+        # Verify merged video duration with ffprobe
+        try:
+            probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tmp_path]
+            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+            if probe_result.returncode == 0 and probe_result.stdout.strip():
+                merged_duration = float(probe_result.stdout.strip())
+                logger.info(f"[Merge] Merged video for {recording_id}: {merged_size} bytes, duration={merged_duration:.2f}s")
+            else:
+                logger.warning(f"[Merge] Could not probe duration for {recording_id}: {probe_result.stderr}")
+                logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
+        except Exception as probe_err:
+            logger.warning(f"[Merge] Duration probe failed for {recording_id}: {probe_err}")
+            logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
 
         # Store temp path for immediate streaming while GridFS upload happens in background
         await db.recordings.update_one(
