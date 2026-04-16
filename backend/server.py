@@ -874,6 +874,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
     chunk_files = []
     concat_list_path = None
     processed_files = [] #temp
+    joined_path = None
     try:
         logger.info(f"[Merge] Start merge for {recording_id}: chunks={len(chunk_refs)}, ext={ext}, mime={mime}")
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
@@ -926,12 +927,26 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             if reenc.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
                 processed_files.append(repaired.name)
             else:
-                try:
-                    if os.path.exists(repaired.name):
-                        os.unlink(repaired.name)
-                except Exception:
-                    pass
-                processed_files.append(src)
+                # Final fallback: try to read as raw H.264 stream and re-encode
+                h264_try = subprocess.run([
+                    'ffmpeg', '-y',
+                    '-f', 'h264',
+                    '-i', src,
+                    '-c:v', 'libx264',
+                    '-preset', 'ultrafast',
+                    '-crf', '23',
+                    '-movflags', 'faststart',
+                    repaired.name
+                ], capture_output=True, text=True, timeout=300)
+                if h264_try.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                    processed_files.append(repaired.name)
+                else:
+                    try:
+                        if os.path.exists(repaired.name):
+                            os.unlink(repaired.name)
+                    except Exception:
+                        pass
+                    processed_files.append(src)
 
         # Create FFmpeg concat file list
         concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
@@ -979,7 +994,50 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             if result2.returncode != 0:
                 tail2 = "\n".join(result2.stderr.splitlines()[-5:])
                 logger.error(f"FFmpeg merge failed (re-encode) for {recording_id}: {tail2}")
-                raise Exception(f"FFmpeg merge failed: {result2.stderr}")
+                # Last resort: raw byte-join then remux once
+                try:
+                    import io
+                    joined_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
+                    joined_path = joined_tmp.name
+                    joined_tmp.close()
+                    logger.info(f"[Merge] Falling back to byte-join for {recording_id} -> {joined_path}")
+                    sources = processed_files if processed_files else chunk_files
+                    with open(joined_path, 'wb') as out_f:
+                        for src_file in sources:
+                            with open(src_file, 'rb') as in_f:
+                                while True:
+                                    blk = in_f.read(1024 * 1024)
+                                    if not blk:
+                                        break
+                                    out_f.write(blk)
+                    # Try remux copy first
+                    remux_cmd = [
+                        'ffmpeg', '-y',
+                        '-i', joined_path,
+                        '-c', 'copy',
+                        '-movflags', 'faststart',
+                        tmp_path
+                    ]
+                    remux_res = subprocess.run(remux_cmd, capture_output=True, text=True, timeout=900)
+                    if remux_res.returncode != 0:
+                        tail3 = "\n".join(remux_res.stderr.splitlines()[-5:])
+                        logger.warning(f"[Merge] Remux after byte-join failed for {recording_id}: {tail3}. Retrying with re-encode.")
+                        reenc_cmd = [
+                            'ffmpeg', '-y',
+                            '-i', joined_path,
+                            '-c:v', 'libx264',
+                            '-preset', 'ultrafast',
+                            '-crf', '23',
+                            '-movflags', 'faststart',
+                            tmp_path
+                        ]
+                        reenc_res = subprocess.run(reenc_cmd, capture_output=True, text=True, timeout=1800)
+                        if reenc_res.returncode != 0:
+                            tail4 = "\n".join(reenc_res.stderr.splitlines()[-5:])
+                            logger.error(f"[Merge] Byte-join re-encode failed for {recording_id}: {tail4}")
+                            raise Exception(f"FFmpeg merge failed after byte-join: {reenc_res.stderr}")
+                except Exception as jerr:
+                    raise Exception(f"Byte-join fallback failed: {jerr}")
 
         merged_size = os.path.getsize(tmp_path)
         logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
@@ -1015,6 +1073,12 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                     os.unlink(chunk_file)
                 except Exception:
                     pass
+        # Clean up byte-join temp file
+        if joined_path and os.path.exists(joined_path):
+            try:
+                os.unlink(joined_path)
+            except Exception:
+                pass
         # Clean up processed files
         for chunk_file in processed_files:
             if os.path.exists(chunk_file) and chunk_file not in chunk_files:
