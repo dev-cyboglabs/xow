@@ -806,13 +806,6 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
         logger.info(f"Remuxing video for recording {recording_id}")
         remux_path = await remux_video_for_streaming_file(overlay_path, ext)
 
-        # Delete old raw GridFS entry if provided
-        if raw_video_id_to_delete:
-            try:
-                await fs_bucket.delete(ObjectId(raw_video_id_to_delete))
-            except Exception as del_err:
-                logger.warning(f"Could not delete raw video {raw_video_id_to_delete}: {del_err}")
-
         # Stream processed video into GridFS — no full read into memory
         with open(remux_path, 'rb') as f:
             processed_video_id = await fs_bucket.upload_from_stream(
@@ -831,6 +824,13 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
             {"_id": ObjectId(recording_id)},
             {"$set": {"video_file_id": str(processed_video_id)}}
         )
+
+        # Now it is safe to delete the previous interim/raw GridFS entry if provided
+        if raw_video_id_to_delete:
+            try:
+                await fs_bucket.delete(ObjectId(raw_video_id_to_delete))
+            except Exception as del_err:
+                logger.warning(f"Could not delete raw video {raw_video_id_to_delete}: {del_err}")
 
         # Extract frames at 60-second intervals from the uploaded video using ffmpeg
         logger.info(f"Extracting visitor frames at 60s intervals for recording {recording_id}")
@@ -1042,6 +1042,31 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         merged_size = os.path.getsize(tmp_path)
         logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
 
+        # Publish merged video immediately so dashboard can play while heavy processing runs
+        interim_id = None
+        try:
+            with open(tmp_path, 'rb') as f:
+                interim_id = await fs_bucket.upload_from_stream(
+                    f"video_{recording_id}.{ext}", f,
+                    metadata={"recording_id": recording_id, "type": "video", "mime_type": mime, "stage": "interim_merge"}
+                )
+            await db.recordings.update_one(
+                {"_id": ObjectId(recording_id)},
+                {"$set": {"video_file_id": str(interim_id), "has_video": True, "video_mime_type": mime}}
+            )
+            try:
+                device = await db.devices.find_one({"device_id": recording.get('device_id')})
+                if device:
+                    if device.get('dashboard_session_id'):
+                        notify_dashboard_update(device['dashboard_session_id'])
+                    if device.get('user_id'):
+                        notify_dashboard_update(device['user_id'])
+            except Exception:
+                pass
+            logger.info(f"[Merge] Interim video published for {recording_id}: id={interim_id}, size={merged_size}")
+        except Exception as pub_err:
+            logger.warning(f"[Merge] Failed to publish interim video for {recording_id}: {pub_err}")
+
         # Clean up GridFS chunks and refs
         for ref in chunk_refs:
             try:
@@ -1050,7 +1075,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                 logger.warning(f"Could not delete chunk {ref['gridfs_id']}: {e}")
         await db.video_chunk_refs.delete_many({"recording_id": recording_id})
 
-        await _run_video_pipeline(recording_id, tmp_path, None, ext, mime, recording)
+        await _run_video_pipeline(recording_id, tmp_path, str(interim_id) if interim_id else None, ext, mime, recording)
 
     except Exception as e:
         logger.error(f"Chunk merge error for {recording_id}: {e}")
