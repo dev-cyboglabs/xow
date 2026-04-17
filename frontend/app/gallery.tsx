@@ -652,14 +652,15 @@ export default function GalleryScreen() {
       const videoChunksToUpload = (localRec.isChunked && localRec.videoChunks) ? localRec.videoChunks : [];
       
       if (videoChunksToUpload.length > 0) {
-        // Upload each video chunk separately
-        console.log(`Uploading ${videoChunksToUpload.length} video chunks`);
-        
+        // Pre-calculate global total upload pieces across ALL video files
+        const videoFileInfo: { path: string; size: number; pieces: number; tempPath: string | null }[] = [];
+        let globalTotalChunks = 0;
+
         for (let chunkIdx = 0; chunkIdx < videoChunksToUpload.length; chunkIdx++) {
           const videoChunk = videoChunksToUpload[chunkIdx];
           let uploadVideoPath = videoChunk.filePath;
           let tempVideoPath: string | null = null;
-          
+
           if (videoChunk.filePath.startsWith('content://')) {
             tempVideoPath = `${FileSystem.cacheDirectory}xow_upload_tmp_${chunkIdx}.mp4`;
             await FileSystem.copyAsync({ from: videoChunk.filePath, to: tempVideoPath });
@@ -668,29 +669,48 @@ export default function GalleryScreen() {
 
           const fileInfo = await FileSystem.getInfoAsync(uploadVideoPath);
           if (!fileInfo.exists) {
-            console.warn(`Chunk ${chunkIdx} file not found: ${uploadVideoPath}`);
+            console.warn(`Video file ${chunkIdx} not found: ${uploadVideoPath}`);
             continue;
           }
-          
+
           const fileSize = (fileInfo as any).size as number;
+          const pieces = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
+          globalTotalChunks += pieces;
+          videoFileInfo.push({ path: uploadVideoPath, size: fileSize, pieces, tempPath: tempVideoPath });
+        }
+
+        console.log(`Uploading ${videoFileInfo.length} video files as ${globalTotalChunks} total upload pieces`);
+
+        let globalChunkIndex = videoStartChunk;
+
+        for (let fileIdx = 0; fileIdx < videoFileInfo.length; fileIdx++) {
+          const vf = videoFileInfo[fileIdx];
           const mimeType = 'video/mp4';
-          const totalChunks = Math.max(1, Math.ceil(fileSize / CHUNK_SIZE));
 
-          console.log(`Uploading video chunk ${chunkIdx + 1}/${videoChunksToUpload.length}: ${fileSize} bytes → ${totalChunks} upload chunks`);
+          // Calculate the global offset for this video file
+          let piecesBeforeThisFile = 0;
+          for (let j = 0; j < fileIdx; j++) {
+            piecesBeforeThisFile += videoFileInfo[j].pieces;
+          }
 
-          for (let i = videoStartChunk; i < totalChunks; i++) {
-            const start = i * CHUNK_SIZE;
-            const length = Math.min(CHUNK_SIZE, fileSize - start);
+          console.log(`Uploading video file ${fileIdx + 1}/${videoFileInfo.length}: ${vf.size} bytes → ${vf.pieces} pieces (global offset ${piecesBeforeThisFile})`);
 
-            // Read chunk as base64
-            const chunkBase64 = await FileSystem.readAsStringAsync(uploadVideoPath, {
+          for (let pieceIdx = 0; pieceIdx < vf.pieces; pieceIdx++) {
+            const currentGlobalIdx = piecesBeforeThisFile + pieceIdx;
+
+            // Skip already-uploaded pieces (resume support)
+            if (currentGlobalIdx < videoStartChunk) continue;
+
+            const start = pieceIdx * CHUNK_SIZE;
+            const length = Math.min(CHUNK_SIZE, vf.size - start);
+
+            const chunkBase64 = await FileSystem.readAsStringAsync(vf.path, {
               encoding: FileSystem.EncodingType.Base64,
               position: start,
               length,
             });
 
-            // Write to a temp file so uploadAsync can send it as multipart
-            const tempPath = `${FileSystem.cacheDirectory}xow_chunk_${i}.tmp`;
+            const tempPath = `${FileSystem.cacheDirectory}xow_chunk_${currentGlobalIdx}.tmp`;
             await FileSystem.writeAsStringAsync(tempPath, chunkBase64, {
               encoding: FileSystem.EncodingType.Base64,
             });
@@ -704,35 +724,33 @@ export default function GalleryScreen() {
                 uploadType: FileSystem.FileSystemUploadType.MULTIPART,
                 mimeType,
                 parameters: {
-                  chunk_index: String(i),
-                  total_chunks: String(totalChunks),
+                  chunk_index: String(currentGlobalIdx),
+                  total_chunks: String(globalTotalChunks),
+                  video_file_index: String(fileIdx),
                 },
               }
             );
 
-            // Delete temp chunk file immediately
             await FileSystem.deleteAsync(tempPath, { idempotent: true });
 
             if (uploadResult.status < 200 || uploadResult.status >= 300) {
-              throw new Error(`Chunk ${i + 1}/${totalChunks} upload failed (HTTP ${uploadResult.status})`);
+              throw new Error(`Chunk ${currentGlobalIdx + 1}/${globalTotalChunks} upload failed (HTTP ${uploadResult.status})`);
             }
 
-            // Update progress and save resume state
-            // Cap at 0.99 so 100% only shows when everything (audio, barcodes, complete) is truly done
-            const progress = Math.min((i + 1) / totalChunks, 0.99);
+            const progress = Math.min((currentGlobalIdx + 1) / globalTotalChunks, 0.99);
             setUploadProgress(progress);
             await AsyncStorage.setItem(resumeKey, JSON.stringify({
               recordingId,
-              nextChunk: i + 1,
-              totalChunks,
+              nextChunk: currentGlobalIdx + 1,
+              totalChunks: globalTotalChunks,
             }));
 
-            console.log(`Chunk ${i + 1}/${totalChunks} uploaded (${Math.round(progress * 100)}%)`);
+            console.log(`Piece ${currentGlobalIdx + 1}/${globalTotalChunks} uploaded (${Math.round(progress * 100)}%)`);
           }
-          
+
           // Clean up temp video file for this chunk if we created one
-          if (tempVideoPath) {
-            await FileSystem.deleteAsync(tempVideoPath, { idempotent: true }).catch(() => {});
+          if (vf.tempPath) {
+            await FileSystem.deleteAsync(vf.tempPath, { idempotent: true }).catch(() => {});
           }
         }
       } else if (recording.videoPath) {

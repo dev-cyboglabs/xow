@@ -872,217 +872,114 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
 
 
 async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str, mime: str):
-    """Stream GridFS video chunks into temp files, merge with FFmpeg, then run the processing pipeline."""
+    """Reassemble upload pieces into video files, merge video files with FFmpeg, then run the processing pipeline."""
     tmp_path = None
-    chunk_files = []
-    concat_list_path = None
-    processed_files = [] #temp
-    joined_path = None
+    temp_files_to_clean = []
     try:
-        logger.info(f"[Merge] Start merge for {recording_id}: chunks={len(chunk_refs)}, ext={ext}, mime={mime}")
         recording = await db.recordings.find_one({"_id": ObjectId(recording_id)})
         if not recording:
             return
 
-        # Download each chunk to a separate temp file
+        # ── Step 1: Group upload pieces by video_file_index ──
+        from collections import defaultdict
+        video_file_groups = defaultdict(list)
         for ref in chunk_refs:
-            chunk_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
-            chunk_files.append(chunk_tmp.name)
-            
-            grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
-            while True:
-                block = await grid_out.read(1024 * 1024)  # 1MB at a time
-                if not block:
-                    break
-                chunk_tmp.write(block)
-            chunk_tmp.close()
-            
-            logger.info(f"Downloaded chunk {ref.get('chunk_index', 0)} for recording {recording_id}: "
-                       f"{os.path.getsize(chunk_tmp.name)} bytes")
+            vfi = ref.get('video_file_index', 0)
+            video_file_groups[vfi].append(ref)
 
-        # Try to make each chunk playable if needed
-        logger.info(f"[Merge] Preparing {len(chunk_files)} downloaded chunk files for {recording_id}")
-        for i, src in enumerate(chunk_files):
-            src_size = os.path.getsize(src)
-            logger.info(f"[Repair] Chunk {i}: {src_size} bytes")
-            
-            repaired = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
-            repaired.close()
-            
-            # Try 1: Remux with error detection disabled
-            remux = subprocess.run([
-                'ffmpeg', '-y',
-                '-err_detect', 'ignore_err',
-                '-i', src,
-                '-c', 'copy',
-                '-movflags', 'faststart',
-                repaired.name
-            ], capture_output=True, text=True, timeout=300)
-            
-            if remux.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
-                logger.info(f"[Repair] Chunk {i} remuxed successfully: {os.path.getsize(repaired.name)} bytes")
-                processed_files.append(repaired.name)
-            else:
-                logger.warning(f"[Repair] Chunk {i} remux failed, trying to rebuild MP4 container")
-                
-                # Try 2: Treat as raw H.264 and rebuild MP4 container (for chunks without moov atom)
-                h264_rebuild = subprocess.run([
-                    'ffmpeg', '-y',
-                    '-f', 'h264',
-                    '-r', '30',  # Assume 30fps
-                    '-i', src,
-                    '-c:v', 'copy',  # Don't re-encode, just copy stream
-                    '-movflags', 'faststart',
-                    repaired.name
-                ], capture_output=True, text=True, timeout=300)
-                
-                if h264_rebuild.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
-                    logger.info(f"[Repair] Chunk {i} H.264 rebuild succeeded: {os.path.getsize(repaired.name)} bytes")
-                    processed_files.append(repaired.name)
-                else:
-                    logger.warning(f"[Repair] Chunk {i} H.264 rebuild failed, trying re-encode")
-                    
-                    # Try 3: Re-encode as last resort
-                    reencode = subprocess.run([
-                        'ffmpeg', '-y',
-                        '-f', 'h264',
-                        '-r', '30',
-                        '-i', src,
-                        '-c:v', 'libx264',
-                        '-preset', 'ultrafast',
-                        '-crf', '23',
-                        '-movflags', 'faststart',
-                        repaired.name
-                    ], capture_output=True, text=True, timeout=300)
-                    
-                    if reencode.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
-                        logger.info(f"[Repair] Chunk {i} re-encode succeeded: {os.path.getsize(repaired.name)} bytes")
-                        processed_files.append(repaired.name)
-                    else:
-                        logger.error(f"[Repair] Chunk {i} all repair attempts failed, using original corrupt file")
-                        try:
-                            if os.path.exists(repaired.name):
-                                os.unlink(repaired.name)
-                        except Exception:
-                            pass
-                        processed_files.append(src)
+        # Sort each group by chunk_index so byte-join is in correct order
+        for vfi in video_file_groups:
+            video_file_groups[vfi].sort(key=lambda r: r['chunk_index'])
 
-        # Create FFmpeg concat file list
-        concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
-        concat_list_path = concat_list.name
-        for chunk_file in processed_files or chunk_files: #for chunk_file in chunk_files:
-            # Escape single quotes in file paths for FFmpeg
-            escaped_path = chunk_file.replace("'", "'\\''")
-            concat_list.write(f"file '{escaped_path}'\n")
-        concat_list.close()
+        logger.info(f"[Merge] Start merge for {recording_id}: {len(chunk_refs)} upload pieces across {len(video_file_groups)} video file(s)")
 
-        # Merge chunks using FFmpeg concat demuxer
-        merged_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
-        tmp_path = merged_tmp.name
-        merged_tmp.close()
+        # ── Step 2: Reassemble each video file from its upload pieces ──
+        assembled_video_files = []
+        for vfi in sorted(video_file_groups.keys()):
+            group_refs = video_file_groups[vfi]
+            vf_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
+            temp_files_to_clean.append(vf_tmp.name)
 
-        logger.info(f"Merging {len(chunk_refs)} chunks for recording {recording_id} using FFmpeg...")
-        
-        ffmpeg_cmd = [
-            'ffmpeg', '-y',
-            '-f', 'concat',
-            '-safe', '0',
-            '-i', concat_list_path,
-            '-c', 'copy',  # Copy streams without re-encoding
-            '-movflags', 'faststart',  # Ensure moov atom at start for web playback
-            tmp_path
-        ]
-        
-        result = subprocess.run(ffmpeg_cmd, capture_output=True, text=True, timeout=300)
-        
-        if result.returncode != 0: 
-            tail = "\n".join(result.stderr.splitlines()[-5:])
-            logger.error(f"FFmpeg merge failed (copy) for {recording_id}: {tail}")
-            logger.info(f"Retrying merge with re-encode for {recording_id}...")
-            ffmpeg_cmd_reencode = [
-                'ffmpeg', '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', concat_list_path,
-                '-c:v', 'libx264',
-                '-preset', 'ultrafast',
-                '-crf', '23',
-                '-movflags', 'faststart',
+            for ref in group_refs:
+                grid_out = await fs_bucket.open_download_stream(ObjectId(ref['gridfs_id']))
+                while True:
+                    block = await grid_out.read(1024 * 1024)
+                    if not block:
+                        break
+                    vf_tmp.write(block)
+            vf_tmp.close()
+
+            vf_size = os.path.getsize(vf_tmp.name)
+            logger.info(f"[Merge] Assembled video file {vfi}: {vf_size} bytes from {len(group_refs)} upload pieces")
+            assembled_video_files.append(vf_tmp.name)
+
+        # ── Step 3: If only one video file, just use it directly ──
+        if len(assembled_video_files) == 1:
+            tmp_path = assembled_video_files[0]
+            logger.info(f"[Merge] Single video file, no merge needed for {recording_id}")
+        else:
+            # ── Step 4: FFmpeg concat-merge multiple video files ──
+            concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
+            temp_files_to_clean.append(concat_list.name)
+            for vf in assembled_video_files:
+                escaped = vf.replace("'", "'\\''")
+                concat_list.write(f"file '{escaped}'\n")
+            concat_list.close()
+
+            merged_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
+            tmp_path = merged_tmp.name
+            merged_tmp.close()
+            temp_files_to_clean.append(tmp_path)
+
+            logger.info(f"[Merge] FFmpeg merging {len(assembled_video_files)} video files for {recording_id}...")
+
+            # Try copy first (fast, no re-encode)
+            result = subprocess.run([
+                'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                '-i', concat_list.name,
+                '-c', 'copy', '-movflags', 'faststart',
                 tmp_path
-            ]
-            result2 = subprocess.run(ffmpeg_cmd_reencode, capture_output=True, text=True, timeout=900)
-            if result2.returncode != 0:
-                tail2 = "\n".join(result2.stderr.splitlines()[-5:])
-                logger.error(f"FFmpeg merge failed (re-encode) for {recording_id}: {tail2}")
-                # Last resort: raw byte-join then remux once
-                try:
-                    import io
-                    joined_tmp = tempfile.NamedTemporaryFile(suffix=f'.{ext}', delete=False)
-                    joined_path = joined_tmp.name
-                    joined_tmp.close()
-                    logger.info(f"[Merge] Falling back to byte-join for {recording_id} -> {joined_path}")
-                    sources = processed_files if processed_files else chunk_files
-                    with open(joined_path, 'wb') as out_f:
-                        for src_file in sources:
-                            with open(src_file, 'rb') as in_f:
-                                while True:
-                                    blk = in_f.read(1024 * 1024)
-                                    if not blk:
-                                        break
-                                    out_f.write(blk)
-                    # Try remux copy first
-                    remux_cmd = [
-                        'ffmpeg', '-y',
-                        '-i', joined_path,
-                        '-c', 'copy',
-                        '-movflags', 'faststart',
-                        tmp_path
-                    ]
-                    remux_res = subprocess.run(remux_cmd, capture_output=True, text=True, timeout=900)
-                    if remux_res.returncode != 0:
-                        tail3 = "\n".join(remux_res.stderr.splitlines()[-5:])
-                        logger.warning(f"[Merge] Remux after byte-join failed for {recording_id}: {tail3}. Retrying with re-encode.")
-                        reenc_cmd = [
-                            'ffmpeg', '-y',
-                            '-i', joined_path,
-                            '-c:v', 'libx264',
-                            '-preset', 'ultrafast',
-                            '-crf', '23',
-                            '-movflags', 'faststart',
-                            tmp_path
-                        ]
-                        reenc_res = subprocess.run(reenc_cmd, capture_output=True, text=True, timeout=1800)
-                        if reenc_res.returncode != 0:
-                            tail4 = "\n".join(reenc_res.stderr.splitlines()[-5:])
-                            logger.error(f"[Merge] Byte-join re-encode failed for {recording_id}: {tail4}")
-                            raise Exception(f"FFmpeg merge failed after byte-join: {reenc_res.stderr}")
-                except Exception as jerr:
-                    raise Exception(f"Byte-join fallback failed: {jerr}")
+            ], capture_output=True, text=True, timeout=600)
 
+            if result.returncode != 0:
+                tail = "\n".join(result.stderr.splitlines()[-5:])
+                logger.warning(f"[Merge] FFmpeg concat copy failed for {recording_id}: {tail}")
+                logger.info(f"[Merge] Retrying with re-encode for {recording_id}...")
+
+                result2 = subprocess.run([
+                    'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                    '-i', concat_list.name,
+                    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                    '-c:a', 'aac',
+                    '-movflags', 'faststart',
+                    tmp_path
+                ], capture_output=True, text=True, timeout=1800)
+
+                if result2.returncode != 0:
+                    tail2 = "\n".join(result2.stderr.splitlines()[-5:])
+                    logger.error(f"[Merge] FFmpeg re-encode also failed for {recording_id}: {tail2}")
+                    raise Exception(f"FFmpeg merge failed: {tail2}")
+
+        # ── Step 5: Verify merged video ──
         merged_size = os.path.getsize(tmp_path)
-        
-        # Verify merged video duration with ffprobe
         try:
-            probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', tmp_path]
-            probe_result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+            probe_result = subprocess.run(
+                ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                 '-of', 'default=noprint_wrappers=1:nokey=1', tmp_path],
+                capture_output=True, text=True, timeout=30
+            )
             if probe_result.returncode == 0 and probe_result.stdout.strip():
                 merged_duration = float(probe_result.stdout.strip())
                 logger.info(f"[Merge] Merged video for {recording_id}: {merged_size} bytes, duration={merged_duration:.2f}s")
             else:
-                logger.warning(f"[Merge] Could not probe duration for {recording_id}: {probe_result.stderr}")
-                logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
+                logger.warning(f"[Merge] Could not probe duration for {recording_id}")
         except Exception as probe_err:
             logger.warning(f"[Merge] Duration probe failed for {recording_id}: {probe_err}")
-            logger.info(f"Merged {len(chunk_refs)} chunks for recording {recording_id}: {merged_size} bytes")
 
-        # Store temp path for immediate streaming while GridFS upload happens in background
+        # ── Step 6: Upload interim video to GridFS for immediate dashboard playback ──
         await db.recordings.update_one(
             {"_id": ObjectId(recording_id)},
-            {"$set": {
-                "interim_temp_path": tmp_path,
-                "has_video": True,
-                "video_mime_type": mime
-            }}
+            {"$set": {"interim_temp_path": tmp_path, "has_video": True, "video_mime_type": mime}}
         )
         try:
             device = await db.devices.find_one({"device_id": recording.get('device_id')})
@@ -1095,7 +992,6 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             pass
         logger.info(f"[Merge] Interim temp path set for {recording_id}: {tmp_path}, size={merged_size}")
 
-        # Upload to GridFS in background (non-blocking for dashboard)
         interim_id = None
         try:
             with open(tmp_path, 'rb') as f:
@@ -1111,7 +1007,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
         except Exception as pub_err:
             logger.warning(f"[Merge] Failed to upload interim video to GridFS for {recording_id}: {pub_err}")
 
-        # Clean up GridFS chunks and refs
+        # ── Step 7: Clean up GridFS chunks and refs ──
         for ref in chunk_refs:
             try:
                 await fs_bucket.delete(ObjectId(ref['gridfs_id']))
@@ -1119,6 +1015,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                 logger.warning(f"Could not delete chunk {ref['gridfs_id']}: {e}")
         await db.video_chunk_refs.delete_many({"recording_id": recording_id})
 
+        # ── Step 8: Run video processing pipeline ──
         await _run_video_pipeline(recording_id, tmp_path, str(interim_id) if interim_id else None, ext, mime, recording, cleanup_temp_path=True)
 
     except Exception as e:
@@ -1128,40 +1025,12 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             {"$set": {"status": "error", "error": str(e)}}
         )
     finally:
-        # Clean up merged file
-        if tmp_path and os.path.exists(tmp_path):
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-        
-        # Clean up individual chunk files
-        for chunk_file in chunk_files:
-            if os.path.exists(chunk_file):
+        for f in temp_files_to_clean:
+            if f and os.path.exists(f):
                 try:
-                    os.unlink(chunk_file)
+                    os.unlink(f)
                 except Exception:
                     pass
-        # Clean up byte-join temp file
-        if joined_path and os.path.exists(joined_path):
-            try:
-                os.unlink(joined_path)
-            except Exception:
-                pass
-        # Clean up processed files
-        for chunk_file in processed_files:
-            if os.path.exists(chunk_file) and chunk_file not in chunk_files:
-                try:
-                    os.unlink(chunk_file)
-                except Exception:
-                    pass
-        
-        # Clean up concat list file
-        if concat_list_path and os.path.exists(concat_list_path):
-            try:
-                os.unlink(concat_list_path)
-            except Exception:
-                pass
 
 
 # ==================== HEALTH CHECK ====================
@@ -2217,6 +2086,7 @@ async def upload_video(
     video: UploadFile = File(...),
     chunk_index: int = Form(0),
     total_chunks: int = Form(1),
+    video_file_index: int = Form(0),
     background_tasks: BackgroundTasks = None
 ):
     """Upload video file - stores to GridFS immediately and processes overlay/audio in background"""
@@ -2312,6 +2182,7 @@ async def upload_video(
                 {"$set": {
                     "gridfs_id": str(chunk_gridfs_id),
                     "total_chunks": total_chunks,
+                    "video_file_index": video_file_index,
                     "mime_type": mime,
                     "extension": ext,
                     "uploaded_at": datetime.utcnow()
