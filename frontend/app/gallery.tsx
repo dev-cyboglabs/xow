@@ -50,6 +50,7 @@ interface LocalRecording {
   capturedFrames?: string[];  // periodic visitor snapshot paths
   videoChunks?: VideoChunk[];  // Array of video chunks for chunked recordings
   isChunked?: boolean;  // Flag indicating chunked recording
+  storageType?: 'external' | 'internal';  // Storage location
 }
 
 interface BarcodeData {
@@ -1158,6 +1159,24 @@ export default function GalleryScreen() {
             <View style={[styles.mediaBadge, hasAudio && styles.mediaBadgeActive]}>
               <Ionicons name="mic" size={18} color={hasAudio ? '#10B981' : '#444'} />
             </View>
+            {isLocal && localItem.storageType && (
+              <View style={[
+                styles.storageBadge,
+                { backgroundColor: localItem.storageType === 'external' ? '#3B82F620' : '#8B5CF620' }
+              ]}>
+                <Ionicons 
+                  name={localItem.storageType === 'external' ? 'hardware-chip' : 'phone-portrait'} 
+                  size={16} 
+                  color={localItem.storageType === 'external' ? '#3B82F6' : '#8B5CF6'} 
+                />
+                <Text style={[
+                  styles.storageText,
+                  { color: localItem.storageType === 'external' ? '#3B82F6' : '#8B5CF6' }
+                ]}>
+                  {localItem.storageType === 'external' ? 'EXT' : 'INT'}
+                </Text>
+              </View>
+            )}
           </View>
           <View style={[styles.statusBadge, { backgroundColor: `${config.color}20` }]}>
             <Ionicons name={config.icon as any} size={18} color={config.color} />
@@ -1197,7 +1216,7 @@ export default function GalleryScreen() {
         {/* Summary (cloud only) */}
         {summaryText != null && summaryText !== '' && (
           <View style={styles.summarySection}>
-            <Ionicons name="sparkles" size={10} color="#E54B2A" />
+            <Ionicons name="sparkles" size={18} color="#E54B2A" />
             <Text style={styles.summary} numberOfLines={2}>{summaryText}</Text>
           </View>
         )}
@@ -1241,7 +1260,7 @@ export default function GalleryScreen() {
         </View>
 
         <TouchableOpacity style={styles.refreshBtn} onPress={() => { setRefreshing(true); fetchRecordings(); }}>
-          <Ionicons name="refresh" size={18} color="#E54B2A" />
+          <Ionicons name="refresh" size={28} color="#E54B2A" />
         </TouchableOpacity>
       </View>
 
@@ -1297,7 +1316,7 @@ export default function GalleryScreen() {
                   : 'Start recording to capture booth conversations'}
             </Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => router.back()}>
-              <Ionicons name="videocam" size={20} color="#fff" />
+              <Ionicons name="videocam" size={32} color="#fff" />
               <Text style={styles.emptyBtnText}>Start Recording</Text>
             </TouchableOpacity>
           </View>
@@ -1460,7 +1479,7 @@ const styles = StyleSheet.create({
   emptyTitle: { color: '#fff', fontSize: 28, fontWeight: '600' },
   emptyText: { color: '#555', fontSize: 20, marginTop: 8, textAlign: 'center', maxWidth: 400 },
   emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: '#E54B2A', paddingHorizontal: 36, paddingVertical: 20, borderRadius: 12, marginTop: 36 },
-  emptyBtnText: { color: '#fff', fontSize: 22, fontWeight: '600' },
+  emptyBtnText: { color: '#fff', fontSize:24, fontWeight: '600' },
 
   // List
   list: { padding: 18 },
@@ -1489,6 +1508,8 @@ const styles = StyleSheet.create({
   mediaIcons: { flexDirection: 'row', gap: 10 },
   mediaBadge: { width: 40, height: 40, borderRadius: 8, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center' },
   mediaBadgeActive: { backgroundColor: 'rgba(16,185,129,0.15)' },
+  storageBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8 },
+  storageText: { fontSize: 14, fontWeight: '700', letterSpacing: 0.5 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   statusText: { fontSize: 17, fontWeight: '600' },
 

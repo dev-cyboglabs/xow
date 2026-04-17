@@ -59,6 +59,7 @@ interface LocalRecording {
   capturedFrames?: string[];
   videoChunks?: ChunkType[];  // chunked video segments
   isChunked?: boolean;  // flag to indicate chunked recording
+  storageType?: 'external' | 'internal';  // Storage location
 }
 
 interface BarcodeData {
@@ -126,6 +127,7 @@ export default function RecorderScreen() {
   const audioRecordingStartedRef = useRef(false);
   const barcodeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastBarcodeRef = useRef<string>('');
+  const storageTypeRef = useRef<'external' | 'internal'>('internal');
   
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -356,6 +358,7 @@ export default function RecorderScreen() {
             const xowDir = `${extBase}/XoW`;
             await nativeMkdirs(xowDir);
             lastExternalRef.current = xowDir;
+            storageTypeRef.current = 'external';
             console.log('Storage: external →', xowDir);
             return { dir: xowDir, label: 'External Storage' };
           }
@@ -367,6 +370,7 @@ export default function RecorderScreen() {
 
       // Internal — use app-specific dir on phone storage (visible in Files app)
       lastExternalRef.current = null;
+      storageTypeRef.current = 'internal';
       try {
         const documentBase = `${FileSystem.documentDirectory}XoW`;
         await nativeMkdirs(documentBase);
@@ -383,6 +387,7 @@ export default function RecorderScreen() {
         if (internalBase) {
           const xowDir = `${internalBase}/XoW`;
           await nativeMkdirs(xowDir);
+          storageTypeRef.current = 'internal';
           console.log('Storage: internal →', xowDir);
           return { dir: xowDir, label: 'Internal Storage' };
         }
@@ -393,12 +398,14 @@ export default function RecorderScreen() {
       // Ultimate fallback (should never reach here)
       const fallback = `${FileSystem.documentDirectory}XoW`;
       await nativeMkdirs(fallback);
+      storageTypeRef.current = 'internal';
       console.log('Storage: fallback →', fallback);
       return { dir: fallback, label: 'Internal Storage' };
     }
     // iOS
     const iosDir = `${FileSystem.documentDirectory}XoW`;
     await nativeMkdirs(iosDir);
+    storageTypeRef.current = 'internal';
     return { dir: iosDir, label: 'Internal Storage' };
   };
 
@@ -514,6 +521,7 @@ export default function RecorderScreen() {
         fpsTimeline: fpsSamplesRef.current.length > 0 ? [...fpsSamplesRef.current] : existingRecording?.fpsTimeline || [],
         videoChunks: chunks,
         isChunked: true,
+        storageType: storageTypeRef.current,
       };
 
       if (existingIndex >= 0) {
@@ -1538,16 +1546,16 @@ const startRecording = async () => {
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/gallery')}>
-            <Ionicons name="folder" size={24} color="#fff" />
-            <Text style={styles.actLabel}>Gallery</Text>
+            <Ionicons name="folder" size={24} color="#EF4444" />
+            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Gallery</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings" size={24} color="#E54B2A" />
+            <Ionicons name="settings" size={24} color="#EF4444" />
             <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Settings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={handleLogout}>
             <Ionicons name="power" size={24} color="#EF4444" />
-            <Text style={[styles.actLabel, { color: '#EF4444' }]}>Exit</Text>
+            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Exit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1880,7 +1888,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     paddingVertical: 23, 
     borderRadius: 15, 
-    backgroundColor: '#EF4444', 
+    backgroundColor: '#E54B2A', 
     alignItems: 'center' 
   },
   exitConfirmText: { color: '#fff', fontSize: 25, fontWeight: '700' },
