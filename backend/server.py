@@ -909,7 +909,7 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
             repaired = tempfile.NamedTemporaryFile(suffix=f'_repaired.{ext}', delete=False)
             repaired.close()
             
-            # Try remux with error detection disabled
+            # Try 1: Remux with error detection disabled
             remux = subprocess.run([
                 'ffmpeg', '-y',
                 '-err_detect', 'ignore_err',
@@ -923,29 +923,49 @@ async def merge_chunks_and_process(recording_id: str, chunk_refs: list, ext: str
                 logger.info(f"[Repair] Chunk {i} remuxed successfully: {os.path.getsize(repaired.name)} bytes")
                 processed_files.append(repaired.name)
             else:
-                logger.warning(f"[Repair] Chunk {i} remux failed, trying H.264 fallback")
-                # Final fallback: try to read as raw H.264 stream and re-encode
-                h264_try = subprocess.run([
+                logger.warning(f"[Repair] Chunk {i} remux failed, trying to rebuild MP4 container")
+                
+                # Try 2: Treat as raw H.264 and rebuild MP4 container (for chunks without moov atom)
+                h264_rebuild = subprocess.run([
                     'ffmpeg', '-y',
                     '-f', 'h264',
+                    '-r', '30',  # Assume 30fps
                     '-i', src,
-                    '-c:v', 'libx264',
-                    '-preset', 'ultrafast',
-                    '-crf', '23',
+                    '-c:v', 'copy',  # Don't re-encode, just copy stream
                     '-movflags', 'faststart',
                     repaired.name
                 ], capture_output=True, text=True, timeout=300)
-                if h264_try.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
-                    logger.info(f"[Repair] Chunk {i} H.264 fallback succeeded: {os.path.getsize(repaired.name)} bytes")
+                
+                if h264_rebuild.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                    logger.info(f"[Repair] Chunk {i} H.264 rebuild succeeded: {os.path.getsize(repaired.name)} bytes")
                     processed_files.append(repaired.name)
                 else:
-                    logger.error(f"[Repair] Chunk {i} all repair attempts failed, using original corrupt file")
-                    try:
-                        if os.path.exists(repaired.name):
-                            os.unlink(repaired.name)
-                    except Exception:
-                        pass
-                    processed_files.append(src)
+                    logger.warning(f"[Repair] Chunk {i} H.264 rebuild failed, trying re-encode")
+                    
+                    # Try 3: Re-encode as last resort
+                    reencode = subprocess.run([
+                        'ffmpeg', '-y',
+                        '-f', 'h264',
+                        '-r', '30',
+                        '-i', src,
+                        '-c:v', 'libx264',
+                        '-preset', 'ultrafast',
+                        '-crf', '23',
+                        '-movflags', 'faststart',
+                        repaired.name
+                    ], capture_output=True, text=True, timeout=300)
+                    
+                    if reencode.returncode == 0 and os.path.exists(repaired.name) and os.path.getsize(repaired.name) > 1024:
+                        logger.info(f"[Repair] Chunk {i} re-encode succeeded: {os.path.getsize(repaired.name)} bytes")
+                        processed_files.append(repaired.name)
+                    else:
+                        logger.error(f"[Repair] Chunk {i} all repair attempts failed, using original corrupt file")
+                        try:
+                            if os.path.exists(repaired.name):
+                                os.unlink(repaired.name)
+                        except Exception:
+                            pass
+                        processed_files.append(src)
 
         # Create FFmpeg concat file list
         concat_list = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False)
