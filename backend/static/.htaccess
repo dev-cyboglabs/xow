@@ -1,4 +1,12 @@
 RewriteEngine On
+
+# Rewrite /partner to partner.html
+RewriteRule ^partner$ partner.html [L]
+
+# Rewrite /dashboard to dashboard.html
+RewriteRule ^dashboard$ dashboard.html [L]
+
+# If file or directory doesn't exist, redirect to index.html
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^(.*)$ index.html [L]

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>XoW - Smart Expo Recording & Analytics</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/xow-logo.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -35,8 +36,15 @@
         }
         .text-primary { color: var(--primary); }
         .bg-primary { background: var(--primary); }
-        .feature-card { transition: all 0.3s ease; }
-        .feature-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
+        .feature-card { 
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+            position: relative;
+        }
+        .feature-card:hover { 
+            transform: translateY(-4px); 
+            box-shadow: 0 12px 24px rgba(229, 75, 42, 0.12);
+            border-color: rgba(229, 75, 42, 0.3);
+        }
         .stat-card { transition: all 0.3s ease; }
         .stat-card:hover { transform: scale(1.05); }
         .input-field:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(229, 75, 42, 0.15); outline: none; }
@@ -46,7 +54,7 @@
 <body class="gradient-bg min-h-screen">
     <!-- Header -->
     <header class="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm">
-        <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <img src="/assets/xow-logo.svg" alt="XoW" class="h-8 w-auto">
             </div>
@@ -54,14 +62,15 @@
                 <a href="#features" class="text-gray-600 hover:text-gray-900 font-medium">Features</a>
                 <a href="#how-it-works" class="text-gray-600 hover:text-gray-900 font-medium">How It Works</a>
                 <a href="#pricing" class="text-gray-600 hover:text-gray-900 font-medium">Pricing</a>
+                <a href="#faq" class="text-gray-600 hover:text-gray-900 font-medium">FAQs</a>
             </nav>
             <!-- Logged-out buttons -->
-            <div id="auth-buttons" class="flex items-center gap-4">
-                <button onclick="showLogin()" class="px-4 py-2 text-gray-700 hover:text-[#E54B2A] font-medium transition-colors" data-testid="login-btn">
+            <div id="auth-buttons" class="flex items-center gap-2 md:gap-4">
+                <button onclick="showLogin()" class="hidden sm:block px-3 md:px-4 py-1.5 md:py-2 text-gray-700 hover:text-[#E54B2A] font-medium transition-colors text-sm md:text-base" data-testid="login-btn">
                     Log In
                 </button>
-                <button onclick="showSignup()" class="px-6 py-2.5 btn-primary text-white rounded-lg font-medium" data-testid="signup-btn">
-                    Get Started Free
+                <button onclick="showSignup()" class="px-4 md:px-6 py-2 md:py-2.5 btn-primary text-white rounded-lg font-medium text-sm md:text-base whitespace-nowrap" data-testid="signup-btn">
+                    Get Started
                 </button>
             </div>
             <!-- Logged-in: avatar + dashboard button -->
@@ -78,37 +87,48 @@
     </header>
 
     <!-- Hero Section -->
-    <main class="pt-20">
-        <section class="max-w-7xl mx-auto px-6 py-20">
+    <main class="pt-16 md:pt-20">
+        <section class="max-w-7xl mx-auto px-4 md:px-6 py-12 md:py-20">
             <div class="grid lg:grid-cols-2 gap-16 items-center">
                 <div>
-                    <div class="inline-flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-full text-[#E54B2A] text-sm font-medium mb-6">
+                    <!-- <div class="inline-flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-full text-[#E54B2A] text-sm font-medium mb-6">
                         <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
                         AI-Powered Recording & Analytics
+                    </div> -->
+                    <div class="inline-block mb-4 md:mb-6">
+                        <div class="text-sm md:text-base font-semibold tracking-wider uppercase text-[#E54B2A] mb-2">
+                            Exhibit on Watch
+                        </div>
+                        <div class="h-1 w-20 bg-gradient-to-r from-[#E54B2A] to-[#FF6B4A] rounded-full"></div>
                     </div>
-                    <h1 class="text-4xl lg:text-5xl font-bold text-gray-900 leading-tight mb-6">
+                    <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-gray-900 leading-tight mb-4 md:mb-6">
                         Record. Analyze.<br/>
-                        <span class="text-[#E54B2A]">Win More Deals.</span>
+                        <span class="bg-gradient-to-r from-[#E54B2A] to-[#FF6B4A] bg-clip-text text-transparent">Win More Deals.</span>
                     </h1>
-                    <p class="text-lg text-gray-600 mb-8 leading-relaxed">
-                        Transform every expo conversation into actionable insights. Auto-transcribe, identify speakers, scan visitor badges, and get AI-powered summaries - all in one platform.
-                    </p>
-                    <div class="flex flex-col sm:flex-row gap-4 mb-8 items-center sm:items-start">
-                        <button onclick="showSignup()" class="w-full sm:w-auto px-8 py-4 btn-primary text-white rounded-lg text-lg font-semibold" data-testid="hero-signup-btn">
+                    <p class="text-base md:text-lg text-gray-600 mb-6 md:mb-8 leading-relaxed">
+                        <!-- Transform every expo conversation into actionable insights. Auto-transcribe, identify speakers, scan visitor badges, and get AI-powered summaries - all in one platform. -->
+
+XoW is a purpose-built booth intelligence system that records every exhibitor-visitor conversation, generates instant transcripts, identifies engagement patterns, and delivers actionable insights - all without technical or operational hassle.                    </p>
+                    <div class="flex flex-col sm:flex-row gap-3 md:gap-4 mb-6 md:mb-8 items-center sm:items-start">
+                        <button onclick="showSignup()" class="w-full sm:w-auto px-6 md:px-8 py-3 md:py-4 btn-primary text-white rounded-lg text-base md:text-lg font-semibold" data-testid="hero-signup-btn">
                             Start Free Trial
                         </button>
-                        <button onclick="window.location.href='/dashboard'" class="w-full sm:w-auto px-8 py-3.5 btn-outline rounded-lg text-lg font-semibold" data-testid="demo-btn">
-                            View Dashboard
+                        <button onclick="window.location.href='/partner'" class="w-full sm:w-auto px-6 md:px-8 py-2.5 md:py-3.5 btn-outline rounded-lg text-base md:text-lg font-semibold" data-testid="partner-btn">
+                            XoW Partner
                         </button>
                     </div>
-                    <div class="flex items-center gap-6 text-sm text-gray-500">
+                    <div class="flex flex-wrap items-center justify-center md:justify-start gap-4 md:gap-6 text-xs md:text-sm text-gray-500">
                         <div class="flex items-center gap-2">
                             <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            No credit card required
+                            Plug & Play Setup
                         </div>
                         <div class="flex items-center gap-2">
                             <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
-                            Free forever plan
+                            Secure & Compliant
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                            Post-Show Insight Access
                         </div>
                     </div>
                 </div>
@@ -181,92 +201,291 @@
         </section>
 
         <!-- Features -->
-        <section id="features" class="py-20">
-            <div class="max-w-7xl mx-auto px-6">
-                <div class="text-center mb-16">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">Everything You Need for Expo Success</h2>
-                    <p class="text-lg text-gray-600 max-w-2xl mx-auto">Powerful features designed to help you capture, analyze, and act on every booth conversation.</p>
+        <section id="features" class="py-12 md:py-20">
+            <div class="max-w-7xl mx-auto px-4 md:px-6">
+                <div class="text-center mb-10 md:mb-16">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-3 md:mb-4">Everything You Need for Expo Success</h2>
+                    <p class="text-base md:text-lg text-gray-600 max-w-2xl mx-auto px-4">Powerful features designed to help you capture, analyze, and act on every booth conversation.</p>
                 </div>
-                <div class="grid md:grid-cols-3 gap-8">
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-orange-100 flex items-center justify-center mb-6">
+                <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
                             <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Smart Recording</h3>
-                        <p class="text-gray-600">Record video and audio with automatic overlay timestamps, booth info, and XoW branding burned into the video.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Smart Recording</h3>
+                        <p class="text-sm md:text-base text-gray-600">Record video and audio with automatic overlay timestamps, booth info, and XoW branding burned into the video.</p>
                     </div>
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center mb-6">
-                            <svg class="w-7 h-7 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
+                            <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Speaker Detection</h3>
-                        <p class="text-gray-600">AI automatically identifies different speakers, separates host from visitors, and tags each conversation segment.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Speaker Detection</h3>
+                        <p class="text-sm md:text-base text-gray-600">AI automatically identifies different speakers, separates host from visitors, and tags each conversation segment.</p>
                     </div>
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center mb-6">
-                            <svg class="w-7 h-7 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
+                            <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">AI Insights</h3>
-                        <p class="text-gray-600">Get automatic summaries, key topics, questions asked, sentiment analysis, and follow-up action items.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">AI Insights</h3>
+                        <p class="text-sm md:text-base text-gray-600">Get automatic summaries, key topics, questions asked, sentiment analysis, and follow-up action items.</p>
                     </div>
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-orange-100 flex items-center justify-center mb-6">
-                            <svg class="w-7 h-7 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
+                            <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Badge Scanning</h3>
-                        <p class="text-gray-600">Scan visitor badges during recordings to automatically link contact info with conversation context.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Badge Scanning</h3>
+                        <p class="text-sm md:text-base text-gray-600">Scan visitor badges during recordings to automatically link contact info with conversation context.</p>
                     </div>
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-yellow-100 flex items-center justify-center mb-6">
-                            <svg class="w-7 h-7 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
+                            <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5h12M9 3v2m1.048 9.5A18.022 18.022 0 016.412 9m6.088 9h7M11 21l5-10 5 10M12.751 5C11.783 10.77 8.07 15.61 3 18.129"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Multi-Language</h3>
-                        <p class="text-gray-600">Transcribe and translate conversations in multiple languages. Perfect for international expos.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Multi-Language</h3>
+                        <p class="text-sm md:text-base text-gray-600">Transcribe and translate conversations in multiple languages. Perfect for international expos.</p>
                     </div>
-                    <div class="feature-card bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                        <div class="w-14 h-14 rounded-xl bg-red-100 flex items-center justify-center mb-6">
-                            <svg class="w-7 h-7 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                    <div class="feature-card bg-white p-6 md:p-8 rounded-2xl border border-gray-100 shadow-sm text-center sm:text-left">
+                        <div class="feature-icon w-14 h-14 rounded-xl bg-[#E54B2A]/10 flex items-center justify-center mb-6 mx-auto sm:mx-0">
+                            <svg class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                         </div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Analytics Dashboard</h3>
-                        <p class="text-gray-600">Track recording sessions, visitor counts, top topics, and team performance all in one place.</p>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Analytics Dashboard</h3>
+                        <p class="text-sm md:text-base text-gray-600">Track recording sessions, visitor counts, top topics, and team performance all in one place.</p>
                     </div>
                 </div>
             </div>
         </section>
 
         <!-- How It Works -->
-        <section id="how-it-works" class="py-20 bg-gray-50">
-            <div class="max-w-7xl mx-auto px-6">
-                <div class="text-center mb-16">
-                    <h2 class="text-3xl font-bold text-gray-900 mb-4">How XoW Works</h2>
-                    <p class="text-lg text-gray-600">Three simple steps to transform your expo experience</p>
+        <section id="how-it-works" class="py-12 md:py-20 bg-gray-50">
+            <div class="max-w-7xl mx-auto px-4 md:px-6">
+                <div class="text-center mb-10 md:mb-16">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-3 md:mb-4">How XoW Works</h2>
+                    <p class="text-base md:text-lg text-gray-600 px-4">Three simple steps to transform your expo experience</p>
                 </div>
-                <div class="grid md:grid-cols-3 gap-12">
+                <div class="grid sm:grid-cols-3 gap-8 md:gap-12">
                     <div class="text-center">
-                        <div class="w-16 h-16 rounded-full bg-[#E54B2A] text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6">1</div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Record</h3>
-                        <p class="text-gray-600">Use our mobile app to record booth conversations. Scan badges during the recording.</p>
+                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#E54B2A] text-white text-xl md:text-2xl font-bold flex items-center justify-center mx-auto mb-4 md:mb-6">1</div>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Record</h3>
+                        <p class="text-sm md:text-base text-gray-600">Use our mobile app to record booth conversations. Scan badges during the recording.</p>
                     </div>
                     <div class="text-center">
-                        <div class="w-16 h-16 rounded-full bg-[#E54B2A] text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6">2</div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Analyze</h3>
-                        <p class="text-gray-600">AI transcribes, identifies speakers, and extracts key insights automatically.</p>
+                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#E54B2A] text-white text-xl md:text-2xl font-bold flex items-center justify-center mx-auto mb-4 md:mb-6">2</div>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Analyze</h3>
+                        <p class="text-sm md:text-base text-gray-600">AI transcribes, identifies speakers, and extracts key insights automatically.</p>
                     </div>
                     <div class="text-center">
-                        <div class="w-16 h-16 rounded-full bg-[#E54B2A] text-white text-2xl font-bold flex items-center justify-center mx-auto mb-6">3</div>
-                        <h3 class="text-xl font-semibold text-gray-900 mb-3">Follow Up</h3>
-                        <p class="text-gray-600">Review summaries, watch key moments, and send personalized follow-ups.</p>
+                        <div class="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#E54B2A] text-white text-xl md:text-2xl font-bold flex items-center justify-center mx-auto mb-4 md:mb-6">3</div>
+                        <h3 class="text-lg md:text-xl font-semibold text-gray-900 mb-2 md:mb-3">Follow Up</h3>
+                        <p class="text-sm md:text-base text-gray-600">Review summaries, watch key moments, and send personalized follow-ups.</p>
                     </div>
                 </div>
             </div>
         </section>
 
+        <!-- Pricing -->
+        <section id="pricing" class="py-12 md:py-20 bg-gray-50">
+            <div class="max-w-7xl mx-auto px-4 md:px-6">
+                <div class="text-center mb-10 md:mb-16">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-3 md:mb-4">Simple, Transparent Pricing</h2>
+                    <p class="text-base md:text-lg text-gray-600 px-4">Choose the plan that fits your exhibition needs</p>
+                </div>
+                <div class="grid md:grid-cols-3 gap-6 md:gap-8 max-w-5xl mx-auto">
+                    <!-- Starter Plan -->
+                    <div class="bg-white rounded-2xl p-6 md:p-8 border border-gray-200 shadow-sm hover:shadow-lg transition-shadow">
+                        <h3 class="text-xl md:text-2xl font-bold text-gray-900 mb-2">Starter</h3>
+                        <div class="mb-4">
+                            <span class="text-3xl md:text-4xl font-bold text-gray-900">Free</span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-6">Perfect for trying out XoW</p>
+                        <ul class="space-y-3 mb-8">
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Up to 10 recordings/month</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Basic transcription</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>7-day data retention</span>
+                            </li>
+                        </ul>
+                        <button onclick="showSignup()" class="w-full py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:border-[#E54B2A] hover:text-[#E54B2A] transition-colors">
+                            Get Started
+                        </button>
+                    </div>
+
+                    <!-- Professional Plan -->
+                    <div class="bg-white rounded-2xl p-6 md:p-8 border-2 border-[#E54B2A] shadow-lg relative">
+                        <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-[#E54B2A] text-white px-4 py-1 rounded-full text-sm font-semibold">
+                            Popular
+                        </div>
+                        <h3 class="text-xl md:text-2xl font-bold text-gray-900 mb-2">Professional</h3>
+                        <div class="mb-4">
+                            <span class="text-3xl md:text-4xl font-bold text-gray-900">$99</span>
+                            <span class="text-gray-600">/month</span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-6">For growing exhibition teams</p>
+                        <ul class="space-y-3 mb-8">
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Unlimited recordings</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>AI-powered insights</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Speaker detection</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Badge scanning</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>90-day data retention</span>
+                            </li>
+                        </ul>
+                        <button onclick="showSignup()" class="w-full py-3 btn-primary text-white rounded-lg font-semibold">
+                            Start Free Trial
+                        </button>
+                    </div>
+
+                    <!-- Enterprise Plan -->
+                    <div class="bg-white rounded-2xl p-6 md:p-8 border border-gray-200 shadow-sm hover:shadow-lg transition-shadow">
+                        <h3 class="text-xl md:text-2xl font-bold text-gray-900 mb-2">Enterprise</h3>
+                        <div class="mb-4">
+                            <span class="text-3xl md:text-4xl font-bold text-gray-900">Custom</span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-6">For large-scale operations</p>
+                        <ul class="space-y-3 mb-8">
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Everything in Professional</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Multi-language support</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Dedicated support</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Custom integrations</span>
+                            </li>
+                            <li class="flex items-start gap-2 text-sm">
+                                <svg class="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+                                <span>Unlimited data retention</span>
+                            </li>
+                        </ul>
+                        <button onclick="window.location.href='/partner'" class="w-full py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:border-[#E54B2A] hover:text-[#E54B2A] transition-colors">
+                            Contact Sales
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FAQ Section -->
+        <section id="faq" class="py-12 md:py-20 bg-white">
+            <div class="max-w-4xl mx-auto px-4 md:px-6">
+                <div class="text-center mb-10 md:mb-16">
+                    <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-3 md:mb-4">Frequently Asked Questions</h2>
+                    <p class="text-base md:text-lg text-gray-600">Everything you need to know about XoW</p>
+                </div>
+                <div class="space-y-4">
+                    <!-- FAQ Item 1 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(1)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">How does XoW record conversations at my booth?</span>
+                            <svg id="faq-icon-1" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-1" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">XoW uses a dedicated XoW Box device with an inbuilt app. Simply place the box at your booth, and it automatically captures all conversations. No mobile app installation or technical setup required - just plug and play.</p>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Item 2 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(2)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">Is visitor data secure and compliant?</span>
+                            <svg id="faq-icon-2" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-2" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">Yes. XoW is fully GDPR and CCPA compliant. All data is encrypted in transit and at rest. We provide clear consent mechanisms and allow visitors to opt-out. Your data security is our top priority.</p>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Item 3 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(3)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">How accurate is the transcription and speaker detection?</span>
+                            <svg id="faq-icon-3" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-3" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">Our AI-powered transcription achieves 95%+ accuracy in typical booth environments. Speaker detection identifies different voices and separates exhibitor from visitor conversations automatically, helping you focus on the most valuable insights.</p>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Item 4 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(4)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">Can I integrate XoW with my CRM?</span>
+                            <svg id="faq-icon-4" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-4" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">Yes! XoW integrates with popular CRMs like Salesforce, HubSpot, and Zoho. Export visitor data, conversation summaries, and engagement scores directly to your CRM for seamless follow-up workflows.</p>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Item 5 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(5)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">What happens if I lose internet connection at the event?</span>
+                            <svg id="faq-icon-5" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-5" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">XoW works offline! All recordings are stored locally on the XoW Box device and automatically sync to the cloud when internet connection is restored. You'll never lose a conversation due to connectivity issues.</p>
+                        </div>
+                    </div>
+
+                    <!-- FAQ Item 6 -->
+                    <div class="group bg-gray-50 rounded-lg transition-all duration-300 hover:shadow-md">
+                        <button onclick="toggleFAQ(6)" class="w-full px-5 md:px-6 py-4 md:py-5 text-left transition-colors flex items-center justify-between gap-4">
+                            <span class="text-base md:text-lg font-semibold text-gray-900">How long does it take to set up XoW?</span>
+                            <svg id="faq-icon-6" class="w-5 h-5 text-[#E54B2A] flex-shrink-0 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+                        <div id="faq-content-6" class="hidden px-5 md:px-6 pb-4 md:pb-5">
+                            <p class="text-sm md:text-base text-gray-600 leading-relaxed">Setup takes less than 5 minutes. Simply unbox your XoW Box device, power it on, and place it at your booth. The inbuilt app is pre-configured and ready to record. No training, no technical expertise, no complicated configuration required.</p>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
         <!-- CTA -->
-        <section class="py-20">
-            <div class="max-w-4xl mx-auto px-6 text-center">
-                <h2 class="text-3xl font-bold text-gray-900 mb-6">Ready to Transform Your Expo Experience?</h2>
-                <p class="text-lg text-gray-600 mb-8">Join thousands of teams using XoW to capture more leads and close more deals.</p>
-                <button onclick="showSignup()" class="px-10 py-4 btn-primary text-white rounded-lg text-lg font-semibold">
+        <section class="py-12 md:py-20">
+            <div class="max-w-4xl mx-auto px-4 md:px-6 text-center">
+                <h2 class="text-2xl md:text-3xl font-bold text-gray-900 mb-4 md:mb-6">Ready to Maximize Your Booth ROI?</h2>
+                <p class="text-base md:text-lg text-gray-600 mb-6 md:mb-8">Join forward-thinking teams using XoW to transform booth conversations into measurable conversions.</p>
+                <button onclick="showSignup()" class="px-8 md:px-10 py-3 md:py-4 btn-primary text-white rounded-lg text-base md:text-lg font-semibold">
                     Get Started Free
                 </button>
             </div>
@@ -274,18 +493,62 @@
     </main>
 
     <!-- Footer -->
-    <footer class="bg-gray-900 text-gray-400 py-12">
-        <div class="max-w-7xl mx-auto px-6">
-            <div class="flex flex-col md:flex-row items-center justify-between gap-2">
-                <div class="flex items-center gap-3">
+    <footer class="bg-gray-900 text-gray-400 py-8 md:py-12">
+        <div class="max-w-7xl mx-auto px-4 md:px-6">
+            <div class="flex flex-col md:flex-row items-center md:items-start justify-between gap-4 md:gap-2">
+                <div class="flex flex-col items-center md:items-start gap-3 max-w-md">
                     <img src="/assets/xow-logo-light.svg" alt="XoW" class="h-8 w-auto">
+                    <p class="text-xs md:text-sm text-gray-400 text-center md:text-left">
+                        AI-powered booth intelligence for modern exhibitions. Capture conversations. Extract insights. Drive conversions.
+                    </p>
                 </div>
-                <div class="text-sm">
+                <div class="text-xs md:text-sm text-center md:text-right self-center">
                     &copy; 2026 XoW. All rights reserved.
                 </div>
             </div>
         </div>
     </footer>
+
+    <!-- Custom Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div class="p-6">
+                <div class="flex items-center justify-center mb-4">
+                    <div id="alert-icon-container" class="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center">
+                        <svg id="alert-icon-info" class="w-7 h-7 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <svg id="alert-icon-success" class="w-12 h-12 text-green-600 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                </div>
+                <p id="alert-message" class="text-gray-700 text-center mb-6"></p>
+                <button onclick="hideAlert()" class="w-full px-6 py-3 bg-[#E54B2A] hover:bg-[#C93D1E] text-white rounded-lg font-semibold transition-colors">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logout Confirmation Modal -->
+    <div id="logout-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div class="p-6">
+                <div class="flex items-center justify-center mb-4">
+                    <div class="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center">
+                        <svg class="w-8 h-8 text-[#E54B2A]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                    </div>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900 text-center mb-2">Logout Confirmation</h3>
+                <p class="text-gray-600 text-center mb-6">Are you sure you want to logout from your account?</p>
+                <div class="flex gap-3">
+                    <button onclick="hideLogoutModal()" class="flex-1 px-6 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-semibold transition-colors">
+                        Cancel
+                    </button>
+                    <button onclick="confirmLogout()" class="flex-1 px-6 py-3 bg-[#E54B2A] hover:bg-[#C93D1E] text-white rounded-lg font-semibold transition-colors">
+                        Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Auth Modal -->
     <div id="auth-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm">
@@ -298,19 +561,6 @@
                     </button>
                 </div>
 
-                <!-- Success/Error Messages -->
-                <div id="auth-success" class="hidden mb-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div class="flex items-center gap-2">
-                        <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <p id="auth-success-text" class="text-sm text-green-800"></p>
-                    </div>
-                </div>
-                <div id="auth-error" class="hidden mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <div class="flex items-center gap-2">
-                        <svg class="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <p id="auth-error-text" class="text-sm text-red-800"></p>
-                    </div>
-                </div>
                 
                 <!-- Step 1: Signup/Login Form -->
                 <form id="auth-form" onsubmit="handleAuth(event)" class="auth-step">
@@ -350,9 +600,9 @@
                     <button onclick="resendOTP()" class="w-full py-2 text-[#E54B2A] hover:text-[#C93D1E] font-medium text-sm">
                         Resend OTP
                     </button>
-                    <button onclick="backToSignup()" class="w-full py-2 text-gray-600 hover:text-gray-900 font-medium text-sm mt-2">
+                    <!-- <button onclick="backToSignup()" class="w-full py-2 text-gray-600 hover:text-gray-900 font-medium text-sm mt-2">
                         ← Back to signup
-                    </button>
+                    </button> -->
                 </div>
 
                 <div class="mt-6 text-center text-sm text-gray-600 auth-step" id="auth-switch">
@@ -386,12 +636,21 @@
         }
 
         function handleAvatarClick() {
-            if (confirm('Log out?')) {
-                localStorage.removeItem('xow_user');
-                localStorage.removeItem('xow_token');
-                localStorage.removeItem('xow_session');
-                checkLoginState();
-            }
+            document.getElementById('logout-modal').classList.remove('hidden');
+            document.getElementById('logout-modal').classList.add('flex');
+        }
+
+        function hideLogoutModal() {
+            document.getElementById('logout-modal').classList.add('hidden');
+            document.getElementById('logout-modal').classList.remove('flex');
+        }
+
+        function confirmLogout() {
+            localStorage.removeItem('xow_user');
+            localStorage.removeItem('xow_token');
+            localStorage.removeItem('xow_session');
+            hideLogoutModal();
+            checkLoginState();
         }
 
         document.addEventListener('DOMContentLoaded', checkLoginState);
@@ -418,21 +677,34 @@
             resetAuthModal();
         }
 
-        function showSuccess(message) {
-            document.getElementById('auth-error').classList.add('hidden');
-            document.getElementById('auth-success-text').textContent = message;
-            document.getElementById('auth-success').classList.remove('hidden');
+        function showAlert(message, type = 'info') {
+            document.getElementById('alert-message').textContent = message;
+            
+            const iconContainer = document.getElementById('alert-icon-container');
+            const infoIcon = document.getElementById('alert-icon-info');
+            const successIcon = document.getElementById('alert-icon-success');
+            
+            if (type === 'success') {
+                iconContainer.className = 'w-16 h-16 rounded-full bg-green-100 flex items-center justify-center';
+                infoIcon.classList.add('hidden');
+                successIcon.classList.remove('hidden');
+            } else {
+                iconContainer.className = 'w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center';
+                infoIcon.classList.remove('hidden');
+                successIcon.classList.add('hidden');
+            }
+            
+            document.getElementById('alert-modal').classList.remove('hidden');
+            document.getElementById('alert-modal').classList.add('flex');
         }
 
-        function showError(message) {
-            document.getElementById('auth-success').classList.add('hidden');
-            document.getElementById('auth-error-text').textContent = message;
-            document.getElementById('auth-error').classList.remove('hidden');
+        function hideAlert() {
+            document.getElementById('alert-modal').classList.add('hidden');
+            document.getElementById('alert-modal').classList.remove('flex');
         }
 
         function clearMessages() {
-            document.getElementById('auth-success').classList.add('hidden');
-            document.getElementById('auth-error').classList.add('hidden');
+            // Messages removed
         }
 
         function resetAuthModal() {
@@ -495,12 +767,11 @@
                     const data = await res.json();
                     if (res.ok) {
                         showOTPForm(email);
-                        showSuccess(data.message || 'OTP sent to your email!');
                     } else {
-                        showError(data.detail || 'Login failed');
+                        showAlert(data.detail || 'Login failed');
                     }
                 } catch (err) {
-                    showError('Connection error. Please try again.');
+                    showAlert('Connection error. Please try again.');
                 }
             } else {
                 try {
@@ -512,12 +783,11 @@
                     const data = await res.json();
                     if (res.ok) {
                         showOTPForm(email);
-                        showSuccess(data.message || 'OTP sent to your email!');
                     } else {
-                        showError(data.detail || 'Signup failed');
+                        showAlert(data.detail || 'Signup failed');
                     }
                 } catch (err) {
-                    showError('Connection error. Please try again.');
+                    showAlert('Connection error. Please try again.');
                 }
             }
         }
@@ -526,7 +796,7 @@
             clearMessages();
             const otp = document.getElementById('otp-input').value;
             if (otp.length !== 6) {
-                showError('Please enter a valid 6-digit OTP');
+                showAlert('Please enter a valid 6-digit OTP');
                 return;
             }
 
@@ -543,17 +813,14 @@
                 if (res.ok) {
                     localStorage.setItem('xow_token', data.token || '');
                     localStorage.setItem('xow_user', JSON.stringify(data.user || data));
-                    showSuccess(successMessage);
-                    setTimeout(() => {
-                        hideAuth();
-                        checkLoginState();
-                        window.location.href = '/dashboard';
-                    }, 1000);
+                    hideAuth();
+                    checkLoginState();
+                    window.location.href = '/dashboard';
                 } else {
-                    showError(data.detail || 'Invalid OTP');
+                    showAlert(data.detail || 'Invalid OTP');
                 }
             } catch (err) {
-                showError('Connection error. Please try again.');
+                showAlert('Connection error. Please try again.');
             }
         }
 
@@ -569,15 +836,59 @@
                 });
                 const data = await res.json();
                 if (res.ok) {
-                    showSuccess(data.message || 'New OTP sent to your email!');
                     document.getElementById('otp-input').value = '';
+                    showAlert('New OTP sent to your email!', 'success');
                 } else {
-                    showError(data.detail || 'Failed to resend OTP');
+                    showAlert(data.detail || 'Failed to resend OTP');
                 }
             } catch (err) {
-                showError('Connection error. Please try again.');
+                showAlert('Connection error. Please try again.');
             }
         }
+
+        // FAQ Toggle Function
+        function toggleFAQ(id) {
+            // Close all other FAQs
+            for (let i = 1; i <= 6; i++) {
+                if (i !== id) {
+                    const otherContent = document.getElementById(`faq-content-${i}`);
+                    const otherIcon = document.getElementById(`faq-icon-${i}`);
+                    if (otherContent && !otherContent.classList.contains('hidden')) {
+                        otherContent.classList.add('hidden');
+                        otherIcon.style.transform = 'rotate(0deg)';
+                    }
+                }
+            }
+            
+            // Toggle current FAQ
+            const content = document.getElementById(`faq-content-${id}`);
+            const icon = document.getElementById(`faq-icon-${id}`);
+            
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                icon.style.transform = 'rotate(180deg)';
+            } else {
+                content.classList.add('hidden');
+                icon.style.transform = 'rotate(0deg)';
+            }
+        }
+
+        // Close FAQs when clicking outside
+        document.addEventListener('click', function(e) {
+            // Check if click is outside FAQ section
+            const faqSection = e.target.closest('.group');
+            if (!faqSection) {
+                // Close all FAQs
+                for (let i = 1; i <= 6; i++) {
+                    const content = document.getElementById(`faq-content-${i}`);
+                    const icon = document.getElementById(`faq-icon-${i}`);
+                    if (content && !content.classList.contains('hidden')) {
+                        content.classList.add('hidden');
+                        icon.style.transform = 'rotate(0deg)';
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html>

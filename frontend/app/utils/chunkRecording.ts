@@ -2,7 +2,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const CHUNK_DURATION_MS = 1 * 60 * 1000; // 1 minute per chunk(Prevent loss)
+const CHUNK_DURATION_MS = 10 * 60 * 1000; // 10 minute per chunk(Prevent loss)
 const METADATA_STORAGE_KEY = 'xow_recording_metadata';
 
 export interface VideoChunk {

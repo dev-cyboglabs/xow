@@ -3537,3 +3537,41 @@ async def serve_dashboard_js():
     if not js_path.exists():
         raise HTTPException(status_code=404, detail="Dashboard JS not found")
     return FileResponse(js_path, media_type="application/javascript")
+
+# Serve partner page
+@app.get("/partner")
+async def serve_partner():
+    partner_path = ROOT_DIR / "static" / "partner.html"
+    if not partner_path.exists():
+        raise HTTPException(status_code=404, detail="Partner page not found")
+    return FileResponse(partner_path)
+
+# Partner form submission
+@api_router.post("/partner-request")
+async def submit_partner_request(request: Request):
+    """Handle partner form submission"""
+    try:
+        data = await request.json()
+        
+        # Store partner request in database
+        partner_request = {
+            "name": data.get("name"),
+            "email": data.get("email"),
+            "phone": data.get("phone"),
+            "company": data.get("company"),
+            "interest": data.get("interest"),
+            "message": data.get("message", ""),
+            "submitted_at": datetime.utcnow(),
+            "status": "pending"
+        }
+        
+        result = await db.partner_requests.insert_one(partner_request)
+        logger.info(f"Partner request submitted: {data.get('email')} from {data.get('company')}")
+        
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Partner request submitted successfully", "id": str(result.inserted_id)}
+        )
+    except Exception as e:
+        logger.error(f"Partner request submission error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to submit partner request")
