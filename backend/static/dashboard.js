@@ -281,7 +281,7 @@
                         ${(i.recent_activity || []).map(a => `
                             <div class="flex items-center justify-between p-4 bg-slate-50 rounded-xl hover:bg-slate-100 cursor-pointer transition-colors" onclick="setView('sessions')" data-testid="recent-session">
                                 <div class="flex items-center gap-4">
-                                    <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-200">
+                                    <div class="w-12 h-12 rounded-xl bg-[#E54B2A] flex items-center justify-center">
                                         <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                     </div>
                                     <div>
@@ -317,22 +317,22 @@
             
             return `
                 <div class="card rounded-2xl overflow-hidden mb-6">
-                    <div class="bg-gradient-to-r from-orange-500 to-red-600 p-6">
+                    <div class="bg-[#FEF3F1] p-6 border border-[#FEF3C7] rounded-xl">
                         <div class="flex items-center justify-between">
                             <div class="flex items-center gap-4">
-                                <div class="w-14 h-14 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                                <div class="w-14 h-14 rounded-xl bg-[#E54B2A] flex items-center justify-center">
                                     <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                                     </svg>
                                 </div>
                                 <div>
-                                    <h2 class="text-2xl font-bold text-white">Full Session Playback</h2>
-                                    <p class="text-white/80 text-sm mt-1">Watch all recordings in continuous sequence</p>
+                                    <h2 class="text-2xl font-bold text-gray-900">Full Session Playback</h2>
+                                    <p class="text-gray-600 text-sm mt-1">Watch all recordings in continuous sequence</p>
                                 </div>
                             </div>
                             <button onclick="playFullSession()" 
-                                    class="px-6 py-3 bg-white text-orange-600 rounded-xl font-semibold hover:bg-orange-50 transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
+                                    class="px-6 py-3 bg-[#E54B2A] text-white rounded-xl font-semibold hover:bg-[#C93D1E] transition-all shadow-lg hover:shadow-xl flex items-center gap-2">
                                 <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                                     <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/>
                                 </svg>
@@ -830,7 +830,7 @@
                 <!-- Header -->
                 <div class="p-5 border-b border-gray-100 flex items-center justify-between">
                     <div class="flex items-center gap-4">
-                        <div class="w-14 h-14 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-200">
+                        <div class="w-14 h-14 rounded-xl bg-[#E54B2A] flex items-center justify-center">
                             <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                         </div>
                         <div>
@@ -872,8 +872,11 @@
                             SCANNED VISITORS (<span id="context-count-${r.id}">${conversationGroups.length}</span>)
                         </div>
                         <div class="relative">
-                            <input type="text" id="context-search-${r.id}" placeholder="Search visitors..." oninput="filterSessionContexts('${r.id}')" class="w-64 pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
+                            <input type="text" id="context-search-${r.id}" placeholder="Search visitors..." oninput="filterSessionContexts('${r.id}')" class="w-64 pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
                             <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                            <button onclick="clearSearchInput('${r.id}')" class="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors" title="Clear search" id="clear-search-${r.id}" style="display: none;">
+                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
                         </div>
                     </div>
                     <div class="space-y-3" id="context-badges-${r.id}">
@@ -980,7 +983,7 @@
                                         }).join(' + ');
                                     
                                     return `
-                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-start-time="${group.startTime || 0}" data-scan-phone="${scanPhone}" data-visitor-id="${visitorId}">
+                                    <div class="flex-1 context-badge" data-group="${groupKey}" data-title="${(group.contextTitle || '').toLowerCase()}" data-text="${fullText}" data-search-text="${fullText.toLowerCase()}" data-speakers="${speakerLabels.toLowerCase()}" data-name="${(displayName || '').toLowerCase()}" data-company="${(displayCompany || '').toLowerCase()}" data-start-time="${group.startTime || 0}" data-scan-phone="${scanPhone}" data-visitor-id="${visitorId}">
                                         <div class="flex items-center gap-3 px-4 py-3 bg-white border ${isBarcodeLinked ? 'border-orange-200 bg-orange-50/60' : 'border-gray-200'} rounded-xl hover:border-orange-400 transition-colors">
                                             <div class="w-9 h-9 rounded-full ${isBarcodeLinked ? 'bg-orange-100' : 'bg-orange-100'} flex items-center justify-center flex-shrink-0">
                                                 ${isBarcodeLinked ? 
@@ -1524,7 +1527,7 @@
                             onkeydown="if(event.key==='Enter') addDevice()"
                             class="flex-1 px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none"
                             data-testid="device-code-input">
-                        <button onclick="addDevice()" class="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-medium shadow-lg shadow-orange-200 hover:shadow-xl transition-all whitespace-nowrap" data-testid="add-device-btn">
+                        <button onclick="addDevice()" class="flex items-center gap-2 px-6 py-3 bg-[#E54B2A] text-white rounded-xl font-medium hover:bg-[#C93D1E] hover:shadow-xl transition-all whitespace-nowrap" data-testid="add-device-btn">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                             Add Device
                         </button>
@@ -1546,7 +1549,7 @@
                             <div class="card rounded-xl p-5" data-testid="device-card">
                                 <div class="flex items-start justify-between mb-4">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-200">
+                                        <div class="w-12 h-12 rounded-xl bg-[#E54B2A] flex items-center justify-center">
                                             <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                                         </div>
                                         <div>
@@ -2115,6 +2118,85 @@
             const modal = document.getElementById('clip-modal');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+
+        function showDeleteAllDataModal() {
+            const modal = document.getElementById('delete-all-modal');
+            const input = document.getElementById('delete-confirmation-input');
+            const btn = document.getElementById('delete-all-confirm-btn');
+            
+            if (modal && input && btn) {
+                input.value = '';
+                btn.disabled = true;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                setTimeout(() => input.focus(), 100);
+            }
+        }
+
+        function closeDeleteAllDataModal() {
+            const modal = document.getElementById('delete-all-modal');
+            const input = document.getElementById('delete-confirmation-input');
+            
+            if (modal && input) {
+                input.value = '';
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        function validateDeleteConfirmation() {
+            const input = document.getElementById('delete-confirmation-input');
+            const btn = document.getElementById('delete-all-confirm-btn');
+            
+            if (input && btn) {
+                const isValid = input.value === 'DELETE';
+                btn.disabled = !isValid;
+            }
+        }
+
+        async function confirmDeleteAllData() {
+            const btn = document.getElementById('delete-all-confirm-btn');
+            if (!btn || btn.disabled) return;
+            
+            // Disable button and show loading
+            btn.disabled = true;
+            btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-white mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
+            
+            try {
+                const response = await fetch(`${API}/delete-all-data`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                
+                if (!response.ok) throw new Error('Failed to delete data');
+                
+                // Clear local data
+                data.recordings = [];
+                importedContacts = [];
+                wishlist = [];
+                
+                // Save cleared data to localStorage
+                saveWishlist();
+                saveContacts();
+                
+                // Close modal
+                closeDeleteAllDataModal();
+                
+                // Show success message
+                showToast('All data has been permanently deleted', 'success');
+                
+                // Refresh the view
+                setTimeout(() => {
+                    loadData();
+                }, 1000);
+                
+            } catch (error) {
+                console.error('Delete all data error:', error);
+                showToast('Failed to delete data. Please try again.', 'error');
+                btn.disabled = false;
+                btn.textContent = 'Delete Everything';
+            }
         }
 
         function addToWishlist(recordingId, groupKey, groupIndex) {
@@ -2871,22 +2953,44 @@
             const searchInput = document.getElementById('context-search-' + recId);
             const container = document.getElementById('context-badges-' + recId);
             const countEl = document.getElementById('context-count-' + recId);
+            const clearBtn = document.getElementById('clear-search-' + recId);
             if (!searchInput || !container) return;
             
             const query = searchInput.value.toLowerCase().trim();
             let visibleCount = 0;
             
+            // Show/hide clear button
+            if (clearBtn) {
+                clearBtn.style.display = query ? 'flex' : 'none';
+            }
+            
             container.querySelectorAll('.context-badge').forEach(badge => {
                 const title = badge.dataset.title || '';
                 const text = badge.dataset.searchText || badge.dataset.text || '';
                 const speakers = badge.dataset.speakers || '';
+                const name = badge.dataset.name || '';
+                const company = badge.dataset.company || '';
                 
-                const match = !query || title.includes(query) || text.includes(query) || speakers.includes(query);
+                const match = !query || 
+                    title.includes(query) || 
+                    text.includes(query) || 
+                    speakers.includes(query) ||
+                    name.includes(query) ||
+                    company.includes(query);
+                    
                 badge.style.display = match ? '' : 'none';
                 if (match) visibleCount++;
             });
             
             if (countEl) countEl.textContent = visibleCount;
+        }
+
+        function clearSearchInput(recId) {
+            const searchInput = document.getElementById('context-search-' + recId);
+            if (searchInput) {
+                searchInput.value = '';
+                filterSessionContexts(recId);
+            }
         }
 
         function filterClips(recId, query) {
@@ -3145,12 +3249,61 @@
         function renderAnalytics() {
             // Calculate statistics from recordings and contacts
             const allRecordings = data.recordings || [];
-            const allSpeakers = allRecordings.flatMap(r => r.speakers || []);
-            const visitors = allSpeakers.filter(s => !s.is_host);
             
-            const totalVisitors = visitors.length;
-            const interestedVisitors = visitors.filter(s => {
-                const sent = (s.sentiment || '').toLowerCase();
+            // Collect ALL visitors from multiple sources to avoid losing data
+            const allVisitors = [];
+            const visitorIds = new Set(); // Track unique visitors by ID
+            
+            allRecordings.forEach(r => {
+                // 1. Get visitors from speakers array
+                const speakerVisitors = (r.speakers || []).filter(s => !s.is_host);
+                speakerVisitors.forEach(v => {
+                    const id = v._id || v.badge_id || `speaker_${r._id}_${allVisitors.length}`;
+                    if (!visitorIds.has(id)) {
+                        visitorIds.add(id);
+                        allVisitors.push({
+                            ...v,
+                            _id: id,
+                            recording_id: r._id,
+                            source: 'speaker'
+                        });
+                    }
+                });
+                
+                // 2. Get visitors from visitor_badges array
+                const badgeVisitors = r.visitor_badges || r.visitors || [];
+                badgeVisitors.forEach(v => {
+                    const id = v._id || v.badge_id || `badge_${r._id}_${allVisitors.length}`;
+                    if (!visitorIds.has(id)) {
+                        visitorIds.add(id);
+                        allVisitors.push({
+                            ...v,
+                            _id: id,
+                            recording_id: r._id,
+                            source: 'badge'
+                        });
+                    }
+                });
+                
+                // 3. Get visitors from conversations array (fallback)
+                const convVisitors = (r.conversations || []).filter(c => !c.is_host);
+                convVisitors.forEach(v => {
+                    const id = v._id || v.badge_id || `conv_${r._id}_${allVisitors.length}`;
+                    if (!visitorIds.has(id)) {
+                        visitorIds.add(id);
+                        allVisitors.push({
+                            ...v,
+                            _id: id,
+                            recording_id: r._id,
+                            source: 'conversation'
+                        });
+                    }
+                });
+            });
+            
+            const totalVisitors = allVisitors.length;
+            const interestedVisitors = allVisitors.filter(v => {
+                const sent = (v.sentiment || '').toLowerCase();
                 return sent === 'positive' || sent === 'interested';
             }).length;
             const nonInterestedVisitors = totalVisitors - interestedVisitors;
@@ -3158,10 +3311,16 @@
             const totalContacts = importedContacts.length;
             const totalRecordings = allRecordings.length;
             
-            // Top topics from all recordings
+            // Top topics from all recordings AND visitors
             const topicsMap = {};
             allRecordings.forEach(r => {
                 (r.top_topics || []).forEach(topic => {
+                    topicsMap[topic] = (topicsMap[topic] || 0) + 1;
+                });
+            });
+            // Also collect topics from individual visitors
+            allVisitors.forEach(v => {
+                (v.topics_discussed || []).forEach(topic => {
                     topicsMap[topic] = (topicsMap[topic] || 0) + 1;
                 });
             });
@@ -3183,47 +3342,27 @@
                 <!-- Key Metrics Grid -->
                 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <!-- Total Visitors -->
-                    <div class="card rounded-xl p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                            </div>
-                        </div>
+                    <div class="card rounded-xl p-5 border border-gray-100">
+                        <div class="text-xs text-gray-500 mb-2">Total Visitors</div>
                         <div class="text-3xl font-bold text-gray-900">${totalVisitors}</div>
-                        <div class="text-xs text-gray-500 mt-1">Total Visitors</div>
                     </div>
 
                     <!-- Interested Visitors -->
-                    <div class="card rounded-xl p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
-                            </div>
-                        </div>
-                        <div class="text-3xl font-bold text-green-600">${interestedVisitors}</div>
-                        <div class="text-xs text-gray-500 mt-1">Interested</div>
+                    <div class="card rounded-xl p-5 border">
+                        <div class="text-xs text-gray-600 mb-2">Interested</div>
+                        <div class="text-3xl font-bold text-[#E54B2A]">${interestedVisitors}</div>
                     </div>
 
                     <!-- Non-Interested Visitors -->
-                    <div class="card rounded-xl p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14H5.236a2 2 0 01-1.789-2.894l3.5-7A2 2 0 018.736 3h4.018a2 2 0 01.485.06l3.76.94m-7 10v5a2 2 0 002 2h.096c.5 0 .905-.405.905-.904 0-.715.211-1.413.608-2.008L17 13V4m-7 10h2m5-10h2a2 2 0 012 2v6a2 2 0 01-2 2h-2.5"/></svg>
-                            </div>
-                        </div>
+                    <div class="card rounded-xl p-5 border border-gray-100">
+                        <div class="text-xs text-gray-500 mb-2">Not Interested</div>
                         <div class="text-3xl font-bold text-gray-600">${nonInterestedVisitors}</div>
-                        <div class="text-xs text-gray-500 mt-1">Not Interested</div>
                     </div>
 
                     <!-- Total Contacts -->
-                    <div class="card rounded-xl p-5">
-                        <div class="flex items-center justify-between mb-3">
-                            <div class="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-                            </div>
-                        </div>
-                        <div class="text-3xl font-bold text-blue-600">${totalContacts}</div>
-                        <div class="text-xs text-gray-500 mt-1">Contacts Imported</div>
+                    <div class="card rounded-xl p-5 border border-gray-100">
+                        <div class="text-xs text-gray-500 mb-2">Contacts Imported</div>
+                        <div class="text-3xl font-bold text-gray-900">${totalContacts}</div>
                     </div>
                 </div>
 
@@ -3238,10 +3377,10 @@
                             <div>
                                 <div class="flex items-center justify-between mb-1">
                                     <span class="text-xs text-gray-600">Interested</span>
-                                    <span class="text-xs font-semibold text-green-600">${interestedVisitors} (${interestedPercent}%)</span>
+                                    <span class="text-xs font-semibold text-[#E54B2A]">${interestedVisitors} (${interestedPercent}%)</span>
                                 </div>
-                                <div class="w-full bg-gray-100 rounded-full h-3">
-                                    <div class="bg-green-500 h-3 rounded-full transition-all" style="width: ${interestedPercent}%"></div>
+                                <div class="w-full bg-gray-100 rounded-full h-2.5">
+                                    <div class="bg-[#E54B2A] h-2.5 rounded-full transition-all" style="width: ${interestedPercent}%"></div>
                                 </div>
                             </div>
                             <!-- Not Interested Bar -->
@@ -3250,8 +3389,8 @@
                                     <span class="text-xs text-gray-600">Not Interested</span>
                                     <span class="text-xs font-semibold text-gray-600">${nonInterestedVisitors} (${nonInterestedPercent}%)</span>
                                 </div>
-                                <div class="w-full bg-gray-100 rounded-full h-3">
-                                    <div class="bg-gray-400 h-3 rounded-full transition-all" style="width: ${nonInterestedPercent}%"></div>
+                                <div class="w-full bg-gray-100 rounded-full h-2.5">
+                                    <div class="bg-gray-300 h-2.5 rounded-full transition-all" style="width: ${nonInterestedPercent}%"></div>
                                 </div>
                             </div>
                         </div>
@@ -3260,9 +3399,9 @@
                             <div class="relative w-32 h-32">
                                 <svg viewBox="0 0 100 100" class="transform -rotate-90">
                                     <!-- Background circle -->
-                                    <circle cx="50" cy="50" r="40" fill="none" stroke="#e5e7eb" stroke-width="20"/>
+                                    <circle cx="50" cy="50" r="40" fill="none" stroke="#e5e7eb" stroke-width="16"/>
                                     <!-- Interested segment -->
-                                    <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="20"
+                                    <circle cx="50" cy="50" r="40" fill="none" stroke="#E54B2A" stroke-width="16"
                                         stroke-dasharray="${interestedPercent * 2.51} ${(100 - interestedPercent) * 2.51}"
                                         stroke-linecap="round"/>
                                 </svg>
@@ -3292,11 +3431,11 @@
                                 return `
                                 <div>
                                     <div class="flex items-center justify-between mb-1">
-                                        <span class="text-xs text-gray-700 truncate">${topic}</span>
-                                        <span class="text-xs font-semibold text-orange-600">${count}</span>
+                                        <span class="text-sm text-gray-700">${topic}</span>
+                                        <span class="text-sm font-semibold text-gray-900">${count}</span>
                                     </div>
                                     <div class="w-full bg-gray-100 rounded-full h-2">
-                                        <div class="bg-orange-500 h-2 rounded-full transition-all" style="width: ${widthPercent}%"></div>
+                                        <div class="bg-gray-300 h-2 rounded-full transition-all" style="width: ${widthPercent}%"></div>
                                     </div>
                                 </div>`;
                             }).join('')}
@@ -3309,7 +3448,7 @@
                 </div>
 
                 <!-- Additional Stats -->
-                <div class="card rounded-xl p-6">
+                <div class="card rounded-xl p-6 mb-6">
                     <h3 class="text-sm font-semibold text-gray-900 mb-4">Session Overview</h3>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div class="text-center">
@@ -3324,6 +3463,69 @@
                             <div class="text-3xl font-bold text-gray-900">${totalVisitors > 0 ? interestedPercent : 0}%</div>
                             <div class="text-xs text-gray-500 mt-1">Conversion Rate</div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Detailed Visitor Breakdown -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                    <!-- Barcode Scans -->
+                    <div class="card rounded-xl p-6 border border-gray-100">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">Badge Scans</h3>
+                        ${(() => {
+                            const totalScans = allRecordings.reduce((sum, r) => sum + (r.barcode_scans || []).length, 0);
+                            const uniqueScans = new Set();
+                            allRecordings.forEach(r => {
+                                (r.barcode_scans || []).forEach(scan => {
+                                    const id = scan.barcode_data || scan.visitor_id;
+                                    if (id) uniqueScans.add(String(id));
+                                });
+                            });
+                            return `
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between py-2">
+                                    <span class="text-sm text-gray-600">Total Scans</span>
+                                    <span class="text-2xl font-bold text-gray-900">${totalScans}</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-t border-gray-100">
+                                    <span class="text-sm text-gray-600">Unique Visitors</span>
+                                    <span class="text-2xl font-bold text-[#E54B2A]">${uniqueScans.size}</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-t border-gray-100">
+                                    <span class="text-xs text-gray-500">Scan Rate</span>
+                                    <span class="text-sm font-semibold text-gray-700">${totalVisitors > 0 ? Math.round((uniqueScans.size / totalVisitors) * 100) : 0}%</span>
+                                </div>
+                            </div>`;
+                        })()}
+                    </div>
+
+                    <!-- Sentiment Breakdown -->
+                    <div class="card rounded-xl p-6 border border-gray-100">
+                        <h3 class="text-sm font-semibold text-gray-900 mb-4">Sentiment Breakdown</h3>
+                        ${(() => {
+                            const sentiments = { positive: 0, neutral: 0, negative: 0, unknown: 0 };
+                            allVisitors.forEach(v => {
+                                const sent = (v.sentiment || '').toLowerCase();
+                                if (sent === 'positive' || sent === 'interested') sentiments.positive++;
+                                else if (sent === 'neutral') sentiments.neutral++;
+                                else if (sent === 'negative' || sent === 'not interested') sentiments.negative++;
+                                else sentiments.unknown++;
+                            });
+                            return `
+                            <div class="space-y-4">
+                                <div class="flex items-center justify-between py-2">
+                                    <span class="text-sm text-gray-600">Positive</span>
+                                    <span class="text-2xl font-bold text-[#E54B2A]">${sentiments.positive}</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-t border-gray-100">
+                                    <span class="text-sm text-gray-600">Neutral</span>
+                                    <span class="text-2xl font-bold text-gray-500">${sentiments.neutral}</span>
+                                </div>
+                                <div class="flex items-center justify-between py-2 border-t border-gray-100">
+                                    <span class="text-sm text-gray-600">Negative</span>
+                                    <span class="text-2xl font-bold text-gray-400">${sentiments.negative}</span>
+                                </div>
+                            </div>`;
+                        })()}
                     </div>
                 </div>
             </div>`;

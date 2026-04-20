@@ -2053,6 +2053,34 @@ async def reprocess_recording(recording_id: str, background_tasks: BackgroundTas
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@api_router.post("/delete-all-data")
+async def delete_all_data():
+    """Delete all data including recordings, visitors, devices, analytics, and wishlist"""
+    try:
+        # Delete all GridFS files (videos and audio)
+        async for grid_file in fs_bucket.find():
+            try:
+                await fs_bucket.delete(grid_file._id)
+            except Exception as e:
+                logger.warning(f"Failed to delete GridFS file {grid_file._id}: {e}")
+        
+        # Delete all collections
+        await db.recordings.delete_many({})
+        await db.barcode_scans.delete_many({})
+        await db.video_chunks.delete_many({})
+        await db.visitor_badges.delete_many({})
+        await db.devices.delete_many({})
+        await db.pair_codes.delete_many({})
+        
+        # Note: Wishlist and imported contacts are stored in localStorage on frontend
+        # They will be cleared by the frontend after successful deletion
+        
+        logger.info("All data deleted successfully")
+        return {"success": True, "message": "All data has been permanently deleted"}
+    except Exception as e:
+        logger.error(f"Delete all data error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete all data: {str(e)}")
+
 class ManualTranscriptRequest(BaseModel):
     transcript: str
 
