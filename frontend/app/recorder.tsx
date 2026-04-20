@@ -75,6 +75,7 @@ export default function RecorderScreen() {
   const deviceRef = useRef<Device | null>(null);
   const [isOnline, setIsOnline] = useState(true);
   const isOnlineRef = useRef(true);
+  const [isPaired, setIsPaired] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [currentRecording, setCurrentRecording] = useState<any>(null);
   const currentRecordingRef = useRef<any>(null);
@@ -136,14 +137,17 @@ export default function RecorderScreen() {
     loadSettings();
     checkPermissions();
     checkConnection();
+    checkPairingStatus();
     clockRef.current = setInterval(() => setCurrentTime(new Date()), 1000);
     const connInterval = setInterval(checkConnection, 10000);
+    const pairingInterval = setInterval(checkPairingStatus, 5000);
 
     // Start watching for USB/SD plug-unplug events every 3s
     startStorageWatcher();
 
     return () => {
       clearInterval(connInterval);
+      clearInterval(pairingInterval);
       if (timerRef.current) clearInterval(timerRef.current);
       if (frameTimerRef.current) clearInterval(frameTimerRef.current);
       if (fpsTimerRef.current) clearInterval(fpsTimerRef.current);
@@ -200,6 +204,22 @@ export default function RecorderScreen() {
       deviceRef.current = d;
     } else {
       router.replace('/');
+    }
+  };
+
+  const checkPairingStatus = async () => {
+    try {
+      const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+      const password = await AsyncStorage.getItem('xow_permanent_device_password');
+      if (!device_id || !password) return;
+      
+      const res = await axios.get(
+        `${API_URL}/api/devices/${device_id}/pairing-code?password=${password}`,
+        { timeout: 5000 }
+      );
+      setIsPaired(res.data?.is_paired || false);
+    } catch (e) {
+      setIsPaired(false);
     }
   };
 
@@ -1410,9 +1430,11 @@ const startRecording = async () => {
               {videoRecordingActive && <Text style={styles.videoIndicator}>VIDEO</Text>}
             </View>
           )}
-          <View style={[styles.statusBadge, isOnline ? styles.online : styles.offline]}>
-            <View style={[styles.statusDot, isOnline ? styles.onlineDot : styles.offlineDot]} />
-            <Text style={styles.statusText}>{isOnline ? 'CLOUD' : 'OFFLINE'}</Text>
+          <View style={[styles.pairingBadge, isPaired ? styles.pairingPaired : styles.pairingInactive]}>
+            <View style={[styles.pairingDot, isPaired ? styles.pairingDotPaired : styles.pairingDotInactive]} />
+            <Text style={[styles.pairingText, isPaired ? styles.pairingTextPaired : styles.pairingTextInactive]}>
+              {isPaired ? 'Paired' : 'Unpaired'}
+            </Text>
           </View>
         </View>
 
@@ -1607,7 +1629,7 @@ const styles = StyleSheet.create({
   
   topBar: { 
     position: 'absolute', 
-    top: 20, 
+    top: 15, 
     left: 20, 
     right: 20, 
     flexDirection: 'row', 
@@ -1615,7 +1637,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 15
   },
-  deviceSection: { gap: 10, marginTop: 22 },
+  deviceSection: { gap: 10, marginTop: 0 },
   idBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -1626,6 +1648,22 @@ const styles = StyleSheet.create({
     gap: 9 
   },
   idText: { color: '#fff', fontSize: 16, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  pairingBadge: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    paddingVertical: 11, 
+    borderRadius: 10, 
+    gap: 10 
+  },
+  pairingPaired: { backgroundColor: 'rgba(34, 197, 94, 0.15)' },
+  pairingInactive: { backgroundColor: 'rgba(239, 68, 68, 0.15)' },
+  pairingDot: { width: 11, height: 11, borderRadius: 6 },
+  pairingDotPaired: { backgroundColor: '#22c55e' },
+  pairingDotInactive: { backgroundColor: '#ef4444' },
+  pairingText: { fontSize: 18, fontWeight: '700' },
+  pairingTextPaired: { color: '#22c55e' },
+  pairingTextInactive: { color: '#ef4444' },
   brandBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -1665,7 +1703,7 @@ const styles = StyleSheet.create({
   
   tcBox: { 
     position: 'absolute', 
-    top: 92, 
+    top: 72, 
     left: 20, 
     backgroundColor: 'rgba(0,0,0,0.9)', 
     padding: 16, 
@@ -1682,13 +1720,16 @@ const styles = StyleSheet.create({
     bottom: 22, 
     right: 22,
     backgroundColor: '#E54B2A',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 10,
+    minWidth: 80,
+    alignItems: 'center',
+    justifyContent: 'center'
   },
   logoText: {
     color: '#fff',
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: '800',
     letterSpacing: 2
   },
@@ -1700,29 +1741,30 @@ const styles = StyleSheet.create({
     position: 'absolute', 
     bottom: 22, 
     left: 22, 
-    backgroundColor: 'rgba(0,0,0,0.9)', 
-    paddingHorizontal: 16, 
-    paddingVertical: 14, 
-    borderRadius: 12, 
+    backgroundColor: 'rgba(0,0,0,0.85)', 
+    paddingHorizontal: 20, 
+    paddingVertical: 10, 
+    borderRadius: 10, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 12 
+    gap: 10,
+    minWidth: 80 
   },
-  visitorNum: { color: '#fff', fontSize: 28, fontWeight: '800' },
-  visitorLabel: { color: '#666', fontSize: 16 },
+  visitorNum: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  visitorLabel: { color: '#666', fontSize: 14 },
   
   durationBox: { 
     position: 'absolute', 
     bottom: 22, 
     alignSelf: 'center', 
     backgroundColor: 'rgba(0,0,0,0.85)', 
-    paddingHorizontal: 28, 
-    paddingVertical: 14, 
-    borderRadius: 12, 
+    paddingHorizontal: 20, 
+    paddingVertical: 10, 
+    borderRadius: 10, 
     borderWidth: 2, 
     borderColor: '#EF4444' 
   },
-  durationText: { color: '#EF4444', fontSize: 27, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
+  durationText: { color: '#EF4444', fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
   
   uploadOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 33 },
   uploadBox: { 

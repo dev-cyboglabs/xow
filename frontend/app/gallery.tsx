@@ -1030,9 +1030,18 @@ export default function GalleryScreen() {
 
   const fmtDur = (s?: number) => {
     if (!s) return '--:--';
-    const m = Math.floor(s / 60);
+    const totalMinutes = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
-    return `${m}:${sec.toString().padStart(2, '0')}`;
+    
+    // If less than 60 minutes, show as minutes:seconds
+    if (totalMinutes < 60) {
+      return `${totalMinutes}:${sec.toString().padStart(2, '0')}`;
+    }
+    
+    // If 60 minutes or more, show as hours:minutes Hr
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    return `${hours}:${mins.toString().padStart(2, '0')} Hr`;
   };
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
@@ -1199,11 +1208,6 @@ export default function GalleryScreen() {
             <View style={styles.stat}>
               <Ionicons name="chatbubbles" size={21} color="#10B981" />
               <Text style={styles.statText}>{String(cloudItem.total_speakers)} speakers</Text>
-            </View>
-          )}
-          {!isLocal && cloudItem.host_identified === true && (
-            <View style={styles.hostBadge}>
-              <Text style={styles.hostText}>HOST ID</Text>
             </View>
           )}
           {isLocal && (
