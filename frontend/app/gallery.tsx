@@ -1038,10 +1038,10 @@ export default function GalleryScreen() {
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
   const statusConfig: Record<string, { color: string; icon: string; label: string }> = {
-    local: { color: '#F59E0B', icon: 'save', label: 'Local' },
+    local: { color: '#888', icon: 'save', label: 'Local' },
     recording: { color: '#EF4444', icon: 'radio-button-on', label: 'Recording' },
-    completed: { color: '#F59E0B', icon: 'checkmark-circle', label: 'Completed' },
-    uploaded: { color: '#3B82F6', icon: 'cloud-done', label: 'Uploaded' },
+    completed: { color: '#10B981', icon: 'checkmark-circle', label: 'Completed' },
+    uploaded: { color: '#10B981', icon: 'cloud-done', label: 'Uploaded' },
     processing: { color: '#E54B2A', icon: 'hourglass', label: 'Processing' },
     processed: { color: '#10B981', icon: 'sparkles', label: 'AI Ready' },
     error: { color: '#EF4444', icon: 'alert-circle', label: 'Error' },
@@ -1162,16 +1162,16 @@ export default function GalleryScreen() {
             {isLocal && localItem.storageType && (
               <View style={[
                 styles.storageBadge,
-                { backgroundColor: localItem.storageType === 'external' ? '#3B82F620' : '#8B5CF620' }
+                { backgroundColor: localItem.storageType === 'external' ? '#E54B2A20' : '#88888820' }
               ]}>
                 <Ionicons 
                   name={localItem.storageType === 'external' ? 'hardware-chip' : 'phone-portrait'} 
                   size={16} 
-                  color={localItem.storageType === 'external' ? '#3B82F6' : '#8B5CF6'} 
+                  color={localItem.storageType === 'external' ? '#E54B2A' : '#888'} 
                 />
                 <Text style={[
                   styles.storageText,
-                  { color: localItem.storageType === 'external' ? '#3B82F6' : '#8B5CF6' }
+                  { color: localItem.storageType === 'external' ? '#E54B2A' : '#888' }
                 ]}>
                   {localItem.storageType === 'external' ? 'EXT' : 'INT'}
                 </Text>
@@ -1242,15 +1242,15 @@ export default function GalleryScreen() {
 
         <View style={styles.sideStats}>
           <View style={styles.sideStat}>
-            <Text style={styles.sideStatNum}>{recordings.length}</Text>
+            <Text style={[styles.sideStatNum, { color: '#fff' }]}>{recordings.length}</Text>
             <Text style={styles.sideStatLabel}>Total</Text>
           </View>
           <View style={styles.sideStat}>
-            <Text style={[styles.sideStatNum, { color: '#F59E0B' }]}>{localCount}</Text>
+            <Text style={[styles.sideStatNum, { color: '#fff' }]}>{localCount}</Text>
             <Text style={styles.sideStatLabel}>Local</Text>
           </View>
           <View style={styles.sideStat}>
-            <Text style={[styles.sideStatNum, { color: '#10B981' }]}>{cloudCount}</Text>
+            <Text style={[styles.sideStatNum, { color: '#fff' }]}>{cloudCount}</Text>
             <Text style={styles.sideStatLabel}>Cloud</Text>
           </View>
           <View style={styles.sideStat}>

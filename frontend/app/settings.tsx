@@ -257,7 +257,7 @@ export default function SettingsScreen() {
           {/* Cloud Sync Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="cloud" size={22} color="#3B82F6" />
+              <Ionicons name="cloud" size={22} color="#E54B2A" />
               <Text style={styles.sectionTitle}>Cloud Sync</Text>
             </View>
             <View style={styles.card}>
@@ -288,7 +288,7 @@ export default function SettingsScreen() {
           {/* Storage Location Section */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Ionicons name="folder" size={22} color="#10B981" />
+              <Ionicons name="folder" size={22} color="#E54B2A" />
               <Text style={styles.sectionTitle}>Storage Location</Text>
             </View>
             <View style={styles.card}>

@@ -2338,6 +2338,63 @@ async def upload_audio(recording_id: str, audio: UploadFile = File(...), backgro
 
 # ==================== TRANSCRIPTION & ANALYSIS ====================
 
+MAX_WHISPER_SIZE = 20 * 1024 * 1024  # 20MB safe limit (below 25MB OpenAI limit)
+CHUNK_DURATION_SECONDS = 600  # 10 minute chunks for large files
+
+def split_audio_ffmpeg(audio_data: bytes, chunk_duration: int = CHUNK_DURATION_SECONDS) -> List[bytes]:
+    """Split audio into chunks using ffmpeg. Returns list of audio chunk bytes."""
+    chunks = []
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Write original audio to temp file
+        input_path = os.path.join(tmpdir, "input.m4a")
+        with open(input_path, "wb") as f:
+            f.write(audio_data)
+        
+        # Get audio duration
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1", input_path
+        ]
+        try:
+            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+            total_duration = float(result.stdout.strip())
+        except:
+            total_duration = 0
+        
+        if total_duration <= 0:
+            # Can't determine duration, return as single chunk
+            return [audio_data]
+        
+        # Calculate number of chunks needed
+        num_chunks = max(1, int(total_duration / chunk_duration) + 1)
+        
+        logger.info(f"Splitting audio: {total_duration}s into {num_chunks} chunks of ~{chunk_duration}s each")
+        
+        for i in range(num_chunks):
+            start_time = i * chunk_duration
+            output_path = os.path.join(tmpdir, f"chunk_{i}.m4a")
+            
+            # Extract chunk with ffmpeg
+            cmd = [
+                "ffmpeg", "-y", "-i", input_path,
+                "-ss", str(start_time),
+                "-t", str(chunk_duration),
+                "-c:a", "aac", "-b:a", "128k",
+                "-f", "mp4", output_path
+            ]
+            
+            try:
+                subprocess.run(cmd, capture_output=True, timeout=60)
+                if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    with open(output_path, "rb") as f:
+                        chunks.append(f.read())
+                else:
+                    logger.warning(f"Chunk {i} failed to create")
+            except Exception as e:
+                logger.error(f"Error creating chunk {i}: {e}")
+    
+    return chunks if chunks else [audio_data]
+
 async def process_transcription_with_diarization(recording_id: str):
     """Process audio with Whisper transcription and GPT-powered speaker diarization"""
     try:
@@ -2351,30 +2408,96 @@ async def process_transcription_with_diarization(recording_id: str):
         # Get audio data from GridFS
         grid_out = await fs_bucket.open_download_stream(ObjectId(recording['audio_file_id']))
         audio_data = await grid_out.read()
+        audio_size = len(audio_data)
+        
+        logger.info(f"Audio size: {audio_size} bytes ({audio_size / 1024 / 1024:.1f} MB)")
         
         # Transcribe with Whisper (auto-detects language including Tamil)
         transcript = ""
         detected_language = None
+        whisper_segments = []
+        
         if whisper_client:
             try:
-                audio_file = io.BytesIO(audio_data)
-                audio_file.name = "audio.m4a"
+                # Check if audio needs to be split (over 20MB)
+                if audio_size > MAX_WHISPER_SIZE:
+                    logger.info(f"Audio too large ({audio_size} bytes), splitting into chunks...")
+                    audio_chunks = await asyncio.get_event_loop().run_in_executor(
+                        None, split_audio_ffmpeg, audio_data, CHUNK_DURATION_SECONDS
+                    )
+                    logger.info(f"Split into {len(audio_chunks)} chunks")
+                    
+                    # Transcribe each chunk
+                    all_text_parts = []
+                    chunk_offset = 0.0
+                    
+                    for i, chunk_data in enumerate(audio_chunks):
+                        chunk_size = len(chunk_data)
+                        logger.info(f"Transcribing chunk {i+1}/{len(audio_chunks)} ({chunk_size} bytes)...")
+                        
+                        audio_file = io.BytesIO(chunk_data)
+                        audio_file.name = f"chunk_{i}.m4a"
+                        
+                        response = whisper_client.audio.transcriptions.create(
+                            model="whisper-1",
+                            file=audio_file,
+                            response_format="verbose_json"
+                        )
+                        
+                        chunk_text = response.text if hasattr(response, 'text') else ""
+                        if chunk_text:
+                            all_text_parts.append(chunk_text)
+                        
+                        # Extract segments with adjusted timestamps
+                        if hasattr(response, 'segments') and response.segments:
+                            for seg in response.segments:
+                                adjusted_start = float(seg.start) + chunk_offset
+                                adjusted_end = float(seg.end) + chunk_offset
+                                whisper_segments.append({
+                                    "start": adjusted_start,
+                                    "end": adjusted_end,
+                                    "text": seg.text.strip()
+                                })
+                        
+                        # Detect language from first chunk
+                        if i == 0 and hasattr(response, 'language'):
+                            detected_language = response.language
+                        
+                        # Estimate duration for this chunk to update offset
+                        # Typical speech is ~130 words per minute, use average segment duration
+                        if hasattr(response, 'segments') and response.segments:
+                            last_seg = response.segments[-1]
+                            chunk_duration = float(last_seg.end)
+                        else:
+                            chunk_duration = CHUNK_DURATION_SECONDS
+                        
+                        chunk_offset += chunk_duration
+                        logger.info(f"Chunk {i+1} complete: {len(chunk_text)} chars, {len(response.segments) if hasattr(response, 'segments') else 0} segments")
+                    
+                    transcript = " ".join(all_text_parts)
+                    logger.info(f"Combined transcription: {len(transcript)} chars from {len(audio_chunks)} chunks")
+                else:
+                    # Small file - transcribe directly
+                    logger.info("Audio small enough, transcribing directly...")
+                    audio_file = io.BytesIO(audio_data)
+                    audio_file.name = "audio.m4a"
 
-                response = whisper_client.audio.transcriptions.create(
-                    model="whisper-1",
-                    file=audio_file,
-                    response_format="verbose_json"
-                )
-                transcript = response.text if hasattr(response, 'text') else str(response)
-                detected_language = response.language if hasattr(response, 'language') else None
-                # Extract per-segment timestamps from Whisper for accurate diarization
-                whisper_segments = []
-                if hasattr(response, 'segments') and response.segments:
-                    whisper_segments = [
-                        {"start": float(seg.start), "end": float(seg.end), "text": seg.text.strip()}
-                        for seg in response.segments
-                        if seg.text.strip()
-                    ]
+                    response = whisper_client.audio.transcriptions.create(
+                        model="whisper-1",
+                        file=audio_file,
+                        response_format="verbose_json"
+                    )
+                    transcript = response.text if hasattr(response, 'text') else str(response)
+                    detected_language = response.language if hasattr(response, 'language') else None
+                    
+                    # Extract per-segment timestamps from Whisper for accurate diarization
+                    if hasattr(response, 'segments') and response.segments:
+                        whisper_segments = [
+                            {"start": float(seg.start), "end": float(seg.end), "text": seg.text.strip()}
+                            for seg in response.segments
+                            if seg.text.strip()
+                        ]
+                
                 logger.info(f"Transcription completed: {len(transcript)} chars, {len(whisper_segments)} segments, detected language: {detected_language}")
             except Exception as e:
                 logger.error(f"Whisper transcription error: {e}")

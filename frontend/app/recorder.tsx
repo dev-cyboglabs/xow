@@ -1475,8 +1475,8 @@ const startRecording = async () => {
           <Text style={styles.boothName} numberOfLines={1}>{device?.name || 'Booth'}</Text>
           <Text style={styles.boothSub}>Expo Recording</Text>
           <View style={styles.uploadModeBadge}>
-            <Ionicons name={autoUpload ? 'cloud' : 'save'} size={16} color={autoUpload ? '#10B981' : '#F59E0B'} />
-            <Text style={[styles.uploadModeText, { color: autoUpload ? '#10B981' : '#F59E0B' }]}>
+            <Ionicons name={autoUpload ? 'cloud' : 'save'} size={16} color={autoUpload ? '#E54B2A' : '#bcbcbc'} />
+            <Text style={[styles.uploadModeText, { color: autoUpload ? '#E54B2A' : '#bcbcbc' }]}>
               {autoUpload ? 'Auto Upload' : 'Local Save'}
             </Text>
           </View>
@@ -1484,9 +1484,9 @@ const startRecording = async () => {
             <Ionicons
               name={storageLocation === 'External' ? 'save' : 'phone-portrait'}
               size={16}
-              color={storageLocation === 'External' ? '#10B981' : '#8B5CF6'}
+              color={storageLocation === 'External' ? '#E54B2A' : '#bcbcbc'}
             />
-            <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#10B981' : '#8B5CF6' }]}>
+            <Text style={[styles.storageBadgeText, { color: storageLocation === 'External' ? '#E54B2A' : '#bcbcbc' }]}>
               {storageLocation}
             </Text>
           </View>
@@ -1546,15 +1546,15 @@ const startRecording = async () => {
 
         <View style={styles.actions}>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/gallery')}>
-            <Ionicons name="folder" size={24} color="#EF4444" />
+            <Ionicons name="folder" size={24} color="#E54B2A" />
             <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Gallery</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={() => router.push('/settings')}>
-            <Ionicons name="settings" size={24} color="#EF4444" />
+            <Ionicons name="settings" size={24} color="#E54B2A" />
             <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Settings</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={handleLogout}>
-            <Ionicons name="power" size={24} color="#EF4444" />
+            <Ionicons name="power" size={24} color="#E54B2A" />
             <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Exit</Text>
           </TouchableOpacity>
         </View>

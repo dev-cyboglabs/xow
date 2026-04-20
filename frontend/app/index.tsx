@@ -263,7 +263,7 @@ export default function SetupScreen() {
       <View style={styles.rightPanel}>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
-            <Ionicons name="link" size={32} color="#8B5CF6" />
+            <Ionicons name="link" size={32} color="#E54B2A" />
             <Text style={styles.cardTitle}>Connect to Dashboard</Text>
           </View>
           <Text style={styles.cardSub}>
@@ -284,7 +284,7 @@ export default function SetupScreen() {
           </Text>
 
           <View style={styles.waitingRow}>
-            <ActivityIndicator color="#8B5CF6" size="small" />
+            <ActivityIndicator color="#E54B2A" size="small" />
             <Text style={styles.waitingText}>
               {isLoading ? 'Setting up' : 'Waiting for connection'}
             </Text>
@@ -346,18 +346,18 @@ const styles = StyleSheet.create({
   skipBtn: { marginTop: 26, paddingHorizontal: 44, paddingVertical: 20, borderRadius: 13, borderWidth: 1, borderColor: '#2a2a2a', backgroundColor: '#111' },
   skipText: { color: '#fff', fontWeight: '600', fontSize: 26 },
 
-  leftPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', borderRightWidth: 1, borderRightColor: '#1a1a1a', padding: 40 },
+  leftPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
   features: { gap: 18 },
   feature: { flexDirection: 'row', alignItems: 'center', gap: 15 },
   featureText: { color: '#888', fontSize: 24 },
 
   rightPanel: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 40 },
-  card: { width: '100%', maxWidth: 530, backgroundColor: '#0a0a0a', borderRadius: 26, padding: 40, borderWidth: 1, borderColor: '#1a1a1a' },
+  card: { width: '100%', maxWidth: 530, backgroundColor: '#0a0a0a', borderRadius: 26, padding: 40 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 15 },
   cardTitle: { color: '#fff', fontSize: 31, fontWeight: '700' },
   cardSub: { color: '#666', fontSize: 22, lineHeight: 31, marginBottom: 26 },
 
-  codeBox: { backgroundColor: 'rgba(139,92,246,0.1)', borderWidth: 3, borderColor: 'rgba(139,92,246,0.3)', borderRadius: 22, paddingVertical: 31, alignItems: 'center', marginBottom: 18 },
+  codeBox: { backgroundColor: 'rgba(229,75,42,0.1)', borderWidth: 3, borderColor: 'rgba(229,75,42,0.3)', borderRadius: 22, paddingVertical: 31, alignItems: 'center', marginBottom: 18 },
   codeText: { color: '#fff', fontSize: 70, fontWeight: '800', fontFamily: 'monospace', letterSpacing: 18 },
 
   timerRow: { flexDirection: 'row', alignItems: 'center', gap: 9, justifyContent: 'center', marginBottom: 26 },
