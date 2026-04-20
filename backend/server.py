@@ -2064,7 +2064,7 @@ async def delete_all_data():
             except Exception as e:
                 logger.warning(f"Failed to delete GridFS file {grid_file._id}: {e}")
         
-        # Delete all collections
+        # Delete all collections including devices and pair_codes
         await db.recordings.delete_many({})
         await db.barcode_scans.delete_many({})
         await db.video_chunks.delete_many({})
@@ -2075,7 +2075,7 @@ async def delete_all_data():
         # Note: Wishlist and imported contacts are stored in localStorage on frontend
         # They will be cleared by the frontend after successful deletion
         
-        logger.info("All data deleted successfully")
+        logger.info("All data deleted successfully including devices")
         return {"success": True, "message": "All data has been permanently deleted"}
     except Exception as e:
         logger.error(f"Delete all data error: {e}")

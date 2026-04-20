@@ -196,7 +196,7 @@
             document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
             const navEl = document.getElementById(`nav-${v}`);
             if (navEl) navEl.classList.add('active');
-            const titles = { sessions:'Sessions', visitors:'Visitors & Followups', devices:'Devices', analytics:'Analytics', wishlist:'Wishlist' };
+            const titles = { sessions:'Sessions', visitors:'Visitors & Followups', devices:'Devices', analytics:'Analytics', wishlist:'Saved Leads' };
             document.getElementById('page-title').textContent = titles[v] || (v.charAt(0).toUpperCase() + v.slice(1));
             if (v === 'devices') {
                 loadDevices().then(() => render());
@@ -1213,7 +1213,6 @@
 
             return `<div class="fade">
                 <div class="mb-6">
-                    <h2 class="text-xl font-semibold text-gray-900">Visitors & Followups</h2>
                     <p class="text-sm text-gray-500 mt-1">Contact book &bull; Follow-up leads</p>
                 </div>
 
@@ -1929,7 +1928,6 @@
         }
 
         function clearWishlist() {
-            if (!confirm('Clear all wishlisted segments?')) return;
             wishlist = [];
             localStorage.setItem('xow_wishlist', JSON.stringify(wishlist));
             updateWishlistBadge();
@@ -1940,23 +1938,22 @@
             if (wishlist.length === 0) {
                 return `<div class="fade">
                     <div class="mb-6">
-                        <h2 class="text-xl font-semibold text-gray-900">Wishlist</h2>
                         <p class="text-sm text-gray-500 mt-1">Save interesting conversation contexts using the heart icon in Sessions</p>
                     </div>
                     <div class="card rounded-2xl p-16 text-center">
                         <div class="w-20 h-20 rounded-2xl bg-rose-100 flex items-center justify-center mx-auto mb-6">
                             <svg class="w-10 h-10 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
                         </div>
-                        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Saved Contexts Yet</h3>
-                        <p class="text-gray-500 text-sm">Go to Sessions tab and click the <svg class="w-4 h-4 text-gray-400 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> on any conversation context to save it here.</p>
+                        <h3 class="text-lg font-semibold text-gray-900 mb-2">No Saved Leads Yet</h3>
+                        <p class="text-gray-500 text-sm">Go to Sessions tab and click the <svg class="w-4 h-4 text-gray-400 inline-block -mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg> on any visitor to save them as a lead.</p>
                     </div>
                 </div>`;
             }
             return `<div class="fade">
                 <div class="flex items-center justify-between mb-6">
                     <div>
-                        <h2 class="text-xl font-semibold text-gray-900">Wishlist</h2>
-                        <p class="text-sm text-gray-500 mt-1">${wishlist.length} saved context${wishlist.length !== 1 ? 's' : ''}</p>
+                        <h2 class="text-xl font-semibold text-gray-900">Saved Leads</h2>
+                        <p class="text-sm text-gray-500 mt-1">${wishlist.length} saved lead${wishlist.length !== 1 ? 's' : ''}</p>
                     </div>
                     <button onclick="clearWishlist()" class="text-xs px-3 py-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors font-medium border border-red-200">
                         Clear all
@@ -2159,41 +2156,55 @@
             const btn = document.getElementById('delete-all-confirm-btn');
             if (!btn || btn.disabled) return;
             
+            console.log('Starting delete all data...');
+            
             // Disable button and show loading
             btn.disabled = true;
             btn.innerHTML = '<svg class="animate-spin h-4 w-4 text-white mx-auto" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>';
             
             try {
+                console.log('Sending delete request to:', `${API}/delete-all-data`);
+                
                 const response = await fetch(`${API}/delete-all-data`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' }
                 });
                 
-                if (!response.ok) throw new Error('Failed to delete data');
+                console.log('Response status:', response.status);
                 
-                // Clear local data
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Error response:', errorData);
+                    throw new Error(errorData.detail || 'Failed to delete data');
+                }
+                
+                const result = await response.json();
+                console.log('Delete successful:', result);
+                
+                // Clear local data immediately
                 data.recordings = [];
                 importedContacts = [];
                 wishlist = [];
                 
-                // Save cleared data to localStorage
-                saveWishlist();
-                saveContacts();
+                // Clear localStorage
+                localStorage.setItem('xow_wishlist', JSON.stringify([]));
+                localStorage.setItem('xow_contacts', JSON.stringify([]));
+                
+                // Update badge
+                updateWishlistBadge();
                 
                 // Close modal
                 closeDeleteAllDataModal();
                 
+                // Immediately re-render the current view to show empty state
+                render();
+                
                 // Show success message
                 showToast('All data has been permanently deleted', 'success');
                 
-                // Refresh the view
-                setTimeout(() => {
-                    loadData();
-                }, 1000);
-                
             } catch (error) {
                 console.error('Delete all data error:', error);
-                showToast('Failed to delete data. Please try again.', 'error');
+                showToast(`Failed to delete data: ${error.message}`, 'error');
                 btn.disabled = false;
                 btn.textContent = 'Delete Everything';
             }
@@ -3335,7 +3346,7 @@
             
             return `<div class="fade">
                 <div class="mb-6">
-                    <h2 class="text-xl font-semibold text-gray-900">Analytics</h2>
+
                     <p class="text-sm text-gray-500 mt-1">Overview of visitor engagement and statistics</p>
                 </div>
 
