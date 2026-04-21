@@ -29,6 +29,9 @@ next-env.d.ts
 /build
 dist/
 dist
+dist-electron/
+electron-app/dist/
+electron-app/dist-electron/
 
 # Environment files (comprehensive coverage)
 

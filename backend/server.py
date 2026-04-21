@@ -3697,6 +3697,13 @@ async def serve_partner():
         raise HTTPException(status_code=404, detail="Partner page not found")
     return FileResponse(partner_path)
 
+@app.get("/data-encryptor")
+async def serve_data_encryptor():
+    path = ROOT_DIR / "static" / "data-encryptor.html"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Data encryptor not found")
+    return FileResponse(path)
+
 # Partner form submission
 @api_router.post("/partner-request")
 async def submit_partner_request(request: Request):

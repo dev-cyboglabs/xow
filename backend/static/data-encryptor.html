@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>XoW – Data Encryptor</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/xow-logo.svg" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *{font-family:'Inter',sans-serif;box-sizing:border-box;margin:0;padding:0}
+    :root{--primary:#E54B2A;--pd:#C93D1E;--bg:#0f0f0f;--s1:#1a1a1a;--s2:#222;--s3:#2a2a2a;--bd:#2e2e2e;--tx:#e8e8e8;--mu:#888}
+    body{background:var(--bg);color:var(--tx)}
+    .dz{transition:all .2s}.dz.on{border-color:var(--primary)!important;background:rgba(229,75,42,.06)!important}
+    @keyframes fu{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .fu{animation:fu .3s ease forwards}
+    @keyframes sp{to{transform:rotate(360deg)}}.spin{animation:sp .8s linear infinite}
+    ::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+    .tbl th{background:#1e1e1e;position:sticky;top:0}.tbl tr:hover td{background:#1c1c1c}
+    .ki{font-family:'Courier New',monospace;letter-spacing:.04em}
+    input[type=range]{accent-color:var(--primary)}
+    .inp{width:100%;background:var(--s2);border:1px solid var(--bd);border-radius:8px;padding:10px 14px;color:var(--tx);font-size:14px;outline:none;transition:border-color .15s}
+    .inp:focus{border-color:var(--primary)}
+    .btn-p{background:var(--primary);color:#fff;border:none;border-radius:8px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s}
+    .btn-p:hover{background:var(--pd)}.btn-p:disabled{background:#333;color:#555;cursor:not-allowed}
+    .btn-s{background:var(--s2);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px 14px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s}
+    .btn-s:hover{background:var(--s3)}
+    .card{background:var(--s1);border:1px solid var(--bd);border-radius:12px}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+const ADMIN_ID='admin', ADMIN_PASS='CybogLabs@2024';
+const MAX_SIZE=10*1024*1024;
+const MAGIC=new Uint8Array([0x58,0x6F,0x57,0x45]); // XoWE
+// Fixed shared key — same key is always used for all files
+const FIXED_KEY='3f8a2c7d1e4b9f6a05c8e2d7b3a1f4c90e6d8b2a5f7c3e9d1b4a8f2c6e0d5b7a';
+
+/* ── crypto ─────────────────────────────────────────── */
+function b2h(b){return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('')}
+function h2b(h){
+  const c=h.replace(/\s/g,'');
+  if(c.length!==64)throw new Error('Key must be exactly 64 hex characters (256 bits)');
+  return new Uint8Array(c.match(/.{2}/g).map(x=>parseInt(x,16)));
+}
+async function genKey(){return b2h(crypto.getRandomValues(new Uint8Array(32)))}
+async function encryptBuf(buf,hexKey){
+  const kb=h2b(hexKey);
+  const ck=await crypto.subtle.importKey('raw',kb,{name:'AES-GCM'},false,['encrypt']);
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const enc=await crypto.subtle.encrypt({name:'AES-GCM',iv},ck,buf);
+  const out=new Uint8Array(4+12+enc.byteLength);
+  out.set(MAGIC,0);out.set(iv,4);out.set(new Uint8Array(enc),16);
+  return out;
+}
+
+/* ── file ────────────────────────────────────────────── */
+function readBuf(f){return new Promise((r,j)=>{const x=new FileReader();x.onload=e=>r(e.target.result);x.onerror=j;x.readAsArrayBuffer(f)})}
+function fmtSz(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(1)+' KB';return(b/1048576).toFixed(1)+' MB'}
+
+function parseCSV(buf){
+  const txt=new TextDecoder().decode(buf);
+  const lines=txt.split(/\r?\n/).filter(l=>l.trim());
+  if(!lines.length)return{headers:[],rows:[],total:0};
+  function pl(l){const r=[];let cur='',q=false;for(const c of l){if(c==='"'){q=!q}else if(c===','&&!q){r.push(cur.trim());cur=''}else cur+=c}r.push(cur.trim());return r}
+  return{headers:pl(lines[0]),rows:lines.slice(1,6).map(pl),total:lines.length-1};
+}
+function parseXLS(buf){
+  const wb=XLSX.read(buf,{type:'array'});
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const d=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+  const h=(d[0]||[]).map(String);
+  return{headers:h,rows:d.slice(1,6).map(r=>h.map((_,i)=>String(r[i]??''))),total:Math.max(0,d.length-1)};
+}
+
+/* ── icons ───────────────────────────────────────────── */
+const I={
+  Upload:()=><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>,
+  File:()=><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>,
+  Lock:()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
+  Key:()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
+  Copy:()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>,
+  Refresh:()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+  Download:()=><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>,
+  Check:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>,
+  X:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+  Trash:()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  Eye:({off})=>off?<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>:<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>,
+  Logout:()=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+  Shield:()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+  Info:()=><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="8" strokeWidth="3" strokeLinecap="round"/><line x1="12" y1="12" x2="12" y2="16"/></svg>,
+};
+
+/* ── XoW logo ─────────────────────────────────────────── */
+function Logo({h=32}){
+  const w=h*(740/251);
+  return(
+    <svg width={w} height={h} viewBox="0 0 740 251" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <g clipPath="url(#cle)">
+        <path d="M580.123 48.3663C597.306 48.3157 614.496 48.3681 631.68 48.5246C636.341 75.9559 643.275 105.061 647.483 132.215C655.983 104.118 664.947 76.163 674.375 48.3633L737.218 48.4871C732.754 60.5041 728.962 73.2878 724.682 85.4256C708.737 130.62 694.85 177.471 678.684 222.474L617.996 222.396C616.288 212.643 612.187 197.846 609.735 187.999C605.949 176.179 599.324 146.165 596.807 133.653C589.14 162.014 579.944 194.544 571.212 222.475L511.643 222.43C509.947 214.71 507.001 204.767 504.929 196.976C501.525 183.802 497.977 170.666 494.281 157.571C519.274 131.936 540.487 86.4321 535.363 49.9863C543.148 72.3438 549.523 99.0889 555.296 122.22C563.719 97.6504 571.992 73.0324 580.123 48.3663Z" fill="#FCFCFC"/>
+        <path d="M182.593 48.3853C192.205 47.5783 211.015 48.3812 221.548 48.2044C229.52 48.0705 252.926 47.7509 259.78 48.721C261.743 48.5115 263.963 48.2014 265.914 48.2163C258.75 57.3188 246.257 69.9191 238.018 78.6396C220.381 97.3927 202.445 115.864 184.218 134.045C189.057 140.354 195.233 148.359 199.656 154.984C191.133 179.206 190.821 199.766 205.15 222.352C190.33 222.497 175.51 222.533 160.69 222.461C151.241 211.383 137.738 190.228 128.33 177.503C118.815 187.58 109.848 198.161 100.607 208.471C96.7924 212.728 92.0913 218.531 88.2177 222.386L55.4701 222.391C38.4583 222.89 19.0841 222.581 1.97998 222.414C12.2099 210.509 22.5637 200.397 33.5656 189.202C51.9768 170.423 70.5987 151.853 89.4272 133.493C105.249 118.699 124.044 102.458 140.416 88.0289C149.881 80.0965 158.442 69.3406 167.954 61.2624C172.759 57.1819 177.214 51.6683 182.593 48.3853Z" fill="#FC5E00"/>
+        <path d="M259.78 48.7211C261.743 48.5116 263.963 48.2015 265.914 48.2163C258.75 57.3188 246.257 69.9192 238.018 78.6396C220.381 97.3927 202.445 115.864 184.218 134.045C189.057 140.354 195.233 148.359 199.656 154.984C191.133 179.206 190.821 199.766 205.15 222.352C190.33 222.497 175.51 222.533 160.69 222.461C151.241 211.384 137.738 190.228 128.33 177.503C118.815 187.58 109.848 198.161 100.607 208.471C96.7924 212.728 92.0914 218.531 88.2178 222.386L55.4702 222.391C59.8129 217.936 64.6984 213.313 69.2971 209.123C97.1728 183.721 124.794 157.006 153.607 132.753C183.371 108.023 213.554 83.8015 244.142 60.0995C249.284 56.1238 254.558 52.7819 259.78 48.7211Z" fill="#FCFCFC"/>
+        <path d="M319.105 43.0207C342.509 30.771 365.006 25.0038 390.404 19.4705C436.325 9.46634 502.59 21.6518 481.043 84.848C479.817 88.3999 478.627 91.6389 476.906 95.0426C471.175 108.196 456.157 126.978 444.414 135.387C448.884 121.979 447.235 101.626 441.402 89.6468C406.594 18.1695 280.474 50.7782 255.954 115.244C246.169 140.971 246.832 178.426 271.608 195.09C276.562 198.422 281.538 200.339 286.957 202.431C277.736 200.973 269.236 199.496 260.342 196.788C228.974 187.235 217.012 157.736 228.341 127.771C242.773 89.5933 283.749 60.0503 319.105 43.0207Z" fill="#FCFCFC"/>
+        <path d="M417.915 3.28883C446.813 -0.893416 481.972 -0.660099 506.388 17.6592C518.596 26.8236 526.572 40.5488 528.482 55.6964C529.941 66.4975 528.601 78.5842 525.25 88.9568C516.965 125.672 483.966 161.247 453.051 180.856C401.582 213.501 332.515 226.663 273.386 210.519C337.042 217.623 406.243 182.154 452.271 139.428C455.128 136.772 457.687 133.414 460.449 130.823C481.3 106.276 513.465 63.4401 487.883 30.0643C475.937 14.4768 454.182 10.5356 435.51 8.74118C433.557 7.11399 424.718 6.97412 421.867 6.9277L428.123 7.75737C422.534 7.71333 415.504 7.89366 409.963 8.18054C402.654 8.55906 403.868 10.9754 395.577 8.84236C401.106 7.70857 413.326 6.19504 417.915 3.28883Z" fill="#FC5E00"/>
+        <path d="M492.811 159.093C485.841 168.153 481.412 175.489 473.228 183.859C429.224 228.723 368.833 250.447 306.533 250.721C263.245 250.913 201.445 236.755 199.479 183.01C198.7 161.739 211.252 136.567 226.126 121.518C218.282 135.343 216.046 143.831 215.982 159.451C218.067 177.432 224.693 189.601 239.069 200.73C269.883 224.585 316.291 229.069 353.69 224.777C360.262 223.982 366.786 222.856 373.244 221.403C418.724 211.509 458.282 189.899 492.811 159.093Z" fill="#FCFCFC"/>
+        <path d="M29.77 48.3438C57.4505 48.8657 85.9256 48.4664 113.676 48.5259C122.083 61.9267 131.836 74.6413 140.416 88.029C124.044 102.458 105.249 118.699 89.4272 133.493C78.4884 119.548 66.4007 100.773 55.8732 86.1131C48.9091 76.4155 35.4882 58.2343 29.77 48.3438Z" fill="#FB5201"/>
+      </g>
+      <defs><clipPath id="cle"><rect width="740" height="251" fill="white"/></clipPath></defs>
+    </svg>
+  );
+}
+
+/* ── LoginPage ────────────────────────────────────────── */
+function LoginPage({onLogin}){
+  const [id,setId]=useState('');
+  const [pw,setPw]=useState('');
+  const [showPw,setShowPw]=useState(false);
+  const [err,setErr]=useState('');
+  const [busy,setBusy]=useState(false);
+
+  async function submit(e){
+    e.preventDefault();setBusy(true);setErr('');
+    await new Promise(r=>setTimeout(r,650));
+    if(id.trim()===ADMIN_ID&&pw===ADMIN_PASS){
+      sessionStorage.setItem('xow_enc','1');onLogin();
+    }else{setErr('Invalid ID or password.');}
+    setBusy(false);
+  }
+
+  return(
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',padding:20,background:'var(--bg)'}}>
+      <div style={{width:'100%',maxWidth:380}} className="fu">
+        <div style={{textAlign:'center',marginBottom:32}}>
+          <div style={{display:'flex',justifyContent:'center',marginBottom:12}}><Logo h={38}/></div>
+          <p style={{fontSize:13,color:'var(--mu)'}}>Data Encryptor — Secure Access</p>
+        </div>
+        <div className="card" style={{padding:28}}>
+          <h2 style={{fontSize:17,fontWeight:600,marginBottom:22}}>Sign In</h2>
+          {err&&<div style={{background:'rgba(229,75,42,.1)',border:'1px solid rgba(229,75,42,.3)',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#ff6b4a'}}><I.X/>{err}</div>}
+          <form onSubmit={submit}>
+            <div style={{marginBottom:16}}>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'var(--mu)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.6px'}}>ID</label>
+              <input className="inp" type="text" value={id} onChange={e=>setId(e.target.value)} placeholder="Enter your ID" required autoFocus/>
+            </div>
+            <div style={{marginBottom:24,position:'relative'}}>
+              <label style={{display:'block',fontSize:11,fontWeight:600,color:'var(--mu)',marginBottom:6,textTransform:'uppercase',letterSpacing:'0.6px'}}>Password</label>
+              <div style={{position:'relative'}}>
+                <input className="inp" type={showPw?'text':'password'} value={pw} onChange={e=>setPw(e.target.value)} placeholder="Enter password" required style={{paddingRight:40}}/>
+                <button type="button" onClick={()=>setShowPw(v=>!v)} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--mu)',cursor:'pointer',padding:4}}><I.Eye off={showPw}/></button>
+              </div>
+            </div>
+            <button type="submit" disabled={busy} className="btn-p" style={{width:'100%'}}>
+              {busy?<><svg className="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Verifying...</>:<><I.Lock/>Sign In</>}
+            </button>
+          </form>
+        </div>
+        <p style={{textAlign:'center',marginTop:18,fontSize:12,color:'var(--mu)',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><I.Shield/>All encryption runs locally in your browser</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── DropZone ─────────────────────────────────────────── */
+function DropZone({onFile,disabled}){
+  const [drag,setDrag]=useState(false);
+  const ref=useRef(null);
+
+  function validate(f){
+    const ext='.'+f.name.split('.').pop().toLowerCase();
+    if(!['.csv','.xlsx','.xls'].includes(ext)){alert(`Unsupported file: ${ext}\nAccepted: .csv .xlsx .xls`);return;}
+    if(f.size>MAX_SIZE){alert(`File too large (${fmtSz(f.size)})\nMax: 10 MB`);return;}
+    onFile(f);
+  }
+
+  return(
+    <div className={`dz${drag?' on':''}`}
+      onDragOver={e=>{e.preventDefault();if(!disabled)setDrag(true)}}
+      onDragLeave={()=>setDrag(false)}
+      onDrop={e=>{e.preventDefault();setDrag(false);if(!disabled&&e.dataTransfer.files[0])validate(e.dataTransfer.files[0])}}
+      onClick={()=>!disabled&&ref.current?.click()}
+      style={{border:`2px dashed ${drag?'#E54B2A':'#333'}`,borderRadius:12,padding:'44px 20px',textAlign:'center',cursor:disabled?'default':'pointer',background:drag?'rgba(229,75,42,.05)':'var(--s1)',transition:'all .2s',userSelect:'none'}}
+    >
+      <input ref={ref} type="file" accept=".csv,.xlsx,.xls" style={{display:'none'}} onChange={e=>{if(e.target.files[0])validate(e.target.files[0])}}/>
+      <div style={{color:drag?'#E54B2A':'#444',marginBottom:12}}><I.Upload/></div>
+      <p style={{fontSize:15,fontWeight:500,marginBottom:6}}>{drag?'Drop file here':'Drag & drop your file here'}</p>
+      <p style={{fontSize:13,color:'var(--mu)',marginBottom:18}}>or click to browse</p>
+      <div style={{display:'flex',gap:8,justifyContent:'center',flexWrap:'wrap'}}>
+        {['.csv','.xlsx','.xls'].map(t=><span key={t} style={{background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:6,padding:'3px 10px',fontSize:12,color:'var(--mu)',fontWeight:500}}>{t}</span>)}
+      </div>
+      <p style={{fontSize:12,color:'#444',marginTop:10}}>Max 10 MB</p>
+    </div>
+  );
+}
+
+/* ── FilePreview ──────────────────────────────────────── */
+function FilePreview({file,preview,onClear}){
+  if(!preview)return null;
+  const ext=file.name.split('.').pop().toLowerCase();
+  const isXL=ext==='xlsx'||ext==='xls';
+  return(
+    <div className="card" style={{overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'12px 16px',borderBottom:'1px solid var(--bd)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{background:isXL?'rgba(34,197,94,.1)':'rgba(229,75,42,.1)',borderRadius:8,padding:8,color:isXL?'#4ade80':'#E54B2A'}}><I.File/></div>
+          <div>
+            <div style={{fontWeight:600,fontSize:14}}>{file.name}</div>
+            <div style={{fontSize:12,color:'var(--mu)'}}>{fmtSz(file.size)} · {preview.total||0} rows · {preview.headers?.length||0} columns</div>
+          </div>
+        </div>
+        <button onClick={onClear} className="btn-s" style={{fontSize:12}}><I.Trash/>Remove</button>
+      </div>
+      <div style={{overflowX:'auto',maxHeight:200}}>
+        <table className="tbl" style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+          <thead><tr>{(preview.headers||[]).map((h,i)=><th key={i} style={{padding:'8px 14px',textAlign:'left',color:'var(--mu)',fontWeight:600,fontSize:11,textTransform:'uppercase',letterSpacing:'0.5px',borderBottom:'1px solid var(--bd)',whiteSpace:'nowrap'}}>{h||`Col ${i+1}`}</th>)}</tr></thead>
+          <tbody>{(preview.rows||[]).map((row,ri)=><tr key={ri}>{(preview.headers||[]).map((_,ci)=><td key={ci} style={{padding:'8px 14px',borderBottom:'1px solid rgba(46,46,46,.6)',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:row[ci]?'var(--tx)':'var(--mu)',fontStyle:row[ci]?'normal':'italic'}}>{row[ci]||'—'}</td>)}</tr>)}</tbody>
+        </table>
+      </div>
+      {preview.total>5&&<div style={{padding:'7px 16px',borderTop:'1px solid var(--bd)',fontSize:12,color:'var(--mu)',textAlign:'center'}}>Showing first 5 of {preview.total} rows — all rows will be encrypted</div>}
+    </div>
+  );
+}
+
+/* ── EncryptionPanel ──────────────────────────────────── */
+function EncryptionPanel({encKey,onEncrypt,busy,progress}){
+  const [copied,setCopied]=useState(false);
+  const [showKey,setShowKey]=useState(false);
+  const keyOk=encKey.replace(/\s/g,'').length===64;
+
+  async function copy(){await navigator.clipboard.writeText(encKey);setCopied(true);setTimeout(()=>setCopied(false),2000)}
+
+  return(
+    <div className="card" style={{padding:20}}>
+      <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:16}}>
+        <div style={{background:'rgba(229,75,42,.1)',borderRadius:8,padding:8,color:'#E54B2A'}}><I.Key/></div>
+        <div><div style={{fontWeight:600,fontSize:14}}>Encryption Key</div><div style={{fontSize:12,color:'var(--mu)'}}>AES-256-GCM · 256-bit</div></div>
+      </div>
+
+      <div style={{background:'rgba(229,75,42,.06)',border:'1px solid rgba(229,75,42,.2)',borderRadius:8,padding:'10px 14px',marginBottom:16,display:'flex',gap:8,fontSize:12,color:'#ff9b7a',lineHeight:1.5}}>
+        <I.Info/><span>AES-256-GCM with a random 96-bit IV. This is your <strong>fixed shared key</strong> — the same key is used for all files. Configure this same key in the XoW Electron app to decrypt.</span>
+      </div>
+
+      <label style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:6,fontSize:11,fontWeight:600,color:'var(--mu)',textTransform:'uppercase',letterSpacing:'0.6px'}}>
+        256-bit Hex Key
+        <button onClick={copy} className="btn-s" style={{fontSize:12,color:copied?'#4ade80':'var(--mu)',borderColor:copied?'rgba(34,197,94,.3)':'var(--bd)'}}>{copied?<><I.Check/>Copied!</>:<><I.Copy/>Copy Key</>}</button>
+      </label>
+      <div style={{position:'relative',marginBottom:10}}>
+        <input
+          type={showKey?'text':'password'}
+          value={encKey}
+          readOnly
+          className="ki"
+          style={{width:'100%',background:'#111',border:'1px solid rgba(34,197,94,.4)',borderRadius:8,padding:'10px 44px 10px 14px',color:'#eee',fontSize:12,outline:'none',cursor:'default'}}
+        />
+        <button type="button" onClick={()=>setShowKey(v=>!v)} style={{position:'absolute',right:12,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--mu)',cursor:'pointer',padding:4}}><I.Eye off={!showKey}/></button>
+      </div>
+      {keyOk&&<p style={{fontSize:12,color:'#4ade80',marginBottom:12,display:'flex',alignItems:'center',gap:4}}><I.Check/>Valid 256-bit key</p>}
+      {!keyOk&&encKey.length>0&&<p style={{fontSize:12,color:'#E54B2A',marginBottom:12}}>Key must be exactly 64 hex characters ({encKey.replace(/\s/g,'').length}/64)</p>}
+
+      {!busy?(
+        <button onClick={onEncrypt} disabled={!keyOk} className="btn-p" style={{width:'100%',marginTop:4,background:keyOk?'#E54B2A':'#2a2a2a',color:keyOk?'#fff':'#555',cursor:keyOk?'pointer':'not-allowed'}}>
+          <I.Lock/>Encrypt File
+        </button>
+      ):(
+        <div style={{marginTop:4}}>
+          <div style={{display:'flex',justifyContent:'space-between',fontSize:13,fontWeight:500,marginBottom:8}}>
+            <span style={{display:'flex',alignItems:'center',gap:7}}><svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E54B2A" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Encrypting...</span>
+            <span style={{color:'var(--mu)'}}>{Math.round(progress)}%</span>
+          </div>
+          <div style={{height:6,background:'#1a1a1a',borderRadius:3,overflow:'hidden'}}>
+            <div style={{height:'100%',background:'linear-gradient(90deg,#E54B2A,#ff7a55)',borderRadius:3,width:`${progress}%`,transition:'width .12s ease'}}/>
+          </div>
+          <p style={{fontSize:12,color:'var(--mu)',marginTop:8,textAlign:'center'}}>Do not close this tab</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── DownloadPanel ────────────────────────────────────── */
+function DownloadPanel({fileName,blob,encKey,onReset}){
+  const [kc,setKc]=useState(false);
+  function dl(){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=fileName+'.enc';a.click();URL.revokeObjectURL(u)}
+  async function cpKey(){await navigator.clipboard.writeText(encKey);setKc(true);setTimeout(()=>setKc(false),2000)}
+  return(
+    <div className="card" style={{padding:24,textAlign:'center',borderColor:'rgba(34,197,94,.25)'}}>
+      <div style={{width:52,height:52,background:'rgba(34,197,94,.1)',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',color:'#4ade80'}}><I.Check/></div>
+      <h3 style={{fontSize:16,fontWeight:700,marginBottom:4}}>Encryption Complete</h3>
+      <p style={{fontSize:13,color:'var(--mu)',marginBottom:20}}>Your file was encrypted with AES-256-GCM.</p>
+
+      <div style={{background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:8,padding:'10px 16px',marginBottom:14,display:'flex',alignItems:'center',gap:10,textAlign:'left'}}>
+        <I.File/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fileName}.enc</div>
+          <div style={{fontSize:12,color:'var(--mu)'}}>Encrypted · {fmtSz(blob.size)}</div>
+        </div>
+        <button onClick={dl} className="btn-p" style={{flexShrink:0,padding:'8px 16px',fontSize:13}}><I.Download/>Download</button>
+      </div>
+
+      <div style={{background:'rgba(229,75,42,.07)',border:'1px solid rgba(229,75,42,.22)',borderRadius:8,padding:'12px 16px',marginBottom:16,textAlign:'left'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
+          <span style={{fontSize:11,fontWeight:700,color:'#E54B2A',textTransform:'uppercase',letterSpacing:'0.6px',display:'flex',alignItems:'center',gap:5}}><I.Key/>Decryption Key — Save This!</span>
+          <button onClick={cpKey} className="btn-s" style={{fontSize:11,color:kc?'#4ade80':'#E54B2A',borderColor:kc?'rgba(34,197,94,.3)':'rgba(229,75,42,.3)',padding:'3px 8px'}}>{kc?<><I.Check/>Copied!</>:<><I.Copy/>Copy Key</>}</button>
+        </div>
+        <div className="ki" style={{fontSize:11,color:'#bbb',wordBreak:'break-all',lineHeight:1.7,userSelect:'all'}}>{encKey}</div>
+      </div>
+
+      <p style={{fontSize:12,color:'var(--mu)',marginBottom:20}}>This is your fixed shared key. Configure it once in the XoW Electron app — it works for all encrypted files.</p>
+      <button onClick={onReset} className="btn-s" style={{margin:'0 auto',padding:'9px 20px'}}>Encrypt Another File</button>
+    </div>
+  );
+}
+
+/* ── StepLabel ────────────────────────────────────────── */
+function Step({n,label,done}){
+  return(
+    <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:12}}>
+      <div style={{width:24,height:24,borderRadius:'50%',background:done?'rgba(34,197,94,.12)':'rgba(229,75,42,.12)',border:`1px solid ${done?'rgba(34,197,94,.4)':'rgba(229,75,42,.4)'}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:done?'#4ade80':'#E54B2A',flexShrink:0}}>
+        {done?<I.Check/>:n}
+      </div>
+      <span style={{fontSize:14,fontWeight:600}}>{label}</span>
+    </div>
+  );
+}
+
+/* ── MainApp ──────────────────────────────────────────── */
+function MainApp({onLogout}){
+  const [file,setFile]=useState(null);
+  const [preview,setPreview]=useState(null);
+  const [buf,setBuf]=useState(null);
+  const [encKey,setEncKey]=useState(FIXED_KEY);
+  const [busy,setBusy]=useState(false);
+  const [prog,setProg]=useState(0);
+  const [blob,setBlob]=useState(null);
+  const [err,setErr]=useState('');
+
+  async function onFile(f){
+    setErr('');setBlob(null);setFile(f);
+    try{
+      const b=await readBuf(f);setBuf(b);
+      const ext=f.name.split('.').pop().toLowerCase();
+      setPreview(ext==='csv'?parseCSV(b):parseXLS(b));
+    }catch(e){setErr('Failed to read file: '+e.message);setFile(null);}
+  }
+
+  function clear(){setFile(null);setPreview(null);setBuf(null);setBlob(null);setErr('');}
+
+  async function encrypt(){
+    if(!buf||!encKey)return;
+    setBusy(true);setErr('');setProg(0);
+    const t=setInterval(()=>setProg(p=>Math.min(p+Math.random()*18,88)),90);
+    try{
+      const out=await encryptBuf(buf,encKey);
+      clearInterval(t);setProg(100);
+      await new Promise(r=>setTimeout(r,350));
+      setBlob(new Blob([out],{type:'application/octet-stream'}));
+    }catch(e){clearInterval(t);setErr('Encryption failed: '+e.message);}
+    finally{setBusy(false);}
+  }
+
+  function reset(){clear();}
+  function logout(){sessionStorage.removeItem('xow_enc');onLogout();}
+
+  return(
+    <div style={{minHeight:'100vh',display:'flex',flexDirection:'column',background:'var(--bg)'}}>
+      {/* Nav */}
+      <header style={{background:'var(--s1)',borderBottom:'1px solid var(--bd)',padding:'0 24px',height:56,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+        <Logo h={26}/>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <span style={{fontSize:13,color:'var(--mu)'}}>Data Encryptor</span>
+          <div style={{width:1,height:20,background:'var(--bd)'}}/>
+          <div style={{display:'flex',alignItems:'center',gap:5,background:'rgba(229,75,42,.1)',border:'1px solid rgba(229,75,42,.3)',borderRadius:20,padding:'3px 10px',fontSize:10,fontWeight:700,letterSpacing:'1px',color:'#ff6b4a'}}>
+            <svg width="7" height="7" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>CLIENT-SIDE
+          </div>
+          <button onClick={logout} className="btn-s" style={{fontSize:12}}><I.Logout/>Sign Out</button>
+        </div>
+      </header>
+
+      {/* Content */}
+      <main style={{flex:1,display:'flex',justifyContent:'center',padding:'32px 20px',overflowY:'auto'}}>
+        <div style={{width:'100%',maxWidth:740}}>
+          <div style={{marginBottom:24}}>
+            <h1 style={{fontSize:22,fontWeight:700,marginBottom:6}}>Encrypt Visitor Data</h1>
+            <p style={{fontSize:14,color:'var(--mu)'}}>Upload a CSV or Excel file to encrypt it with AES-256-GCM before transferring to your SD card or USB drive.</p>
+          </div>
+
+          {err&&(
+            <div style={{background:'rgba(229,75,42,.1)',border:'1px solid rgba(229,75,42,.3)',borderRadius:10,padding:'11px 16px',marginBottom:16,display:'flex',alignItems:'center',gap:10,fontSize:13,color:'#ff6b4a'}}>
+              <I.X/>{err}
+              <button onClick={()=>setErr('')} style={{marginLeft:'auto',background:'none',border:'none',color:'#ff6b4a',cursor:'pointer',padding:2}}><I.X/></button>
+            </div>
+          )}
+
+          {!blob?(
+            <div style={{display:'flex',flexDirection:'column',gap:20}}>
+              <div>
+                <Step n={1} label="Upload File" done={!!file}/>
+                {!file?<DropZone onFile={onFile} disabled={busy}/>:<FilePreview file={file} preview={preview} onClear={clear}/>}
+              </div>
+              {file&&(
+                <div className="fu">
+                  <Step n={2} label="Configure & Encrypt" done={false}/>
+                  <EncryptionPanel encKey={encKey} onEncrypt={encrypt} busy={busy} progress={prog}/>
+                </div>
+              )}
+            </div>
+          ):(
+            <div className="fu">
+              <Step n={3} label="Download Encrypted File" done={true}/>
+              <DownloadPanel fileName={file.name} blob={blob} encKey={encKey} onReset={reset}/>
+            </div>
+          )}
+
+          {/* Info pills */}
+          <div style={{marginTop:28,display:'flex',gap:10,flexWrap:'wrap'}}>
+            {[
+              [<I.Shield/>,'Client-side only — no data leaves your browser'],
+              [<I.Lock/>,'AES-256-GCM authenticated encryption'],
+              [<I.File/>,'Output: filename.csv.enc'],
+            ].map(([icon,txt],i)=>(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:6,background:'var(--s1)',border:'1px solid var(--bd)',borderRadius:20,padding:'5px 12px',fontSize:12,color:'var(--mu)'}}>{icon}{txt}</div>
+            ))}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+/* ── Root ─────────────────────────────────────────────── */
+function App(){
+  const [auth,setAuth]=useState(()=>sessionStorage.getItem('xow_enc')==='1');
+  if(!auth)return<LoginPage onLogin={()=>setAuth(true)}/>;
+  return<MainApp onLogout={()=>setAuth(false)}/>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
