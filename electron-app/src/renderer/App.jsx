@@ -9,6 +9,8 @@ export default function App() {
   const [selectedDrive, setSelectedDrive] = useState(null);
   const [selectedRecording, setSelectedRecording] = useState(null);
   const [videoParams, setVideoParams] = useState(null); // { startTimestamp, visitor }
+  // visitorDataMap: keyed by barcode string → { visitorName, company, email, phone }
+  const [visitorDataMap, setVisitorDataMap] = useState({});
 
   const goToRecordings = () => {
     setSelectedRecording(null);
@@ -43,6 +45,8 @@ export default function App() {
           drive={selectedDrive}
           onBack={goToRecordings}
           onPlay={(params) => goToVideo(params)}
+          visitorDataMap={visitorDataMap}
+          onSetVisitorDataMap={setVisitorDataMap}
         />
       )}
       {screen === 'video' && selectedRecording && videoParams && (

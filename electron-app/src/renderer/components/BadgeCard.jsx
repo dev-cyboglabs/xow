@@ -1,17 +1,30 @@
 import React from 'react';
 import { formatTimestamp } from '../utils/formatTime';
 
-export default function BadgeCard({ visitor, onPlay, onInfo }) {
-  // Show barcode as Visitor ID if name is empty
-  const hasName = visitor.visitorName && visitor.visitorName.trim() !== '';
-  const displayName = hasName ? visitor.visitorName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
-  const company = visitor.company && visitor.company.trim() !== '' ? visitor.company : 'No Company Info';
-  const initials = hasName && visitor.visitorName.length >= 2 
-    ? visitor.visitorName.slice(0, 2).toUpperCase() 
+export default function BadgeCard({ visitor, importedData, onPlay, onInfo }) {
+  // Merge imported data (takes priority) with scan data
+  const resolvedName    = importedData?.visitorName || visitor.visitorName || '';
+  const resolvedCompany = importedData?.company     || visitor.company     || '';
+  const isEnriched = !!importedData;
+
+  const hasName = resolvedName.trim() !== '';
+  const displayName = hasName ? resolvedName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
+  const company = resolvedCompany.trim() !== '' ? resolvedCompany : 'No Company Info';
+  const initials = hasName && resolvedName.length >= 2
+    ? resolvedName.slice(0, 2).toUpperCase()
     : (visitor.barcode && visitor.barcode.length >= 2 ? visitor.barcode.slice(0, 2).toUpperCase() : '??');
 
   return (
-    <div className="badge-card">
+    <div className={`badge-card${isEnriched ? ' badge-card--enriched' : ''}`}>
+      {/* Verified dot shown when imported data matched */}
+      {isEnriched && (
+        <div className="badge-verified" title="Visitor data matched from imported file">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
+        </div>
+      )}
+
       {/* Avatar */}
       <div className="badge-avatar">
         <span className="badge-initials">{initials}</span>
@@ -28,7 +41,7 @@ export default function BadgeCard({ visitor, onPlay, onInfo }) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
         </svg>
-        Scanned: {formatTimestamp(visitor.timestamp)}
+        Enter: {formatTimestamp(visitor.timestamp)}
       </div>
 
       {/* Actions */}

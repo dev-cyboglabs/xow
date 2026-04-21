@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { formatTimestamp } from '../utils/formatTime';
 
-export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
+export default function VisitorInfoModal({ visitor, importedData, isOpen, onClose, onPlay }) {
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
@@ -12,23 +12,26 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
 
   if (!isOpen || !visitor) return null;
 
-  const hasName = visitor.visitorName && visitor.visitorName.trim() !== '';
-  const displayName = hasName ? visitor.visitorName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
+  // Merge imported data (takes priority) with scan data
+  const resolvedName    = importedData?.visitorName || visitor.visitorName || '';
+  const resolvedCompany = importedData?.company     || visitor.company     || '';
+  const resolvedEmail   = importedData?.email       || visitor.email       || '';
+  const resolvedPhone   = importedData?.phone       || visitor.phone       || '';
+  const isEnriched = !!importedData;
+
+  const hasName = resolvedName.trim() !== '';
+  const displayName = hasName ? resolvedName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
 
   function copyInfo() {
     const text = [
-      `Name: ${visitor.visitorName || '—'}`,
-      `Company: ${visitor.company || '—'}`,
-      `Email: ${visitor.email || '—'}`,
-      `Phone: ${visitor.phone || '—'}`,
+      `Name: ${resolvedName || '—'}`,
+      `Company: ${resolvedCompany || '—'}`,
+      `Email: ${resolvedEmail || '—'}`,
+      `Phone: ${resolvedPhone || '—'}`,
       `Badge ID: ${visitor.barcode}`,
       `Scanned: ${formatTimestamp(visitor.timestamp)} (${visitor.timestamp}s)`,
     ].join('\n');
     navigator.clipboard.writeText(text).catch(() => {});
-  }
-
-  function handlePrint() {
-    window.xowAPI.openPrintDialog();
   }
 
   return (
@@ -36,7 +39,17 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
         <div className="modal-header">
-          <span className="modal-title">Visitor Information</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="modal-title">Visitor Information</span>
+            {isEnriched && (
+              <span className="modal-verified-badge" title="Data enriched from imported file">
+                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Verified
+              </span>
+            )}
+          </div>
           <button className="modal-close" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -49,14 +62,14 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
         <div className="modal-avatar-row">
           <div className="modal-avatar">
             <span>
-              {hasName && visitor.visitorName.length >= 2 
-                ? visitor.visitorName.slice(0, 2).toUpperCase() 
+              {hasName && resolvedName.length >= 2
+                ? resolvedName.slice(0, 2).toUpperCase()
                 : (visitor.barcode && visitor.barcode.length >= 2 ? visitor.barcode.slice(0, 2).toUpperCase() : '??')}
             </span>
           </div>
           <div>
             <div className="modal-visitor-name">{displayName}</div>
-            {visitor.company && visitor.company.trim() !== '' && <div className="modal-visitor-company">{visitor.company}</div>}
+            {resolvedCompany.trim() !== '' && <div className="modal-visitor-company">{resolvedCompany}</div>}
           </div>
         </div>
 
@@ -65,22 +78,22 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
           <InfoRow
             icon={<PersonIcon />}
             label="Name"
-            value={visitor.visitorName || <span className="muted">—</span>}
+            value={resolvedName || <span className="muted">—</span>}
           />
           <InfoRow
             icon={<BuildingIcon />}
             label="Company"
-            value={visitor.company || <span className="muted">—</span>}
+            value={resolvedCompany || <span className="muted">—</span>}
           />
           <InfoRow
             icon={<EmailIcon />}
             label="Email"
-            value={visitor.email || <span className="muted">—</span>}
+            value={resolvedEmail || <span className="muted">—</span>}
           />
           <InfoRow
             icon={<PhoneIcon />}
             label="Phone"
-            value={visitor.phone || <span className="muted">—</span>}
+            value={resolvedPhone || <span className="muted">—</span>}
           />
           <InfoRow
             icon={<TagIcon />}
@@ -102,7 +115,7 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="5 3 19 12 5 21 5 3" />
           </svg>
-          Play from this timestamp — {formatTimestamp(visitor.timestamp)}
+          Play @ {formatTimestamp(visitor.timestamp)}
         </button>
 
         {/* Footer */}
@@ -113,14 +126,6 @@ export default function VisitorInfoModal({ visitor, isOpen, onClose, onPlay }) {
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
             </svg>
             Copy Info
-          </button>
-          <button className="btn-secondary" onClick={handlePrint}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            Print
           </button>
           <button className="btn-ghost" onClick={onClose}>
             Close

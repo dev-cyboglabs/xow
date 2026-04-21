@@ -153,3 +153,15 @@ ipcMain.handle('open-print-dialog', async () => {
     mainWindow.webContents.print({}, (success) => {});
   }
 });
+
+ipcMain.handle('open-enc-file', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Import Encrypted Visitor Data',
+    filters: [{ name: 'Encrypted Files', extensions: ['enc'] }],
+    properties: ['openFile'],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const filePath = result.filePaths[0];
+  const buffer = fs.readFileSync(filePath);
+  return { data: Array.from(buffer), fileName: path.basename(filePath) };
+});

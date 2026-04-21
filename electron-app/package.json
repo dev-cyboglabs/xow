@@ -11,7 +11,9 @@
     "build:installer": "vite build && electron-builder --win nsis",
     "preview": "vite preview"
   },
-  "dependencies": {},
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.17",
