@@ -1073,28 +1073,33 @@ const startRecording = async () => {
               console.log(`📊 Session ID: ${currentSessionIdRef.current}`);
               console.log(`📊 Chunks: ${metadata.chunks.length}, Scans: ${barcodeScansRef.current.length}`);
               
-              // Create export data
+              // Create export data with relative timestamps
+              let cumulativeTime = 0;
               const exportData = {
                 sessionId: metadata.sessionId,
                 createdAt: metadata.createdAt,
                 totalDuration: metadata.totalDuration,
                 isComplete: metadata.isComplete,
-                videoChunks: metadata.chunks.map(chunk => ({
-                  chunkIndex: chunk.chunkIndex,
-                  fileName: chunk.filePath.split('/').pop() || `chunk_${chunk.chunkIndex}.mp4`,
-                  duration: chunk.duration,
-                  startTime: chunk.startTime,
-                  endTime: chunk.endTime,
-                  fileSize: chunk.fileSize
-                })),
+                videoChunks: metadata.chunks.map(chunk => {
+                  const chunkData = {
+                    chunkIndex: chunk.chunkIndex,
+                    fileName: chunk.filePath.split('/').pop() || `chunk_${chunk.chunkIndex}.mp4`,
+                    duration: chunk.duration,
+                    startTime: cumulativeTime,
+                    endTime: cumulativeTime + chunk.duration,
+                    fileSize: chunk.fileSize
+                  };
+                  cumulativeTime += chunk.duration;
+                  return chunkData;
+                }),
                 audioFileName: metadata.audioPath ? metadata.audioPath.split('/').pop() : null,
-                barcodeScans: barcodeScansRef.current.map((scan: any) => ({
-                  barcode: scan.barcode || '',
-                  timestamp: scan.timestamp || 0,
-                  visitorName: scan.visitorName || '',
-                  company: scan.company || '',
-                  email: scan.email || '',
-                  phone: scan.phone || ''
+                barcodeScans: barcodeScansRef.current.map((scan: BarcodeData) => ({
+                  barcode: scan.barcode_data || '',
+                  timestamp: scan.video_timestamp || 0,
+                  visitorName: '',
+                  company: '',
+                  email: '',
+                  phone: ''
                 })),
                 exportedAt: new Date().toISOString(),
                 version: '1.0'

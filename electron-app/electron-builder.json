@@ -1,0 +1,39 @@
+{
+  "appId": "com.xow.videoplayer",
+  "productName": "XoW Video Player",
+  "directories": {
+    "output": "dist-electron"
+  },
+  "files": [
+    "dist/**/*",
+    "src/main/**/*",
+    "resources/**/*",
+    "node_modules/**/*",
+    "package.json"
+  ],
+  "win": {
+    "target": [
+      {
+        "target": "portable",
+        "arch": ["x64"]
+      },
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "icon": "resources/icon.ico"
+  },
+  "portable": {
+    "artifactName": "XoW-Video-Player-Portable.exe"
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "artifactName": "XoW-Video-Player-Setup.exe",
+    "shortcutName": "XoW Video Player",
+    "uninstallDisplayName": "XoW Video Player"
+  },
+  "extraResources": [],
+  "asar": true
+}
