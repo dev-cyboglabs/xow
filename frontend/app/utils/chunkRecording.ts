@@ -328,6 +328,104 @@ export async function recoverIncompleteSessions(): Promise<any[]> {
   }
 }
 
+/**
+ * Export metadata JSON file to external storage for Windows Electron app
+ * This creates a standalone JSON file that can be read by the Windows player
+ */
+export async function exportMetadataToStorage(
+  sessionId: string,
+  storageDir: string
+): Promise<string | null> {
+  try {
+    console.log(`[exportMetadataToStorage] Starting export for session: ${sessionId}`);
+    console.log(`[exportMetadataToStorage] Target directory: ${storageDir}`);
+    
+    const metadata = await getSessionMetadata(sessionId);
+    if (!metadata) {
+      console.error('[exportMetadataToStorage] ❌ No metadata found for session:', sessionId);
+      return null;
+    }
+
+    console.log(`[exportMetadataToStorage] ✓ Metadata loaded: ${metadata.chunks.length} chunks, ${metadata.barcodeScansList.length} scans`);
+
+    // Create a clean export object with relative file paths
+    const exportData = {
+      sessionId: metadata.sessionId,
+      createdAt: metadata.createdAt,
+      totalDuration: metadata.totalDuration,
+      isComplete: metadata.isComplete,
+      videoChunks: metadata.chunks.map(chunk => ({
+        chunkIndex: chunk.chunkIndex,
+        fileName: chunk.filePath.split('/').pop() || `chunk_${chunk.chunkIndex}.mp4`,
+        duration: chunk.duration,
+        startTime: chunk.startTime,
+        endTime: chunk.endTime,
+        fileSize: chunk.fileSize
+      })),
+      audioFileName: metadata.audioPath ? metadata.audioPath.split('/').pop() : null,
+      barcodeScans: metadata.barcodeScansList.map((scan: any) => ({
+        barcode: scan.barcode || '',
+        timestamp: scan.timestamp || 0,
+        visitorName: scan.visitorName || '',
+        company: scan.company || '',
+        email: scan.email || '',
+        phone: scan.phone || ''
+      })),
+      exportedAt: new Date().toISOString(),
+      version: '1.0'
+    };
+
+    console.log(`[exportMetadataToStorage] ✓ Export data prepared`);
+
+    // Save JSON file to storage directory
+    const jsonFileName = `metadata_${sessionId}.json`;
+    const jsonFilePath = `${storageDir}/${jsonFileName}`;
+    
+    console.log(`[exportMetadataToStorage] 📝 Writing JSON to: ${jsonFilePath}`);
+    
+    const jsonString = JSON.stringify(exportData, null, 2);
+    console.log(`[exportMetadataToStorage] JSON size: ${jsonString.length} characters`);
+    
+    // Write to temp file first, then copy to final location (works better with external storage)
+    const tempJsonPath = `${FileSystem.cacheDirectory}temp_metadata_${sessionId}.json`;
+    
+    try {
+      // Write to cache first (always works)
+      await FileSystem.writeAsStringAsync(
+        tempJsonPath,
+        jsonString,
+        { encoding: FileSystem.EncodingType.UTF8 }
+      );
+      console.log(`[exportMetadataToStorage] ✓ Temp file written: ${tempJsonPath}`);
+      
+      // Copy to final destination
+      await FileSystem.copyAsync({
+        from: tempJsonPath,
+        to: jsonFilePath
+      });
+      console.log(`[exportMetadataToStorage] ✓ Copied to final location: ${jsonFilePath}`);
+      
+      // Clean up temp file
+      await FileSystem.deleteAsync(tempJsonPath, { idempotent: true });
+      console.log(`[exportMetadataToStorage] ✓ Temp file cleaned up`);
+      
+    } catch (writeError: any) {
+      console.error(`[exportMetadataToStorage] ❌ File write/copy failed:`, writeError?.message);
+      throw writeError;
+    }
+
+    console.log(`[exportMetadataToStorage] ✅ JSON file written successfully!`);
+    console.log(`[exportMetadataToStorage] 📂 Full path: ${jsonFilePath}`);
+    
+    return jsonFilePath;
+  } catch (error: any) {
+    console.error('[exportMetadataToStorage] ❌ Failed to export metadata JSON:', error);
+    console.error('[exportMetadataToStorage] Error message:', error?.message);
+    console.error('[exportMetadataToStorage] Error stack:', error?.stack);
+    return null;
+  }
+}
+
 export const CHUNK_CONFIG = {
   DURATION_MS: CHUNK_DURATION_MS,
   DURATION_SECONDS: CHUNK_DURATION_MS / 1000,

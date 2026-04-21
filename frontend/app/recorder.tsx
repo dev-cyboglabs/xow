@@ -29,6 +29,7 @@ import {
   getSessionMetadata,
   markSessionComplete,
   cleanupOldSessions,
+  exportMetadataToStorage,
   CHUNK_CONFIG,
   type VideoChunk as ChunkType,
   type RecordingMetadata,
@@ -1063,6 +1064,85 @@ const startRecording = async () => {
           await markSessionComplete(currentSessionIdRef.current);
           
           console.log(`✅ Session complete: ${metadata.chunks.length} chunks, ${recordingTimeRef.current}s total`);
+          
+          // Export metadata JSON to external storage for Windows Electron app
+          if (sessionStorageDirRef.current) {
+            try {
+              console.log(`🔄 Starting JSON export...`);
+              console.log(`📁 Storage directory: ${sessionStorageDirRef.current}`);
+              console.log(`📊 Session ID: ${currentSessionIdRef.current}`);
+              console.log(`📊 Chunks: ${metadata.chunks.length}, Scans: ${barcodeScansRef.current.length}`);
+              
+              // Create export data
+              const exportData = {
+                sessionId: metadata.sessionId,
+                createdAt: metadata.createdAt,
+                totalDuration: metadata.totalDuration,
+                isComplete: metadata.isComplete,
+                videoChunks: metadata.chunks.map(chunk => ({
+                  chunkIndex: chunk.chunkIndex,
+                  fileName: chunk.filePath.split('/').pop() || `chunk_${chunk.chunkIndex}.mp4`,
+                  duration: chunk.duration,
+                  startTime: chunk.startTime,
+                  endTime: chunk.endTime,
+                  fileSize: chunk.fileSize
+                })),
+                audioFileName: metadata.audioPath ? metadata.audioPath.split('/').pop() : null,
+                barcodeScans: barcodeScansRef.current.map((scan: any) => ({
+                  barcode: scan.barcode || '',
+                  timestamp: scan.timestamp || 0,
+                  visitorName: scan.visitorName || '',
+                  company: scan.company || '',
+                  email: scan.email || '',
+                  phone: scan.phone || ''
+                })),
+                exportedAt: new Date().toISOString(),
+                version: '1.0'
+              };
+              
+              // Write to temp file first
+              const tempJsonPath = `${FileSystem.cacheDirectory}temp_metadata_${currentSessionIdRef.current}.json`;
+              const jsonString = JSON.stringify(exportData, null, 2);
+              
+              await FileSystem.writeAsStringAsync(
+                tempJsonPath,
+                jsonString,
+                { encoding: FileSystem.EncodingType.UTF8 }
+              );
+              console.log(`✓ Temp JSON created: ${tempJsonPath} (${jsonString.length} chars)`);
+              
+              // Copy to final destination using native copy (works with external storage)
+              const jsonFileName = `metadata_${currentSessionIdRef.current}.json`;
+              const jsonFinalPath = `${sessionStorageDirRef.current}/${jsonFileName}`;
+              
+              const copiedPath = await nativeCopyFile(tempJsonPath, jsonFinalPath);
+              console.log(`✅ SUCCESS! Metadata JSON saved to: ${copiedPath}`);
+              
+              // Clean up temp file
+              await FileSystem.deleteAsync(tempJsonPath, { idempotent: true });
+              
+              // Verify the file
+              try {
+                const fileInfo = await FileSystem.getInfoAsync(jsonFinalPath);
+                if (fileInfo.exists) {
+                  const sizeKB = Math.round((fileInfo.size || 0) / 1024);
+                  console.log(`✓ File verified! Size: ${sizeKB} KB`);
+                  console.log(`📂 Location: ${jsonFinalPath}`);
+                } else {
+                  console.warn(`⚠️ File not found after copy: ${jsonFinalPath}`);
+                }
+              } catch (verifyError) {
+                console.error(`❌ Error verifying file:`, verifyError);
+              }
+              
+            } catch (exportError: any) {
+              console.error('❌ Failed to export metadata JSON:', exportError);
+              console.error('Error details:', exportError?.message || exportError);
+              // Don't fail the recording save if JSON export fails
+            }
+          } else {
+            console.warn(`⚠️ sessionStorageDirRef.current is not set - cannot export JSON`);
+          }
         }
       }
 

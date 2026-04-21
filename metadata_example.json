@@ -1,0 +1,85 @@
+{
+  "sessionId": "rec_1713612345678",
+  "createdAt": "2026-04-20T09:15:45.678Z",
+  "totalDuration": 300,
+  "isComplete": true,
+  "videoChunks": [
+    {
+      "chunkIndex": 0,
+      "fileName": "chunk_rec_1713612345678_0.mp4",
+      "duration": 60,
+      "startTime": 0,
+      "endTime": 60,
+      "fileSize": 45678901
+    },
+    {
+      "chunkIndex": 1,
+      "fileName": "chunk_rec_1713612345678_1.mp4",
+      "duration": 60,
+      "startTime": 60,
+      "endTime": 120,
+      "fileSize": 46123456
+    },
+    {
+      "chunkIndex": 2,
+      "fileName": "chunk_rec_1713612345678_2.mp4",
+      "duration": 60,
+      "startTime": 120,
+      "endTime": 180,
+      "fileSize": 44987654
+    },
+    {
+      "chunkIndex": 3,
+      "fileName": "chunk_rec_1713612345678_3.mp4",
+      "duration": 60,
+      "startTime": 180,
+      "endTime": 240,
+      "fileSize": 45234567
+    },
+    {
+      "chunkIndex": 4,
+      "fileName": "chunk_rec_1713612345678_4.mp4",
+      "duration": 60,
+      "startTime": 240,
+      "endTime": 300,
+      "fileSize": 45876543
+    }
+  ],
+  "audioFileName": "audio_rec_1713612345678.m4a",
+  "barcodeScans": [
+    {
+      "barcode": "BADGE001",
+      "timestamp": 40,
+      "visitorName": "John Doe",
+      "company": "Acme Corporation",
+      "email": "john.doe@acme.com",
+      "phone": "+1-555-0123"
+    },
+    {
+      "barcode": "BADGE002",
+      "timestamp": 129,
+      "visitorName": "Jane Smith",
+      "company": "Tech Innovations Inc",
+      "email": "jane.smith@techinnovations.com",
+      "phone": "+1-555-0456"
+    },
+    {
+      "barcode": "BADGE003",
+      "timestamp": 185,
+      "visitorName": "Bob Johnson",
+      "company": "Global Solutions Ltd",
+      "email": "bob.j@globalsolutions.com",
+      "phone": "+1-555-0789"
+    },
+    {
+      "barcode": "BADGE004",
+      "timestamp": 267,
+      "visitorName": "Alice Williams",
+      "company": "Future Systems",
+      "email": "alice.w@futuresystems.com",
+      "phone": "+1-555-0321"
+    }
+  ],
+  "exportedAt": "2026-04-20T09:20:45.678Z",
+  "version": "1.0"
+}
