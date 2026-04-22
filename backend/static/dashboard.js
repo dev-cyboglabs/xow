@@ -1225,7 +1225,7 @@
                                 ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `
                                 <span class="text-xs text-emerald-600 flex items-center gap-1">
                                     <svg class="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/></svg>
-                                    WebSocket connected
+                                    Connected 
                                 </span>`}
                             </div>
                         </div>
@@ -1249,8 +1249,8 @@
                                     </div>
                                 </div>
                                 <h3 class="text-sm font-semibold text-gray-900 mb-1">Waiting for Data</h3>
-                                <p class="text-xs text-gray-500 mb-2">Admin will send encrypted contact data</p>
-                                <p class="text-xs text-gray-400">Data is sent from the Data Encryptor tool</p>
+                                <p class="text-xs text-gray-500 mb-2">Your contact list will appear here once it’s available.</p>
+                                
                             </div>` :
                             `<div class="divide-y divide-gray-100">
                                 ${importedContacts.map((contact, idx) => {
