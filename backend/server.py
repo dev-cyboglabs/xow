@@ -3387,6 +3387,11 @@ async def upload_encrypted_contacts(
         # Notify dashboard of update
         if session_id:
             notify_dashboard_update(session_id)
+        elif user_id:
+            notify_dashboard_update(user_id)
+        else:
+            # Notify all connected clients for global uploads
+            notify_dashboard_update(None)
         
         logger.info(f"[Encrypted Contacts] Uploaded {len(normalized_contacts)} contacts for session_id={session_id}, user_id={user_id}")
         

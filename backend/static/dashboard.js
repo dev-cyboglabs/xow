@@ -118,37 +118,48 @@
         });
 
 
+        async function fetchContacts() {
+            // Fetch contacts from API
+            const sp = sessionParam();
+            try {
+                const response = await fetch(`${API}/dashboard/contacts${sp}`);
+                if (!response.ok) {
+                    console.warn('[Contacts] API returned status:', response.status);
+                    return false;
+                }
+                const c = await response.json();
+                
+                console.log('[Contacts] Response:', c);
+                console.log('[Contacts] Count:', c?.contact_count, 'Array length:', c?.contacts?.length);
+                
+                if (c && c.contacts && Array.isArray(c.contacts) && c.contacts.length > 0) {
+                    importedContacts = c.contacts;
+                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
+                    console.log(`[Contacts] ✅ Loaded ${importedContacts.length} contacts`);
+                    return true;
+                } else {
+                    console.log('[Contacts] No contacts available');
+                    return false;
+                }
+            } catch(e) {
+                console.error('[Contacts] Fetch error:', e);
+                return false;
+            }
+        }
+
         async function fetchData() {
             // Fetch latest data from API without showing spinner
             const sp = sessionParam();
             try {
-                const [i, r, v, c] = await Promise.all([
+                const [i, r, v] = await Promise.all([
                     fetch(`${API}/dashboard/insights${sp}`).then(r => r.json()),
                     fetch(`${API}/dashboard/recordings${sp}`).then(r => r.json()),
-                    fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json()),
-                    fetch(`${API}/dashboard/contacts${sp}`).then(async res => {
-                        if (!res.ok) {
-                            console.warn('[Contacts] API returned status:', res.status);
-                            return {contacts: []};
-                        }
-                        return res.json();
-                    }).catch(err => {
-                        console.error('[Contacts] Fetch error:', err);
-                        return {contacts: []};
-                    })
+                    fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json())
                 ]);
                 data = { insights: i, recordings: r, visitors: v };
                 
-                // Update imported contacts from encrypted data
-                console.log('[Dashboard] Contacts response:', c);
-                console.log('[Dashboard] Contact count:', c?.contact_count, 'Array length:', c?.contacts?.length);
-                if (c && c.contacts && Array.isArray(c.contacts) && c.contacts.length > 0) {
-                    importedContacts = c.contacts;
-                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
-                    console.log(`[Dashboard] ✅ Loaded ${importedContacts.length} contacts from encrypted data`);
-                } else {
-                    console.log('[Dashboard] ⏳ No contacts available yet (response:', JSON.stringify(c), ')');
-                }
+                // Fetch contacts separately
+                await fetchContacts();
             } catch(e) {
                 console.error('[Dashboard] Failed to fetch data:', e);
             }
@@ -4570,8 +4581,11 @@
                     
                     if (message.type === 'contacts_updated' && view === 'visitors') {
                         console.log('[WebSocket] 🔄 Contacts updated, refreshing...');
-                        await fetchData();
-                        render();
+                        const updated = await fetchContacts();
+                        if (updated) {
+                            console.log('[WebSocket] Re-rendering with new contacts...');
+                            render();
+                        }
                     }
                 } catch (error) {
                     console.error('[WebSocket] Error parsing message:', error);
