@@ -1,10 +1,17 @@
 RewriteEngine On
 
+# Force HTTPS
+RewriteCond %{HTTPS} off
+RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
 # Rewrite /partner to partner.html
 RewriteRule ^partner$ partner.html [L]
 
 # Rewrite /dashboard to dashboard.html
 RewriteRule ^dashboard$ dashboard.html [L]
+
+# Rewrite /data-encryptor to data-encryptor.html
+RewriteRule ^data-encryptor$ data-encryptor.html [L]
 
 # If file or directory doesn't exist, redirect to index.html
 RewriteCond %{REQUEST_FILENAME} !-f

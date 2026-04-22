@@ -17,7 +17,6 @@ export default function VisitorInfoModal({ visitor, importedData, isOpen, onClos
   const resolvedCompany = importedData?.company     || visitor.company     || '';
   const resolvedEmail   = importedData?.email       || visitor.email       || '';
   const resolvedPhone   = importedData?.phone       || visitor.phone       || '';
-  const isEnriched = !!importedData;
 
   const hasName = resolvedName.trim() !== '';
   const displayName = hasName ? resolvedName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
@@ -39,17 +38,7 @@ export default function VisitorInfoModal({ visitor, importedData, isOpen, onClos
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
         <div className="modal-header">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span className="modal-title">Visitor Information</span>
-            {isEnriched && (
-              <span className="modal-verified-badge" title="Data enriched from imported file">
-                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-                Verified
-              </span>
-            )}
-          </div>
+          <span className="modal-title">Visitor Information</span>
           <button className="modal-close" onClick={onClose}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />

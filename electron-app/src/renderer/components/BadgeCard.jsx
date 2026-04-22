@@ -5,8 +5,6 @@ export default function BadgeCard({ visitor, importedData, onPlay, onInfo }) {
   // Merge imported data (takes priority) with scan data
   const resolvedName    = importedData?.visitorName || visitor.visitorName || '';
   const resolvedCompany = importedData?.company     || visitor.company     || '';
-  const isEnriched = !!importedData;
-
   const hasName = resolvedName.trim() !== '';
   const displayName = hasName ? resolvedName : `Visitor ID: ${visitor.barcode || 'Unknown'}`;
   const company = resolvedCompany.trim() !== '' ? resolvedCompany : 'No Company Info';
@@ -15,16 +13,7 @@ export default function BadgeCard({ visitor, importedData, onPlay, onInfo }) {
     : (visitor.barcode && visitor.barcode.length >= 2 ? visitor.barcode.slice(0, 2).toUpperCase() : '??');
 
   return (
-    <div className={`badge-card${isEnriched ? ' badge-card--enriched' : ''}`}>
-      {/* Verified dot shown when imported data matched */}
-      {isEnriched && (
-        <div className="badge-verified" title="Visitor data matched from imported file">
-          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-            <polyline points="20 6 9 17 4 12" />
-          </svg>
-        </div>
-      )}
-
+    <div className="badge-card">
       {/* Avatar */}
       <div className="badge-avatar">
         <span className="badge-initials">{initials}</span>

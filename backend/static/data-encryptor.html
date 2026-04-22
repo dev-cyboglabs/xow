@@ -59,6 +59,9 @@ function h2b(h){
 }
 async function genKey(){return b2h(crypto.getRandomValues(new Uint8Array(32)))}
 async function encryptBuf(buf,hexKey){
+  if(!crypto||!crypto.subtle){
+    throw new Error('Crypto API not available. Please ensure you are accessing this page via HTTPS (not HTTP).');
+  }
   const kb=h2b(hexKey);
   const ck=await crypto.subtle.importKey('raw',kb,{name:'AES-GCM'},false,['encrypt']);
   const iv=crypto.getRandomValues(new Uint8Array(12));
