@@ -232,13 +232,6 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
         <div className="header-left">
           <img src={xowLogo} alt="XoW" className="app-logo-img header-logo-sm" />
           <div className="header-divider" />
-          <button className="btn-back" onClick={onBack}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back to Badges
-          </button>
-          <div className="header-divider" />
           <div className="header-info">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ color: '#E54B2A' }}>
               <polygon points="5 3 19 12 5 21 5 3" />
@@ -248,7 +241,12 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
           </div>
         </div>
         <div className="header-right">
-          {/* No offline badge */}
+          <button className="btn-back" onClick={onBack}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+            Back to Badges
+          </button>
         </div>
       </header>
 

@@ -24,7 +24,45 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
 
   useEffect(() => {
     loadDrives();
-  }, []);
+    
+    // Auto-detect drive changes every 2 seconds
+    const interval = setInterval(async () => {
+      try {
+        const found = await window.xowAPI.getDrives();
+        const currentDriveCount = drives.length;
+        const newDriveCount = found?.length || 0;
+        
+        // Only update if drive count changed (insertion or removal)
+        if (currentDriveCount !== newDriveCount) {
+          console.log('Drive change detected:', currentDriveCount, '->', newDriveCount);
+          setDrives(found || []);
+          
+          // If new drive inserted and no drive currently selected
+          if (!selectedDrive && found && found.length > 0) {
+            const xowDrive = found.find((d) => d.hasXoW) || found[0];
+            onDriveChange(xowDrive);
+          }
+          
+          // If current drive was removed
+          const currentDriveStillExists = found?.some(d => d.mountpoint === selectedDrive?.mountpoint);
+          if (selectedDrive && !currentDriveStillExists) {
+            if (found && found.length > 0) {
+              const xowDrive = found.find((d) => d.hasXoW) || found[0];
+              onDriveChange(xowDrive);
+            } else {
+              onDriveChange(null);
+              setRecordings([]);
+              setError('');
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Auto-detect failed:', e);
+      }
+    }, 2000); // Check every 2 seconds
+    
+    return () => clearInterval(interval);
+  }, [drives.length, selectedDrive, onDriveChange]);
 
   useEffect(() => {
     if (selectedDrive) loadRecordings(selectedDrive.mountpoint);
@@ -106,7 +144,7 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
             onChange={handleDriveSelect}
           >
             {drives.length === 0 && (
-              <option value="">No removable drives found</option>
+              <option value="">Waiting for external storage...</option>
             )}
             {drives.map((d) => (
               <option key={d.mountpoint} value={d.mountpoint}>
@@ -114,22 +152,25 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
               </option>
             ))}
           </select>
-          <button className="btn-ghost" onClick={handleRefresh} disabled={scanning}>
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className={scanning ? 'spin' : ''}
-            >
-              <path d="M23 4v6h-6" />
-              <path d="M1 20v-6h6" />
-              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-            </svg>
-            {scanning ? 'Scanning...' : 'Refresh'}
-          </button>
+          <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+          
+              
+            <button className="btn-ghost" onClick={handleRefresh} disabled={scanning} title="Manual refresh">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={scanning ? 'spin' : ''}
+              >
+                <path d="M23 4v6h-6" />
+                <path d="M1 20v-6h6" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -137,11 +178,15 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
       <main className="main-content">
         {!selectedDrive && (
           <div className="empty-state">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5">
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <path d="M8 21h8M12 17v4" />
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
+              <path d="M20 7h-3a2 2 0 0 1-2-2V2"/>
+              <path d="M9 18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2z"/>
+              <path d="M3 7v11a2 2 0 0 0 2 2h2"/>
+              <rect x="9" y="2" width="11" height="20" rx="2"/>
             </svg>
-            <p>Insert an SD card or USB drive and click Refresh</p>
+            <p style={{fontSize: '18px', fontWeight: 600, marginTop: '20px'}}>Insert External Storage</p>
+            <p className="empty-sub">Connect a USB drive or SD card with XoW recordings</p>
+      
           </div>
         )}
 
@@ -154,37 +199,54 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
 
         {selectedDrive && !loading && error && (
           <div className="error-state">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#E54B2A" strokeWidth="1.5">
-              <circle cx="12" cy="12" r="10" />
-              <line x1="12" y1="8" x2="12" y2="12" />
-              <line x1="12" y1="16" x2="12.01" y2="16" />
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#E54B2A" strokeWidth="1.2">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/>
+              <line x1="12" y1="17" x2="12.01" y2="17"/>
             </svg>
-            <p className="error-text">{error}</p>
-            <p className="error-sub">Make sure the drive has a <code>XoW</code> folder with metadata files.</p>
+            <p className="error-text">No XoW Recordings Found</p>
+            <p className="error-sub">Please insert an external storage device with XoW recordings</p>
+            <p className="error-sub" style={{marginTop: '8px', fontSize: '12px', opacity: 0.7}}>Make sure the drive contains a <code>XoW</code> folder with <code>metadata_*.json</code> files</p>
           </div>
         )}
 
         {selectedDrive && !loading && !error && recordings.length === 0 && (
           <div className="empty-state">
-            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth="1.5">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4M12 16h.01" />
+            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
             </svg>
-            <p>No recordings found in {selectedDrive.mountpoint}XoW</p>
-            <p className="empty-sub">Transfer recording files from your Android device first.</p>
+            <p style={{fontSize: '18px', fontWeight: 600, marginTop: '20px'}}>No Recordings Found</p>
+            <p className="empty-sub">Transfer recording files from your Android device to:</p>
+            <p className="empty-sub" style={{marginTop: '8px'}}><code style={{fontSize: '13px'}}>{selectedDrive.mountpoint}XoW/</code></p>
           </div>
         )}
 
         {selectedDrive && !loading && recordings.length > 0 && (
-          <div className="recordings-section">
-            <div className="section-title">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <path d="M8 21h8M12 17v4" />
-              </svg>
-              {recordings.length} Recording{recordings.length !== 1 ? 's' : ''} on {selectedDrive.description}
+          <div style={{padding: '0 20px 20px'}}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '20px'
+            }}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--play)" strokeWidth="2">
+                  <polygon points="23 7 16 12 23 17 23 7" />
+                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+                </svg>
+                <h2 style={{fontSize: '16px', fontWeight: 600, color: 'var(--text)'}}>
+                  {recordings.length} Recording{recordings.length !== 1 ? 's' : ''}
+                </h2>
+              </div>
+              <span style={{fontSize: '12px', color: 'var(--text-sub)'}}>{selectedDrive.description}</span>
             </div>
-            <div className="recordings-list">
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gap: '16px'
+            }}>
               {recordings.map((rec) => (
                 <RecordingItem
                   key={rec.sessionId}
@@ -206,48 +268,115 @@ function RecordingItem({ recording, onOpen }) {
   const visitorCount = recording.barcodeScans?.length || 0;
 
   return (
-    <div className="recording-item">
-      <div className="rec-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#E54B2A" strokeWidth="1.5">
-          <polygon points="23 7 16 12 23 17 23 7" />
-          <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-        </svg>
-      </div>
-      <div className="rec-details">
-        <div className="rec-datetime">{dt.date} &mdash; {dt.time}</div>
-        <div className="rec-meta">
-          <span className="rec-badge duration">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-            </svg>
-            {duration}
-          </span>
-          <span className="rec-badge visitors">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            {visitorCount} visitor{visitorCount !== 1 ? 's' : ''}
-          </span>
-          {recording.isComplete && (
-            <span className="rec-badge complete">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-              Complete
-            </span>
-          )}
+    <div style={{
+      background: 'var(--surface)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--radius)',
+      padding: '20px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '16px',
+      transition: 'all 0.2s',
+      cursor: 'pointer',
+      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
+    }}
+    onMouseEnter={(e) => {
+      e.currentTarget.style.transform = 'translateY(-2px)';
+      e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)';
+      e.currentTarget.style.borderColor = 'var(--border-light)';
+    }}
+    onMouseLeave={(e) => {
+      e.currentTarget.style.transform = 'translateY(0)';
+      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+      e.currentTarget.style.borderColor = 'var(--border)';
+    }}>
+      {/* Header with icon and date */}
+      <div style={{display: 'flex', alignItems: 'flex-start', gap: '12px'}}>
+        <div style={{
+          width: '48px',
+          height: '48px',
+          borderRadius: '12px',
+          background: 'linear-gradient(135deg, rgba(229,75,42,0.1), rgba(229,75,42,0.05))',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--play)" strokeWidth="2">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+        </div>
+        <div style={{flex: 1, minWidth: 0}}>
+          <div style={{fontSize: '15px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px'}}>{dt.date}</div>
+          <div style={{fontSize: '13px', color: 'var(--text-muted)'}}>{dt.time}</div>
         </div>
       </div>
-      <div className="rec-actions">
-        <button className="btn-primary" onClick={onOpen}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M1 3h22v18H1zM1 9h22" />
+
+      {/* Stats */}
+      <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-muted)',
+          fontSize: '12px',
+          fontWeight: 500,
+          padding: '5px 10px',
+          borderRadius: '6px'
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
           </svg>
-          Open Recording
-        </button>
+          {duration}
+        </span>
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '5px',
+          background: 'rgba(229,75,42,0.08)',
+          color: '#C93D1E',
+          fontSize: '12px',
+          fontWeight: 600,
+          padding: '5px 10px',
+          borderRadius: '6px'
+        }}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+            <circle cx="9" cy="7" r="4" />
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+          </svg>
+          {visitorCount} visitor{visitorCount !== 1 ? 's' : ''}
+        </span>
+        {recording.isComplete && (
+          <span style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '5px',
+            background: 'rgba(22,163,74,0.1)',
+            color: '#16a34a',
+            fontSize: '12px',
+            fontWeight: 600,
+            padding: '5px 10px',
+            borderRadius: '6px'
+          }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+            Complete
+          </span>
+        )}
       </div>
+
+      {/* Action button */}
+      <button className="btn-primary" onClick={onOpen} style={{width: '100%', justifyContent: 'center'}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polygon points="5 3 19 12 5 21 5 3" />
+        </svg>
+        Open Recording
+      </button>
     </div>
   );
 }

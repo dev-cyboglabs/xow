@@ -54,8 +54,9 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  height: 56px;
-  min-height: 56px;
+  height: 68px;
+  min-height: 68px;
+  margin-top: 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -66,17 +67,17 @@ body {
 .header-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
 .app-logo { display: flex; align-items: center; gap: 8px; }
-.app-logo-img { height: 28px; width: auto; display: block; }
-.header-logo-sm { height: 22px; flex-shrink: 0; }
+.app-logo-img { height: 32px; width: auto; display: block; }
+.header-logo-sm { height: 26px; flex-shrink: 0; }
 
-.header-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+.header-divider { width: 1px; height: 28px; background: var(--border); flex-shrink: 0; }
 
 .header-info {
   display: flex;
   align-items: center;
   gap: 8px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -220,13 +221,14 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
   align-items: center;
   justify-content: center;
   gap: 12px;
-  padding: 60px 20px;
+  padding: 80px 20px;
   text-align: center;
   color: var(--text-muted);
+  min-height: 400px;
 }
-.empty-sub { color: var(--text-sub); font-size: 13px; max-width: 360px; }
-.error-text { color: var(--play); font-weight: 500; }
-.error-sub { color: var(--text-sub); font-size: 13px; }
+.empty-sub { color: var(--text-sub); font-size: 13px; max-width: 420px; line-height: 1.5; }
+.error-text { color: var(--play); font-weight: 600; font-size: 18px; margin-top: 8px; }
+.error-sub { color: var(--text-sub); font-size: 13px; max-width: 420px; line-height: 1.5; }
 
 /* ── Recordings List ──────────────────────────────────────── */
 .recordings-section { max-width: 900px; margin: 0 auto; }
@@ -278,7 +280,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
 .rec-actions { flex-shrink: 0; }
 
 /* ── Badge Grid ───────────────────────────────────────────── */
-.badge-main { padding: 20px; }
+.badge-main { padding: 60px 20px 20px; }
 
 .badge-grid {
   display: grid;
@@ -668,6 +670,11 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin 1s linear infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 
 /* ── Misc ─────────────────────────────────────────────────── */
 .mt-4 { margin-top: 16px; }
