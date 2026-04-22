@@ -2075,11 +2075,12 @@ async def delete_all_data():
         await db.visitor_badges.delete_many({})
         await db.devices.delete_many({})
         await db.pair_codes.delete_many({})
+        await db.imported_contacts.delete_many({})
         
-        # Note: Wishlist and imported contacts are stored in localStorage on frontend
-        # They will be cleared by the frontend after successful deletion
+        # Note: Wishlist is stored in localStorage on frontend
+        # It will be cleared by the frontend after successful deletion
         
-        logger.info("All data deleted successfully including devices")
+        logger.info("All data deleted successfully including devices and contacts")
         return {"success": True, "message": "All data has been permanently deleted"}
     except Exception as e:
         logger.error(f"Delete all data error: {e}")

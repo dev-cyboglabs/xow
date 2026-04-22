@@ -186,8 +186,8 @@
             } else if (v === 'visitors') {
                 stopDevicePolling();
                 stopSessionsLongPoll();
+                stopContactsPolling();
                 render();
-                startContactsPolling();
             } else {
                 stopDevicePolling();
                 stopSessionsLongPoll();
@@ -1211,8 +1211,8 @@
                                 ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2">
-                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `<span class="text-xs text-gray-400">Auto-checking...</span>`}
-                                <button onclick="pollContacts()" class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Check for new contacts">
+                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `<span class="text-xs text-gray-400">Waiting for data</span>`}
+                                <button onclick="pollContacts()" class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Refresh contacts">
                                     <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                                 </button>
                             </div>
@@ -1513,19 +1513,15 @@
                     
                     // Only re-render if count changed
                     if (oldCount !== importedContacts.length) {
-                        console.log(`[Contacts Poll] Updated: ${importedContacts.length} contacts`);
+                        console.log(`[Contacts] Manual refresh: ${importedContacts.length} contacts`);
                         render();
                     }
+                } else {
+                    console.log('[Contacts] No contacts available');
                 }
             } catch (e) {
-                console.error('[Contacts Poll] Error:', e);
+                console.error('[Contacts] Fetch error:', e);
             }
-        }
-
-        function startContactsPolling() {
-            stopContactsPolling();
-            pollContacts(); // Immediate fetch
-            contactsPollInterval = setInterval(pollContacts, 5000); // Poll every 5 seconds
         }
 
         function stopContactsPolling() {
@@ -2210,6 +2206,9 @@
                 // Clear localStorage
                 localStorage.setItem('xow_wishlist', JSON.stringify([]));
                 localStorage.setItem('xow_contacts', JSON.stringify([]));
+                
+                // Stop contacts polling to prevent re-fetch
+                stopContactsPolling();
                 
                 // Update badge
                 updateWishlistBadge();
