@@ -418,6 +418,36 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
 }
 .modal-close:hover { background: var(--surface-2); color: var(--text); }
 
+/* ── Modal video thumbnail ────────────────────────────────── */
+.modal-thumb {
+  width: 128px;
+  height: 72px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.modal-thumb-placeholder {
+  width: 128px;
+  height: 72px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-sub);
+  flex-shrink: 0;
+}
+.modal-thumb-placeholder.loading {
+  animation: thumbPulse 1.4s ease-in-out infinite;
+}
+@keyframes thumbPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}
+
 .modal-avatar-row {
   display: flex;
   align-items: center;

@@ -1,7 +1,77 @@
-import React, { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { formatTimestamp } from '../utils/formatTime';
 
-export default function VisitorInfoModal({ visitor, importedData, isOpen, onClose, onPlay }) {
+/* ── Video thumbnail captured at visitor's timestamp ─────── */
+function VideoThumbnail({ recording, timestamp }) {
+  const [src, setSrc] = useState(null);
+  const [status, setStatus] = useState('loading');
+
+  useEffect(() => {
+    if (!recording?.videoChunks?.length) { setStatus('error'); return; }
+
+    let cancelled = false;
+    let vid = null;
+
+    async function capture() {
+      try {
+        const chunkObj = recording.videoChunks[0];
+        // videoChunks entries are objects with a .fileName property
+        const chunkName = typeof chunkObj === 'string' ? chunkObj : chunkObj?.fileName;
+        if (!chunkName) { setStatus('error'); return; }
+
+        const filePath = await window.xowAPI.getVideoPath(
+          recording.drivePath, chunkName, recording.metaDir
+        );
+        if (!filePath || cancelled) { setStatus('error'); return; }
+
+        const url = window.xowAPI.filePathToUrl(filePath);
+        vid = document.createElement('video');
+        vid.muted = true;
+        vid.preload = 'metadata';
+        vid.src = url;
+
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('timeout')), 6000);
+          vid.onloadedmetadata = () => {
+            const seekTo = Math.max(0, Math.min(timestamp, vid.duration - 0.1));
+            vid.currentTime = seekTo;
+          };
+          vid.onseeked = () => { clearTimeout(t); resolve(); };
+          vid.onerror  = () => { clearTimeout(t); reject(new Error('load error')); };
+        });
+
+        if (cancelled) return;
+        const canvas = document.createElement('canvas');
+        canvas.width  = 320;
+        canvas.height = 180;
+        canvas.getContext('2d').drawImage(vid, 0, 0, 320, 180);
+        if (!cancelled) { setSrc(canvas.toDataURL('image/jpeg', 0.85)); setStatus('ready'); }
+      } catch {
+        if (!cancelled) setStatus('error');
+      } finally {
+        if (vid) { vid.src = ''; }
+      }
+    }
+
+    capture();
+    return () => { cancelled = true; if (vid) vid.src = ''; };
+  }, [recording, timestamp]);
+
+  if (status === 'ready' && src) {
+    return <img src={src} className="modal-thumb" alt="Video frame" />;
+  }
+
+  return (
+    <div className={`modal-thumb-placeholder${status === 'loading' ? ' loading' : ''}`}>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+        <polygon points="23 7 16 12 23 17 23 7" />
+        <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+      </svg>
+    </div>
+  );
+}
+
+export default function VisitorInfoModal({ visitor, importedData, recording, isOpen, onClose, onPlay }) {
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
@@ -47,15 +117,9 @@ export default function VisitorInfoModal({ visitor, importedData, isOpen, onClos
           </button>
         </div>
 
-        {/* Avatar + Name */}
+        {/* Video thumbnail + Name */}
         <div className="modal-avatar-row">
-          <div className="modal-avatar">
-            <span>
-              {hasName && resolvedName.length >= 2
-                ? resolvedName.slice(0, 2).toUpperCase()
-                : (visitor.barcode && visitor.barcode.length >= 2 ? visitor.barcode.slice(0, 2).toUpperCase() : '??')}
-            </span>
-          </div>
+          <VideoThumbnail recording={recording} timestamp={visitor.timestamp} />
           <div>
             <div className="modal-visitor-name">{displayName}</div>
             {resolvedCompany.trim() !== '' && <div className="modal-visitor-company">{resolvedCompany}</div>}

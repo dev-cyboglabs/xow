@@ -3,8 +3,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('xowAPI', {
   getDrives: () => ipcRenderer.invoke('get-drives'),
   getRecordings: (drivePath) => ipcRenderer.invoke('get-recordings', drivePath),
-  getVideoPath: (drivePath, fileName) =>
-    ipcRenderer.invoke('get-video-path', drivePath, fileName),
+  getVideoPath: (drivePath, fileName, metaDir) =>
+    ipcRenderer.invoke('get-video-path', drivePath, fileName, metaDir),
   getAudioPath: (drivePath, fileName) =>
     ipcRenderer.invoke('get-audio-path', drivePath, fileName),
   saveCsv: (csvContent, defaultName) =>

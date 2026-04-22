@@ -213,6 +213,7 @@ export default function BadgeGrid({ recording, drive, onBack, onPlay, visitorDat
         <VisitorInfoModal
           visitor={infoVisitor}
           importedData={(visitorDataMap || {})[infoVisitor.barcode] || null}
+          recording={recording}
           isOpen={!!infoVisitor}
           onClose={() => setInfoVisitor(null)}
           onPlay={(ts) => {
