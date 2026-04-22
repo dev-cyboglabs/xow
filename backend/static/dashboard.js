@@ -78,8 +78,8 @@
         let currentRecordingId = null;
         let devicesData = { devices: [], count: 0 };
         let devicePollInterval = null;
-        let contactsPollInterval = null;
         let sessionsLongPollActive = false;
+        let visitorsLongPollActive = false;
         let currentDuration = 0;
         let timeUpdateHandler = null;
         let speakerSegmentsFlat = [];
@@ -186,12 +186,12 @@
             } else if (v === 'visitors') {
                 stopDevicePolling();
                 stopSessionsLongPoll();
-                stopContactsPolling();
                 render();
+                startVisitorsLongPoll();
             } else {
                 stopDevicePolling();
                 stopSessionsLongPoll();
-                stopContactsPolling();
+                stopVisitorsLongPoll();
                 render();
             }
         }
@@ -1211,10 +1211,11 @@
                                 ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2">
-                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `<span class="text-xs text-gray-400">Waiting for data</span>`}
-                                <button onclick="pollContacts()" class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Refresh contacts">
-                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                                </button>
+                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `
+                                <span class="text-xs text-gray-400 flex items-center gap-1">
+                                    <svg class="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/></svg>
+                                    Real-time sync active
+                                </span>`}
                             </div>
                         </div>
                         
@@ -1500,36 +1501,6 @@
             }
         }
 
-        async function pollContacts() {
-            const sp = sessionParam();
-            try {
-                const response = await fetch(`${API}/dashboard/contacts${sp}`);
-                const contactData = await response.json();
-                
-                if (contactData && contactData.contacts && contactData.contacts.length > 0) {
-                    const oldCount = importedContacts.length;
-                    importedContacts = contactData.contacts;
-                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
-                    
-                    // Only re-render if count changed
-                    if (oldCount !== importedContacts.length) {
-                        console.log(`[Contacts] Manual refresh: ${importedContacts.length} contacts`);
-                        render();
-                    }
-                } else {
-                    console.log('[Contacts] No contacts available');
-                }
-            } catch (e) {
-                console.error('[Contacts] Fetch error:', e);
-            }
-        }
-
-        function stopContactsPolling() {
-            if (contactsPollInterval) {
-                clearInterval(contactsPollInterval);
-                contactsPollInterval = null;
-            }
-        }
 
         function renderDevices() {
             return `<div class="fade">
@@ -2206,9 +2177,6 @@
                 // Clear localStorage
                 localStorage.setItem('xow_wishlist', JSON.stringify([]));
                 localStorage.setItem('xow_contacts', JSON.stringify([]));
-                
-                // Stop contacts polling to prevent re-fetch
-                stopContactsPolling();
                 
                 // Update badge
                 updateWishlistBadge();
@@ -4565,10 +4533,43 @@
             }
         }
 
+        async function startVisitorsLongPoll() {
+            if (visitorsLongPollActive) return;
+            visitorsLongPollActive = true;
+            console.log('[Real-time] Starting long-poll for visitors/contacts updates...');
+            
+            while (visitorsLongPollActive && view === 'visitors') {
+                try {
+                    const sp = sessionParam();
+                    console.log('[Real-time] Waiting for contacts data changes...');
+                    const response = await fetch(`${API}/dashboard/wait-for-update${sp}&timeout=30`);
+                    const result = await response.json();
+                    
+                    if (result.updated && view === 'visitors') {
+                        console.log('[Real-time] Contacts update detected, refreshing...');
+                        await fetchData();
+                        render();
+                    }
+                } catch (error) {
+                    console.error('[Real-time] Visitors long-poll error:', error);
+                    // Wait a bit before retrying on error
+                    await new Promise(resolve => setTimeout(resolve, 5000));
+                }
+            }
+            console.log('[Real-time] Visitors long-poll stopped');
+        }
+
+        function stopVisitorsLongPoll() {
+            if (visitorsLongPollActive) {
+                console.log('[Real-time] Stopping visitors long-poll');
+                visitorsLongPollActive = false;
+            }
+        }
+
         window.addEventListener('beforeunload', () => {
             stopDevicePolling();
             stopSessionsLongPoll();
-            stopContactsPolling();
+            stopVisitorsLongPoll();
         });
 
         // Keyboard shortcut to close modals
