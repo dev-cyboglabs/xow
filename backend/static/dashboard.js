@@ -112,55 +112,10 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
-            const session = getSession();
-            const legacyUser = (() => { try { return JSON.parse(localStorage.getItem('xow_user') || 'null'); } catch { return null; } })();
-            if (!session && !legacyUser) {
-                showPairOverlay();
-            } else {
-                setView('sessions');
-                refresh();
-            }
+            setView('sessions');
+            refresh();
         });
 
-        // ── Pairing overlay ──────────────────────────────────────────
-        function showPairOverlay() {
-            const el = document.getElementById('pair-overlay');
-            el.classList.remove('hidden');
-            el.classList.add('flex');
-        }
-        function hidePairOverlay() {
-            const el = document.getElementById('pair-overlay');
-            el.classList.add('hidden');
-            el.classList.remove('flex');
-        }
-        async function submitPairCode() {
-            const code = document.getElementById('pair-code-input').value.trim();
-            if (code.length !== 6) { alert('Please enter the 6-digit code'); return; }
-            const session = getSession();
-            const url = session
-                ? `${API}/dashboard/pair?pairing_code=${code}&session_id=${encodeURIComponent(session.session_id)}`
-                : `${API}/dashboard/pair?pairing_code=${code}`;
-            try {
-                const res = await fetch(url, { method: 'POST' });
-                const result = await res.json();
-                if (!res.ok) { alert(result.detail || 'Pairing failed'); return; }
-                const existing = getSession();
-                const newDeviceIds = existing ? [...new Set([...existing.device_ids, result.device_id])] : [result.device_id];
-                saveSession({ session_id: result.session_id, device_ids: newDeviceIds });
-                document.getElementById('pair-content').innerHTML = `
-                    <div class="text-center">
-                        <div class="w-16 h-16 rounded-2xl bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-                            <svg class="w-8 h-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
-                        </div>
-                        <h3 class="font-bold text-gray-900 text-xl mb-2">Connected!</h3>
-                        <p class="text-gray-500 mb-6">${result.device_name} has been linked to your dashboard.</p>
-                        <button onclick="hidePairOverlay(); devicesData={devices:[],count:0}; refresh(); setView('overview');"
-                            class="w-full py-3 bg-gray-100 hover:bg-gray-200 rounded-xl font-medium text-gray-700 transition-colors">
-                            Open Dashboard
-                        </button>
-                    </div>`;
-            } catch(e) { console.error(e); alert('Connection failed. Please try again.'); }
-        }
 
         async function fetchData() {
             // Fetch latest data from API without showing spinner

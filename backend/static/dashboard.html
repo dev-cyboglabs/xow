@@ -300,28 +300,6 @@
         </div>
     </div>
 
-    <!-- Pairing overlay (shown when no session exists) -->
-    <div id="pair-overlay" class="fixed inset-0 bg-slate-900/95 backdrop-blur-sm hidden items-center justify-center z-50">
-        <div class="bg-white rounded-2xl w-full max-w-md mx-4 shadow-2xl overflow-hidden">
-            <div class="p-8 text-center">
-                <div class="w-20 h-20 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mx-auto mb-6 shadow-lg shadow-orange-200">
-                    <span class="text-white font-bold text-3xl">X</span>
-                </div>
-                <h2 class="text-2xl font-bold text-gray-900 mb-2">Welcome to XoW</h2>
-                <p class="text-gray-500 mb-8">Enter the pairing code shown in your mobile app to get started</p>
-                <div id="pair-content">
-                    <input type="text" id="pair-code-input" maxlength="6" pattern="[0-9]{6}" placeholder="000000"
-                        class="w-full px-4 py-4 text-center text-3xl font-mono tracking-[0.6em] border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none mb-4"
-                        oninput="this.value=this.value.replace(/\D/g,'')">
-                    <button onclick="submitPairCode()" class="w-full py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold shadow-lg shadow-orange-200 hover:shadow-xl transition-all text-lg">
-                        Connect Device
-                    </button>
-                    <p class="text-xs text-gray-400 mt-4">The code refreshes every 5 minutes in the mobile app</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <script src="/dashboard.js"></script>
 
     <!-- Clip Popup Modal -->
