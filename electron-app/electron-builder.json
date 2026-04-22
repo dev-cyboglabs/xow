@@ -12,46 +12,37 @@
     "package.json"
   ],
   "mac": {
-    "target": [
-      {
-        "target": "dmg",
-        "arch": ["x64", "arm64"]
-      },
-      {
-        "target": "zip",
-        "arch": ["x64", "arm64"]
-      }
-    ],
+    "target": {
+      "target": "dmg",
+      "arch": "universal"
+    },
     "icon": "resources/icon.icns",
     "category": "public.app-category.productivity"
   },
   "dmg": {
-    "artifactName": "XoW-Video-Player-${arch}.dmg",
-    "title": "XoW Video Player",
-    "icon": "resources/icon.icns"
+    "artifactName": "XoW-Video-Player-macOS.dmg",
+    "title": "XoW Video Player"
   },
   "win": {
-    "target": [
-      {
-        "target": "portable",
-        "arch": ["x64"]
-      },
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
-    ],
+    "target": {
+      "target": "portable",
+      "arch": "x64"
+    },
     "icon": "resources/icon.ico"
   },
   "portable": {
-    "artifactName": "XoW-Video-Player-Portable.exe"
+    "artifactName": "XoW-Video-Player-Windows.exe"
   },
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "artifactName": "XoW-Video-Player-Setup.exe",
-    "shortcutName": "XoW Video Player",
-    "uninstallDisplayName": "XoW Video Player"
+  "linux": {
+    "target": {
+      "target": "AppImage",
+      "arch": "x64"
+    },
+    "icon": "resources/icon.png",
+    "category": "Utility"
+  },
+  "appImage": {
+    "artifactName": "XoW-Video-Player-Linux.AppImage"
   },
   "extraResources": [],
   "asar": true

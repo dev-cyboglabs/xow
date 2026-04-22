@@ -8,6 +8,42 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveToast, setSaveToast] = useState(null);
+
+  // Auto-dismiss save toast
+  useEffect(() => {
+    if (!saveToast) return;
+    const t = setTimeout(() => setSaveToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [saveToast]);
+
+  async function showLocalPath() {
+    const localPath = await window.xowAPI.getLocalPath();
+    alert(`Local storage path:\n${localPath}`);
+  }
+
+  async function handleImportToLocal() {
+    if (!selectedDrive || selectedDrive.isLocal) return;
+    setSaving(true);
+    try {
+      const result = await window.xowAPI.importToLocal(selectedDrive.mountpoint);
+      if (!result.success) {
+        setSaveToast({ type: 'error', msg: result.error || 'Import failed.' });
+        return;
+      }
+      setSaveToast({ type: 'success', msg: `Saved locally! ${result.copiedFiles} files copied. Drive can now be unplugged.` });
+      // Refresh drives so Local Storage entry appears
+      const found = await window.xowAPI.getDrives();
+      setDrives(found || []);
+      const localEntry = found?.find(d => d.isLocal);
+      if (localEntry) onDriveChange(localEntry);
+    } catch (e) {
+      setSaveToast({ type: 'error', msg: 'Import failed: ' + e.message });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const loadDrives = useCallback(async () => {
     try {
@@ -153,8 +189,37 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
             ))}
           </select>
           <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-          
-              
+            {selectedDrive && !selectedDrive.isLocal && (
+              <button
+                className="btn-import"
+                onClick={handleImportToLocal}
+                disabled={saving}
+                title="Save recordings locally for offline use"
+              >
+                {saving ? (
+                  <>
+                    <svg className="spin-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Save Locally
+                  </>
+                )}
+              </button>
+            )}
+            <button className="btn-ghost" onClick={showLocalPath} title="Show local storage path">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+            </button>
             <button className="btn-ghost" onClick={handleRefresh} disabled={scanning} title="Manual refresh">
               <svg
                 width="16"
@@ -173,6 +238,32 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
           </div>
         </div>
       </div>
+
+      {/* Save toast */}
+      {saveToast && (
+        <div className={`toast toast-${saveToast.type}`}>
+          <span className="toast-icon">
+            {saveToast.type === 'success' && (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            )}
+            {saveToast.type === 'error' && (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            )}
+          </span>
+          <span className="toast-msg">{saveToast.msg}</span>
+          <button className="toast-close" onClick={() => setSaveToast(null)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Main Content */}
       <main className="main-content">

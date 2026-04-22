@@ -7,11 +7,8 @@
   "scripts": {
     "start": "electron .",
     "dev": "vite",
-    "build": "vite build && electron-builder",
-    "build:mac": "vite build && electron-builder --mac",
-    "build:win": "vite build && electron-builder --win",
-    "build:linux": "vite build && electron-builder --linux",
-    "build:all": "vite build && electron-builder -mwl",
+    "build": "vite build && electron-builder --win portable",
+    "build:installer": "vite build && electron-builder --win nsis",
     "preview": "vite preview"
   },
   "dependencies": {

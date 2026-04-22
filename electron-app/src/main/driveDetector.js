@@ -31,12 +31,27 @@ function hasMetadataFiles(dirPath, maxDepth = 5, currentDepth = 0) {
   return false;
 }
 
-async function getRemovableDrives() {
+async function getRemovableDrives(localStoragePath) {
+  let drives = [];
   if (process.platform === 'win32') {
-    return getWindowsDrives();
+    drives = await getWindowsDrives();
+  } else {
+    drives = await getMacDrives();
   }
-  // macOS/Linux fallback for development
-  return getMacDrives();
+
+  // Append local storage entry if it has XoW data
+  if (localStoragePath && hasMetadataFiles(localStoragePath)) {
+    drives.push({
+      mountpoint: localStoragePath,
+      label: 'Local Storage',
+      description: 'Local Storage (Saved)',
+      hasXoW: true,
+      isRemovable: false,
+      isLocal: true,
+    });
+  }
+
+  return drives;
 }
 
 function getWindowsDrives() {

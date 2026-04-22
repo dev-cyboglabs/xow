@@ -72,6 +72,8 @@ function VideoThumbnail({ recording, timestamp }) {
 }
 
 export default function VisitorInfoModal({ visitor, importedData, recording, isOpen, onClose, onPlay }) {
+  const [copied, setCopied] = useState(false);
+
   useEffect(() => {
     function onKey(e) {
       if (e.key === 'Escape') onClose();
@@ -79,6 +81,13 @@ export default function VisitorInfoModal({ visitor, importedData, recording, isO
     if (isOpen) window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, onClose]);
+
+  useEffect(() => {
+    if (copied) {
+      const timer = setTimeout(() => setCopied(false), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [copied]);
 
   if (!isOpen || !visitor) return null;
 
@@ -100,7 +109,9 @@ export default function VisitorInfoModal({ visitor, importedData, recording, isO
       `Badge ID: ${visitor.barcode}`,
       `Scanned: ${formatTimestamp(visitor.timestamp)} (${visitor.timestamp}s)`,
     ].join('\n');
-    navigator.clipboard.writeText(text).catch(() => {});
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+    }).catch(() => {});
   }
 
   return (
@@ -173,12 +184,23 @@ export default function VisitorInfoModal({ visitor, importedData, recording, isO
 
         {/* Footer */}
         <div className="modal-footer">
-          <button className="btn-secondary" onClick={copyInfo}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Copy Info
+          <button className={`btn-secondary${copied ? ' btn-success' : ''}`} onClick={copyInfo}>
+            {copied ? (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Copied!
+              </>
+            ) : (
+              <>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+                Copy Info
+              </>
+            )}
           </button>
           <button className="btn-ghost" onClick={onClose}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

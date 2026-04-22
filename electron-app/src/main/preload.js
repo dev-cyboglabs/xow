@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('xowAPI', {
     ipcRenderer.invoke('save-csv', csvContent, defaultName),
   openPrintDialog: () => ipcRenderer.invoke('open-print-dialog'),
   openEncFile: () => ipcRenderer.invoke('open-enc-file'),
+  importToLocal: (drivePath) => ipcRenderer.invoke('import-to-local', drivePath),
+  getLocalPath: () => ipcRenderer.invoke('get-local-path'),
   // Utility: convert a local file path to a file:// URL the renderer can use
   filePathToUrl: (filePath) => {
     if (!filePath) return null;

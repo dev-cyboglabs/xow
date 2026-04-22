@@ -75,4 +75,4 @@ async function getRecordings(drivePath) {
   return { error: null, recordings };
 }
 
-module.exports = { getRecordings };
+module.exports = { getRecordings, findMetadataFiles };

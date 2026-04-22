@@ -64,7 +64,8 @@ app.on('window-all-closed', () => {
 // --- IPC Handlers ---
 
 ipcMain.handle('get-drives', async () => {
-  return await driveDetector.getRemovableDrives();
+  const localXoWPath = path.join(app.getPath('userData'), 'XoW');
+  return await driveDetector.getRemovableDrives(localXoWPath);
 });
 
 ipcMain.handle('get-recordings', async (event, drivePath) => {
@@ -152,6 +153,80 @@ ipcMain.handle('open-print-dialog', async () => {
   if (mainWindow) {
     mainWindow.webContents.print({}, (success) => {});
   }
+});
+
+ipcMain.handle('get-local-path', async () => {
+  return path.join(app.getPath('userData'), 'XoW');
+});
+
+ipcMain.handle('import-to-local', async (event, drivePath) => {
+  const localXoWPath = path.join(app.getPath('userData'), 'XoW');
+  const localVideosPath = path.join(localXoWPath, 'Videos');
+  const localAudioPath = path.join(localXoWPath, 'Audio');
+
+  fs.mkdirSync(localVideosPath, { recursive: true });
+  fs.mkdirSync(localAudioPath, { recursive: true });
+
+  const metaFiles = fileReader.findMetadataFiles(drivePath);
+  if (metaFiles.length === 0) {
+    return { success: false, error: 'No recordings found on this drive.' };
+  }
+
+  let copiedFiles = 0;
+  let errors = 0;
+
+  for (const metaPath of metaFiles) {
+    try {
+      const raw = fs.readFileSync(metaPath, 'utf8');
+      const data = JSON.parse(raw);
+      const metaDir = path.dirname(metaPath);
+      const metaFileName = path.basename(metaPath);
+
+      // Copy metadata JSON
+      await fs.promises.copyFile(metaPath, path.join(localXoWPath, metaFileName));
+      copiedFiles++;
+
+      // Copy video chunks
+      for (const chunk of (data.videoChunks || [])) {
+        const chunkName = typeof chunk === 'string' ? chunk : chunk?.fileName;
+        if (!chunkName) continue;
+        const searchPaths = [
+          path.join(metaDir, 'Videos', chunkName),
+          path.join(metaDir, chunkName),
+          path.join(path.dirname(metaDir), 'Videos', chunkName),
+        ];
+        for (const sp of searchPaths) {
+          if (fs.existsSync(sp)) {
+            await fs.promises.copyFile(sp, path.join(localVideosPath, chunkName));
+            copiedFiles++;
+            break;
+          }
+        }
+      }
+
+      // Copy audio file
+      const audioFile = data.audioFileName || data.audioFile;
+      if (audioFile) {
+        const searchPaths = [
+          path.join(metaDir, 'Audio', audioFile),
+          path.join(metaDir, audioFile),
+          path.join(path.dirname(metaDir), 'Audio', audioFile),
+        ];
+        for (const sp of searchPaths) {
+          if (fs.existsSync(sp)) {
+            await fs.promises.copyFile(sp, path.join(localAudioPath, audioFile));
+            copiedFiles++;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      errors++;
+      console.error('Import error:', e.message);
+    }
+  }
+
+  return { success: true, copiedFiles, errors, localPath: localXoWPath };
 });
 
 ipcMain.handle('open-enc-file', async () => {
