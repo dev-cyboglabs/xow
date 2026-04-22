@@ -79,7 +79,7 @@
         let devicesData = { devices: [], count: 0 };
         let devicePollInterval = null;
         let sessionsLongPollActive = false;
-        let visitorsLongPollActive = false;
+        let visitorsWebSocket = null;
         let currentDuration = 0;
         let timeUpdateHandler = null;
         let speakerSegmentsFlat = [];
@@ -187,11 +187,11 @@
                 stopDevicePolling();
                 stopSessionsLongPoll();
                 render();
-                startVisitorsLongPoll();
+                connectVisitorsWebSocket();
             } else {
                 stopDevicePolling();
                 stopSessionsLongPoll();
-                stopVisitorsLongPoll();
+                disconnectVisitorsWebSocket();
                 render();
             }
         }
@@ -1212,9 +1212,9 @@
                             </div>
                             <div class="flex items-center gap-2">
                                 ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `
-                                <span class="text-xs text-gray-400 flex items-center gap-1">
+                                <span class="text-xs text-emerald-600 flex items-center gap-1">
                                     <svg class="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/></svg>
-                                    Real-time sync active
+                                    WebSocket connected
                                 </span>`}
                             </div>
                         </div>
@@ -4533,43 +4533,78 @@
             }
         }
 
-        async function startVisitorsLongPoll() {
-            if (visitorsLongPollActive) return;
-            visitorsLongPollActive = true;
-            console.log('[Real-time] Starting long-poll for visitors/contacts updates...');
+        function connectVisitorsWebSocket() {
+            if (visitorsWebSocket && visitorsWebSocket.readyState === WebSocket.OPEN) {
+                console.log('[WebSocket] Already connected');
+                return;
+            }
             
-            while (visitorsLongPollActive && view === 'visitors') {
+            const session = getSession();
+            const user = JSON.parse(localStorage.getItem('xow_user') || 'null');
+            const clientId = session?.session_id || user?.id || 'global';
+            
+            // Determine WebSocket URL
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+                ? `${window.location.hostname}:8000`
+                : 'cyboglabs.work/eight';
+            const wsUrl = `${wsProtocol}//${wsHost}/api/ws/dashboard?${session?.session_id ? `session_id=${session.session_id}` : user?.id ? `user_id=${user.id}` : ''}`;
+            
+            console.log('[WebSocket] Connecting to:', wsUrl);
+            visitorsWebSocket = new WebSocket(wsUrl);
+            
+            visitorsWebSocket.onopen = () => {
+                console.log('[WebSocket] ✅ Connected - Real-time sync active');
+                // Send ping every 30s to keep connection alive
+                setInterval(() => {
+                    if (visitorsWebSocket && visitorsWebSocket.readyState === WebSocket.OPEN) {
+                        visitorsWebSocket.send('ping');
+                    }
+                }, 30000);
+            };
+            
+            visitorsWebSocket.onmessage = async (event) => {
                 try {
-                    const sp = sessionParam();
-                    console.log('[Real-time] Waiting for contacts data changes...');
-                    const response = await fetch(`${API}/dashboard/wait-for-update${sp}&timeout=30`);
-                    const result = await response.json();
+                    const message = JSON.parse(event.data);
+                    console.log('[WebSocket] Message received:', message);
                     
-                    if (result.updated && view === 'visitors') {
-                        console.log('[Real-time] Contacts update detected, refreshing...');
+                    if (message.type === 'contacts_updated' && view === 'visitors') {
+                        console.log('[WebSocket] 🔄 Contacts updated, refreshing...');
                         await fetchData();
                         render();
                     }
                 } catch (error) {
-                    console.error('[Real-time] Visitors long-poll error:', error);
-                    // Wait a bit before retrying on error
-                    await new Promise(resolve => setTimeout(resolve, 5000));
+                    console.error('[WebSocket] Error parsing message:', error);
                 }
-            }
-            console.log('[Real-time] Visitors long-poll stopped');
+            };
+            
+            visitorsWebSocket.onerror = (error) => {
+                console.error('[WebSocket] Error:', error);
+            };
+            
+            visitorsWebSocket.onclose = () => {
+                console.log('[WebSocket] Disconnected');
+                visitorsWebSocket = null;
+                // Auto-reconnect if still on visitors tab
+                if (view === 'visitors') {
+                    console.log('[WebSocket] Reconnecting in 3s...');
+                    setTimeout(connectVisitorsWebSocket, 3000);
+                }
+            };
         }
 
-        function stopVisitorsLongPoll() {
-            if (visitorsLongPollActive) {
-                console.log('[Real-time] Stopping visitors long-poll');
-                visitorsLongPollActive = false;
+        function disconnectVisitorsWebSocket() {
+            if (visitorsWebSocket) {
+                console.log('[WebSocket] Closing connection');
+                visitorsWebSocket.close();
+                visitorsWebSocket = null;
             }
         }
 
         window.addEventListener('beforeunload', () => {
             stopDevicePolling();
             stopSessionsLongPoll();
-            stopVisitorsLongPoll();
+            disconnectVisitorsWebSocket();
         });
 
         // Keyboard shortcut to close modals

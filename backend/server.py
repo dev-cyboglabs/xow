@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form, BackgroundTasks, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import asyncio
@@ -78,25 +78,78 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Notification system for real-time updates
+# WebSocket connections manager for real-time updates
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+    
+    async def connect(self, websocket: WebSocket, client_id: str):
+        await websocket.accept()
+        if client_id not in self.active_connections:
+            self.active_connections[client_id] = []
+        self.active_connections[client_id].append(websocket)
+        logger.info(f"[WebSocket] Client connected: {client_id}, total: {len(self.active_connections[client_id])}")
+    
+    def disconnect(self, websocket: WebSocket, client_id: str):
+        if client_id in self.active_connections:
+            self.active_connections[client_id].remove(websocket)
+            if not self.active_connections[client_id]:
+                del self.active_connections[client_id]
+        logger.info(f"[WebSocket] Client disconnected: {client_id}")
+    
+    async def send_update(self, message: dict, client_id: str = None):
+        """Send update to specific client or broadcast to all"""
+        if client_id and client_id in self.active_connections:
+            # Send to specific client
+            dead_connections = []
+            for connection in self.active_connections[client_id]:
+                try:
+                    await connection.send_json(message)
+                    logger.info(f"[WebSocket] Sent update to {client_id}")
+                except:
+                    dead_connections.append(connection)
+            # Clean up dead connections
+            for conn in dead_connections:
+                self.active_connections[client_id].remove(conn)
+        else:
+            # Broadcast to all connected clients
+            for cid, connections in list(self.active_connections.items()):
+                dead_connections = []
+                for connection in connections:
+                    try:
+                        await connection.send_json(message)
+                    except:
+                        dead_connections.append(connection)
+                # Clean up dead connections
+                for conn in dead_connections:
+                    connections.remove(conn)
+            logger.info(f"[WebSocket] Broadcast update to all clients")
+
+manager = ConnectionManager()
+
+# Keep old notification system for backward compatibility
 dashboard_update_events = {}  # {session_id: asyncio.Event}
 
 def notify_dashboard_update(session_id: str = None):
     """Notify all connected dashboards that data has changed"""
     logger.info(f"[Notification] Triggering update for session_id: {session_id}")
     
-    # Create event if it doesn't exist
+    # Send WebSocket notification
+    asyncio.create_task(manager.send_update(
+        {"type": "contacts_updated", "session_id": session_id},
+        client_id=session_id
+    ))
+    
+    # Keep old event system for long-poll backward compatibility
     if session_id and session_id not in dashboard_update_events:
         dashboard_update_events[session_id] = asyncio.Event()
     
     if session_id and session_id in dashboard_update_events:
         dashboard_update_events[session_id].set()
-        logger.info(f"[Notification] Event set for session_id: {session_id}")
     
     # Also notify global listeners
     if None in dashboard_update_events:
         dashboard_update_events[None].set()
-        logger.info(f"[Notification] Global event set")
 
 # Pydantic models
 class DeviceCreate(BaseModel):
@@ -3428,6 +3481,24 @@ async def get_session_videos(session_id: Optional[str] = None, user_id: Optional
         "total_duration": total_duration,
         "count": len(result)
     }
+
+@api_router.websocket("/ws/dashboard")
+async def websocket_dashboard(websocket: WebSocket, session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """WebSocket endpoint for real-time dashboard updates"""
+    client_id = session_id if session_id else user_id if user_id else "global"
+    await manager.connect(websocket, client_id)
+    
+    try:
+        while True:
+            # Keep connection alive and listen for client messages
+            data = await websocket.receive_text()
+            # Echo back to confirm connection is alive
+            await websocket.send_json({"type": "pong"})
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, client_id)
+    except Exception as e:
+        logger.error(f"[WebSocket] Error: {e}")
+        manager.disconnect(websocket, client_id)
 
 @api_router.get("/dashboard/wait-for-update")
 async def wait_for_dashboard_update(session_id: Optional[str] = None, user_id: Optional[str] = None, timeout: int = 30):
