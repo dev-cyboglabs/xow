@@ -295,8 +295,31 @@ function EncryptionPanel({encKey,onEncrypt,busy,progress}){
 /* ── DownloadPanel ────────────────────────────────────── */
 function DownloadPanel({fileName,blob,encKey,onReset}){
   const [kc,setKc]=useState(false);
+  const [sending,setSending]=useState(false);
+  const [sendSuccess,setSendSuccess]=useState(false);
+  const [sendError,setSendError]=useState('');
+  
   function dl(){const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download=fileName+'.enc';a.click();URL.revokeObjectURL(u)}
   async function cpKey(){await navigator.clipboard.writeText(encKey);setKc(true);setTimeout(()=>setKc(false),2000)}
+  
+  async function sendData(){
+    setSending(true);setSendError('');setSendSuccess(false);
+    try{
+      const API=window.location.hostname==='localhost'||window.location.hostname==='127.0.0.1'?'/api':'https://cyboglabs.work/eight/api';
+      const formData=new FormData();
+      formData.append('file',new File([blob],fileName+'.enc',{type:'application/octet-stream'}));
+      const res=await fetch(`${API}/dashboard/upload-encrypted-contacts`,{method:'POST',body:formData});
+      const data=await res.json();
+      if(!res.ok)throw new Error(data.detail||'Upload failed');
+      setSendSuccess(true);
+      setTimeout(()=>setSendSuccess(false),5000);
+    }catch(e){
+      setSendError(e.message||'Failed to send data');
+    }finally{
+      setSending(false);
+    }
+  }
+  
   return(
     <div className="card" style={{padding:24,textAlign:'center',borderColor:'#BBF7D0'}}>
       <div style={{width:52,height:52,background:'#DCFCE7',borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',margin:'0 auto 14px',color:'#16a34a'}}><I.Check/></div>
@@ -309,8 +332,25 @@ function DownloadPanel({fileName,blob,encKey,onReset}){
           <div style={{fontWeight:600,fontSize:14,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{fileName}.enc</div>
           <div style={{fontSize:12,color:'var(--mu)'}}>Encrypted · {fmtSz(blob.size)}</div>
         </div>
-        <button onClick={dl} className="btn-p" style={{flexShrink:0,padding:'8px 16px',fontSize:13}}><I.Download/>Download</button>
+        <div style={{display:'flex',gap:8,flexShrink:0}}>
+          <button onClick={dl} className="btn-s" style={{padding:'8px 14px',fontSize:13}}><I.Download/>Download</button>
+          <button onClick={sendData} disabled={sending||sendSuccess} className="btn-p" style={{padding:'8px 16px',fontSize:13}}>
+            {sending?<><svg className="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>Sending...</>:sendSuccess?<><I.Check/>Sent!</>:<><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>Send Data</>}
+          </button>
+        </div>
       </div>
+
+      {sendSuccess&&(
+        <div style={{background:'#DCFCE7',border:'1px solid #86EFAC',borderRadius:8,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#16a34a'}}>
+          <I.Check/>Data sent to dashboard successfully!
+        </div>
+      )}
+      
+      {sendError&&(
+        <div style={{background:'#FEF2F2',border:'1px solid #FECACA',borderRadius:8,padding:'10px 14px',marginBottom:14,display:'flex',alignItems:'center',gap:8,fontSize:13,color:'#DC2626'}}>
+          <I.X/>{sendError}
+        </div>
+      )}
 
       <div style={{background:'var(--s2)',border:'1px solid var(--bd)',borderRadius:8,padding:'12px 16px',marginBottom:16,textAlign:'left'}}>
         <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
@@ -320,7 +360,7 @@ function DownloadPanel({fileName,blob,encKey,onReset}){
         <div className="ki" style={{fontSize:11,color:'var(--mu)',wordBreak:'break-all',lineHeight:1.7,userSelect:'all'}}>{encKey}</div>
       </div>
 
-      <p style={{fontSize:12,color:'var(--mu)',marginBottom:20}}>This is your fixed shared key. Configure it once in the XoW Electron app — it works for all encrypted files.</p>
+      <p style={{fontSize:12,color:'var(--mu)',marginBottom:20}}>Click "Send Data" to transmit encrypted contacts to the dashboard, or download for manual use.</p>
       <button onClick={onReset} className="btn-s" style={{margin:'0 auto',padding:'9px 20px'}}>Encrypt Another File</button>
     </div>
   );

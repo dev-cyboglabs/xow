@@ -21,6 +21,10 @@ import tempfile
 from openai import OpenAI
 import resend
 import random
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.backends import default_backend
+import openpyxl
+import csv
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -3228,6 +3232,144 @@ async def get_dashboard_visitors(session_id: Optional[str] = None, user_id: Opti
         result.append(visitor_data)
 
     return result
+
+@api_router.post("/dashboard/upload-encrypted-contacts")
+async def upload_encrypted_contacts(
+    file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None),
+    user_id: Optional[str] = Form(None)
+):
+    """
+    Receive encrypted .enc file from Data Encryptor, decrypt it, and store contacts.
+    Uses fixed key: 3f8a2c7d1e4b9f6a05c8e2d7b3a1f4c90e6d8b2a5f7c3e9d1b4a8f2c6e0d5b7a
+    """
+    FIXED_KEY = '3f8a2c7d1e4b9f6a05c8e2d7b3a1f4c90e6d8b2a5f7c3e9d1b4a8f2c6e0d5b7a'
+    
+    try:
+        # Read encrypted file
+        encrypted_data = await file.read()
+        
+        # Validate XoWE magic header
+        if len(encrypted_data) < 16 or encrypted_data[:4] != b'XoWE':
+            raise HTTPException(status_code=400, detail="Invalid encrypted file format. Missing XoWE header.")
+        
+        # Extract IV (12 bytes after magic header)
+        iv = encrypted_data[4:16]
+        ciphertext = encrypted_data[16:]
+        
+        # Convert hex key to bytes
+        key_bytes = bytes.fromhex(FIXED_KEY)
+        
+        # Decrypt using AES-GCM
+        aesgcm = AESGCM(key_bytes)
+        try:
+            decrypted_data = aesgcm.decrypt(iv, ciphertext, None)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Decryption failed: {str(e)}")
+        
+        # Parse decrypted data (CSV or Excel)
+        contacts = []
+        filename = file.filename.lower()
+        
+        if filename.endswith('.enc'):
+            # Try to detect original format from content
+            try:
+                # Try CSV first
+                text_data = decrypted_data.decode('utf-8')
+                csv_reader = csv.DictReader(io.StringIO(text_data))
+                contacts = [row for row in csv_reader]
+            except:
+                # Try Excel
+                try:
+                    workbook = openpyxl.load_workbook(io.BytesIO(decrypted_data))
+                    sheet = workbook.active
+                    headers = [cell.value for cell in sheet[1]]
+                    for row in sheet.iter_rows(min_row=2, values_only=True):
+                        contact = {headers[i]: row[i] for i in range(len(headers)) if i < len(row)}
+                        contacts.append(contact)
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=f"Failed to parse decrypted data: {str(e)}")
+        
+        if not contacts:
+            raise HTTPException(status_code=400, detail="No contacts found in decrypted file")
+        
+        # Normalize contact keys to lowercase
+        normalized_contacts = []
+        for contact in contacts:
+            normalized = {k.lower().strip(): str(v).strip() if v else '' for k, v in contact.items()}
+            normalized_contacts.append(normalized)
+        
+        # Store in database
+        contact_doc = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "contacts": normalized_contacts,
+            "uploaded_at": datetime.now(timezone.utc),
+            "filename": file.filename,
+            "contact_count": len(normalized_contacts)
+        }
+        
+        # Upsert: replace existing contacts for this session/user
+        if session_id:
+            await db.imported_contacts.update_one(
+                {"session_id": session_id},
+                {"$set": contact_doc},
+                upsert=True
+            )
+        elif user_id:
+            await db.imported_contacts.update_one(
+                {"user_id": user_id},
+                {"$set": contact_doc},
+                upsert=True
+            )
+        else:
+            # Global contacts (no session/user)
+            await db.imported_contacts.update_one(
+                {"session_id": None, "user_id": None},
+                {"$set": contact_doc},
+                upsert=True
+            )
+        
+        # Notify dashboard of update
+        if session_id:
+            notify_dashboard_update(session_id)
+        
+        logger.info(f"[Encrypted Contacts] Uploaded {len(normalized_contacts)} contacts for session_id={session_id}, user_id={user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Successfully uploaded {len(normalized_contacts)} contacts",
+            "contact_count": len(normalized_contacts)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Encrypted Contacts] Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+@api_router.get("/dashboard/contacts")
+async def get_dashboard_contacts(session_id: Optional[str] = None, user_id: Optional[str] = None):
+    """Get imported contacts for the dashboard"""
+    query = {}
+    if session_id:
+        query["session_id"] = session_id
+    elif user_id:
+        query["user_id"] = user_id
+    else:
+        query = {"session_id": None, "user_id": None}
+    
+    contact_doc = await db.imported_contacts.find_one(query, sort=[("uploaded_at", -1)])
+    
+    if not contact_doc:
+        return {"contacts": [], "uploaded_at": None, "contact_count": 0}
+    
+    return {
+        "contacts": contact_doc.get("contacts", []),
+        "uploaded_at": contact_doc.get("uploaded_at").isoformat() + 'Z' if contact_doc.get("uploaded_at") else None,
+        "contact_count": contact_doc.get("contact_count", 0),
+        "filename": contact_doc.get("filename", "")
+    }
 
 @api_router.get("/dashboard/session-videos")
 async def get_session_videos(session_id: Optional[str] = None, user_id: Optional[str] = None):

@@ -121,12 +121,20 @@
             // Fetch latest data from API without showing spinner
             const sp = sessionParam();
             try {
-                const [i, r, v] = await Promise.all([
+                const [i, r, v, c] = await Promise.all([
                     fetch(`${API}/dashboard/insights${sp}`).then(r => r.json()),
                     fetch(`${API}/dashboard/recordings${sp}`).then(r => r.json()),
-                    fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json())
+                    fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json()),
+                    fetch(`${API}/dashboard/contacts${sp}`).then(r => r.json()).catch(() => ({contacts: []}))
                 ]);
                 data = { insights: i, recordings: r, visitors: v };
+                
+                // Update imported contacts from encrypted data
+                if (c && c.contacts && c.contacts.length > 0) {
+                    importedContacts = c.contacts;
+                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
+                    console.log(`[Dashboard] Loaded ${importedContacts.length} contacts from encrypted data`);
+                }
             } catch(e) {
                 console.error('Failed to fetch data:', e);
             }
@@ -1182,11 +1190,7 @@
                                 <span class="text-gray-900 font-semibold text-sm">Contacts</span>
                                 ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
                             </div>
-                            <input type="file" id="contacts-file-input-visitors" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleContactsImport(event)"/>
-                            <button onclick="document.getElementById('contacts-file-input-visitors').click()" class="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 hover:bg-orange-100 rounded-lg text-orange-700 text-xs font-medium transition-colors border border-orange-200">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                                Import
-                            </button>
+                            ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : ''}
                         </div>
                         
                         <!-- Search Bar -->
@@ -1201,13 +1205,15 @@
                         <div class="max-h-[65vh] overflow-y-auto bg-white" id="contact-list">
                             ${importedContacts.length === 0 ? `
                             <div class="px-5 py-12 text-center">
-                                <svg class="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
-                                <h3 class="text-sm font-semibold text-gray-900 mb-1">No Contacts</h3>
-                                <p class="text-xs text-gray-500 mb-3">Import CSV to add contacts</p>
-                                <button onclick="document.getElementById('contacts-file-input-visitors').click()" class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 rounded-lg text-white text-xs font-medium transition-colors">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-                                    Import
-                                </button>
+                                <div class="relative inline-block mb-4">
+                                    <svg class="w-16 h-16 text-gray-300 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                                    <div class="absolute -bottom-1 -right-1 w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center">
+                                        <svg class="w-4 h-4 text-orange-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    </div>
+                                </div>
+                                <h3 class="text-sm font-semibold text-gray-900 mb-1">Waiting for Data</h3>
+                                <p class="text-xs text-gray-500 mb-2">Admin will send encrypted contact data</p>
+                                <p class="text-xs text-gray-400">Data is sent from the Data Encryptor tool</p>
                             </div>` :
                             `<div class="divide-y divide-gray-100">
                                 ${importedContacts.map((contact, idx) => {

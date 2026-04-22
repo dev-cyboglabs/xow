@@ -1,6 +1,6 @@
 {
-  "appId": "com.xow.videoplayer",
-  "productName": "XoW Video Player",
+  "appId": "com.xow.play",
+  "productName": "XoW Play",
   "directories": {
     "output": "dist-electron"
   },
@@ -20,8 +20,8 @@
     "category": "public.app-category.productivity"
   },
   "dmg": {
-    "artifactName": "XoW-Video-Player-macOS.dmg",
-    "title": "XoW Video Player"
+    "artifactName": "XoW-Play.dmg",
+    "title": "XoW Play"
   },
   "win": {
     "target": {
@@ -31,7 +31,7 @@
     "icon": "resources/icon.ico"
   },
   "portable": {
-    "artifactName": "XoW-Video-Player-Windows.exe"
+    "artifactName": "XoW-Play.exe"
   },
   "linux": {
     "target": {
@@ -42,7 +42,7 @@
     "category": "Utility"
   },
   "appImage": {
-    "artifactName": "XoW-Video-Player-Linux.AppImage"
+    "artifactName": "XoW-Play.AppImage"
   },
   "extraResources": [],
   "asar": true

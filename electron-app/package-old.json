@@ -2,7 +2,7 @@
   "name": "xow-video-player",
   "version": "1.0.0",
   "description": "XoW Video Player - Offline visitor badge and video playback app",
-  "author": "CybogLabs",
+  "author": "Cyboglabs",
   "main": "src/main/main.js",
   "scripts": {
     "start": "electron .",
