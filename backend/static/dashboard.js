@@ -78,6 +78,7 @@
         let currentRecordingId = null;
         let devicesData = { devices: [], count: 0 };
         let devicePollInterval = null;
+        let contactsPollInterval = null;
         let sessionsLongPollActive = false;
         let currentDuration = 0;
         let timeUpdateHandler = null;
@@ -125,18 +126,31 @@
                     fetch(`${API}/dashboard/insights${sp}`).then(r => r.json()),
                     fetch(`${API}/dashboard/recordings${sp}`).then(r => r.json()),
                     fetch(`${API}/dashboard/visitors${sp}`).then(r => r.json()),
-                    fetch(`${API}/dashboard/contacts${sp}`).then(r => r.json()).catch(() => ({contacts: []}))
+                    fetch(`${API}/dashboard/contacts${sp}`).then(async res => {
+                        if (!res.ok) {
+                            console.warn('[Contacts] API returned status:', res.status);
+                            return {contacts: []};
+                        }
+                        return res.json();
+                    }).catch(err => {
+                        console.error('[Contacts] Fetch error:', err);
+                        return {contacts: []};
+                    })
                 ]);
                 data = { insights: i, recordings: r, visitors: v };
                 
                 // Update imported contacts from encrypted data
-                if (c && c.contacts && c.contacts.length > 0) {
+                console.log('[Dashboard] Contacts response:', c);
+                console.log('[Dashboard] Contact count:', c?.contact_count, 'Array length:', c?.contacts?.length);
+                if (c && c.contacts && Array.isArray(c.contacts) && c.contacts.length > 0) {
                     importedContacts = c.contacts;
                     localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
-                    console.log(`[Dashboard] Loaded ${importedContacts.length} contacts from encrypted data`);
+                    console.log(`[Dashboard] ✅ Loaded ${importedContacts.length} contacts from encrypted data`);
+                } else {
+                    console.log('[Dashboard] ⏳ No contacts available yet (response:', JSON.stringify(c), ')');
                 }
             } catch(e) {
-                console.error('Failed to fetch data:', e);
+                console.error('[Dashboard] Failed to fetch data:', e);
             }
         }
 
@@ -169,9 +183,15 @@
                 stopDevicePolling();
                 render();
                 startSessionsLongPoll();
+            } else if (v === 'visitors') {
+                stopDevicePolling();
+                stopSessionsLongPoll();
+                render();
+                startContactsPolling();
             } else {
                 stopDevicePolling();
                 stopSessionsLongPoll();
+                stopContactsPolling();
                 render();
             }
         }
@@ -1190,7 +1210,12 @@
                                 <span class="text-gray-900 font-semibold text-sm">Contacts</span>
                                 ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
                             </div>
-                            ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : ''}
+                            <div class="flex items-center gap-2">
+                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `<span class="text-xs text-gray-400">Auto-checking...</span>`}
+                                <button onclick="pollContacts()" class="p-1.5 hover:bg-gray-100 rounded-lg transition-colors" title="Check for new contacts">
+                                    <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                                </button>
+                            </div>
                         </div>
                         
                         <!-- Search Bar -->
@@ -1472,6 +1497,41 @@
             if (devicePollInterval) {
                 clearInterval(devicePollInterval);
                 devicePollInterval = null;
+            }
+        }
+
+        async function pollContacts() {
+            const sp = sessionParam();
+            try {
+                const response = await fetch(`${API}/dashboard/contacts${sp}`);
+                const contactData = await response.json();
+                
+                if (contactData && contactData.contacts && contactData.contacts.length > 0) {
+                    const oldCount = importedContacts.length;
+                    importedContacts = contactData.contacts;
+                    localStorage.setItem('xow_contacts', JSON.stringify(importedContacts));
+                    
+                    // Only re-render if count changed
+                    if (oldCount !== importedContacts.length) {
+                        console.log(`[Contacts Poll] Updated: ${importedContacts.length} contacts`);
+                        render();
+                    }
+                }
+            } catch (e) {
+                console.error('[Contacts Poll] Error:', e);
+            }
+        }
+
+        function startContactsPolling() {
+            stopContactsPolling();
+            pollContacts(); // Immediate fetch
+            contactsPollInterval = setInterval(pollContacts, 5000); // Poll every 5 seconds
+        }
+
+        function stopContactsPolling() {
+            if (contactsPollInterval) {
+                clearInterval(contactsPollInterval);
+                contactsPollInterval = null;
             }
         }
 
@@ -4509,6 +4569,7 @@
         window.addEventListener('beforeunload', () => {
             stopDevicePolling();
             stopSessionsLongPoll();
+            stopContactsPolling();
         });
 
         // Keyboard shortcut to close modals

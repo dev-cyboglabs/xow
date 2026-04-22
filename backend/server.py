@@ -3351,23 +3351,43 @@ async def upload_encrypted_contacts(
 @api_router.get("/dashboard/contacts")
 async def get_dashboard_contacts(session_id: Optional[str] = None, user_id: Optional[str] = None):
     """Get imported contacts for the dashboard"""
-    query = {}
-    if session_id:
-        query["session_id"] = session_id
-    elif user_id:
-        query["user_id"] = user_id
-    else:
-        query = {"session_id": None, "user_id": None}
+    contact_doc = None
     
-    contact_doc = await db.imported_contacts.find_one(query, sort=[("uploaded_at", -1)])
+    # Try session-specific first
+    if session_id:
+        contact_doc = await db.imported_contacts.find_one(
+            {"session_id": session_id}, 
+            sort=[("uploaded_at", -1)]
+        )
+        logger.info(f"[Contacts] Checking session_id={session_id}: {'Found' if contact_doc else 'Not found'}")
+    
+    # Try user-specific if no session match
+    if not contact_doc and user_id:
+        contact_doc = await db.imported_contacts.find_one(
+            {"user_id": user_id}, 
+            sort=[("uploaded_at", -1)]
+        )
+        logger.info(f"[Contacts] Checking user_id={user_id}: {'Found' if contact_doc else 'Not found'}")
+    
+    # Fallback to global contacts (no session/user)
+    if not contact_doc:
+        contact_doc = await db.imported_contacts.find_one(
+            {"session_id": None, "user_id": None}, 
+            sort=[("uploaded_at", -1)]
+        )
+        logger.info(f"[Contacts] Checking global contacts: {'Found' if contact_doc else 'Not found'}")
     
     if not contact_doc:
+        logger.info("[Contacts] No contacts found in database")
         return {"contacts": [], "uploaded_at": None, "contact_count": 0}
+    
+    contact_count = contact_doc.get("contact_count", 0)
+    logger.info(f"[Contacts] Returning {contact_count} contacts")
     
     return {
         "contacts": contact_doc.get("contacts", []),
         "uploaded_at": contact_doc.get("uploaded_at").isoformat() + 'Z' if contact_doc.get("uploaded_at") else None,
-        "contact_count": contact_doc.get("contact_count", 0),
+        "contact_count": contact_count,
         "filename": contact_doc.get("filename", "")
     }
 
