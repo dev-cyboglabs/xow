@@ -242,7 +242,7 @@ export default function SetupScreen() {
           style={styles.logo}
         />
         
-        <Text style={styles.tagline}>Booth Recording System</Text>
+        <Text style={styles.tagline}>Exhibiton Watch</Text>
         <View style={styles.features}>
           <View style={styles.feature}>
             <Ionicons name="recording" size={20} color="#E54B2A" />
@@ -253,8 +253,8 @@ export default function SetupScreen() {
             <Text style={styles.featureText}>Visitor Tracking</Text>
           </View>
           <View style={styles.feature}>
-            <Ionicons name="cloud" size={20} color="#E54B2A" />
-            <Text style={styles.featureText}>Cloud Sync</Text>
+            <Ionicons name="analytics" size={20} color="#E54B2A" />
+            <Text style={styles.featureText}>Expo Analytics</Text>
           </View>
         </View>
       </View>
