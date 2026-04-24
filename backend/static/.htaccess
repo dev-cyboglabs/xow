@@ -16,6 +16,8 @@ RewriteRule ^data-encryptor$ data-encryptor.html [L]
 # Rewrite /download to download.html
 RewriteRule ^download$ download.html [L]
 
+# Exclude /downloads/ from catch-all (serve real files or real 404)
+RewriteCond %{REQUEST_URI} !^/downloads/
 # If file or directory doesn't exist, redirect to index.html
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

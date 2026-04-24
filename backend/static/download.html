@@ -268,10 +268,9 @@
             button.classList.add('downloading');
             text.textContent = 'Downloading...';
             
-            // File URLs - detect if we're on exhibitonwatch.in or cyboglabs.work/eight/
-            const isExhibitonWatch = window.location.hostname === 'exhibitonwatch.in' || window.location.hostname === 'www.exhibitonwatch.in';
-            const basePath = isExhibitonWatch ? '/downloads/' : '/eight/downloads/';
-            
+            // File URLs — files are served from /downloads/
+            const basePath = '/downloads/';
+
             const fileUrls = {
                 'windows': basePath + 'XoW-Play.exe',
                 'mac': basePath + 'XoW-Play.dmg',
