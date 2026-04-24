@@ -13,6 +13,9 @@ RewriteRule ^dashboard$ dashboard.html [L]
 # Rewrite /data-encryptor to data-encryptor.html
 RewriteRule ^data-encryptor$ data-encryptor.html [L]
 
+# Rewrite /download to download.html
+RewriteRule ^download$ download.html [L]
+
 # If file or directory doesn't exist, redirect to index.html
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
