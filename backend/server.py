@@ -3913,6 +3913,13 @@ else:
     logger.warning(f"Downloads directory not found: {downloads_dir}")
 
 # Serve home page
+@app.get("/")
+async def serve_root():
+    home_path = ROOT_DIR / "static" / "index.html"
+    if not home_path.exists():
+        raise HTTPException(status_code=404, detail="Home page not found")
+    return FileResponse(home_path)
+
 @app.get("/api/home")
 async def serve_home():
     home_path = ROOT_DIR / "static" / "index.html"
