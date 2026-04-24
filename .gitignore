@@ -84,3 +84,6 @@ android-sdk/ -e
 # Environment files
 *.env
 *.env.*
+backend/static/downloads/*.exe
+backend/static/downloads/*.dmg
+backend/static/downloads/*.AppImage

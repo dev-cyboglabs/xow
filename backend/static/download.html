@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download XoW - Desktop Apps</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/xow-light.svg">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { font-family: 'Inter', sans-serif; }
+        :root {
+            --primary: #E54B2A;
+            --primary-dark: #C93D1E;
+        }
+        .btn-primary { 
+            background: var(--primary); 
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover { 
+            background: var(--primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(229, 75, 42, 0.3);
+        }
+        .btn-primary:active {
+            transform: translateY(0);
+        }
+        .download-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+        .download-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+        }
+        .download-card.recommended {
+            border: 2px solid var(--primary);
+            box-shadow: 0 8px 30px rgba(229, 75, 42, 0.15);
+        }
+        .gradient-bg { 
+            background: linear-gradient(135deg, #FEF3F2 0%, #FFFFFF 50%, #F0F9FF 100%); 
+        }
+        .icon-windows { color: #0078D4; }
+        .icon-mac { color: #000000; }
+        .icon-linux { color: #FCC624; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .downloading {
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="gradient-bg min-h-screen">
+    <!-- Header -->
+    <header class="fixed top-0 left-0 right-0 z-50 bg-white shadow-sm">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 md:py-4 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="/" class="flex items-center gap-3">
+                    <img src="/assets/xow-logo.svg" alt="XoW" class="h-8 w-auto">
+                </a>
+            </div>
+            <a href="/" class="text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                ← Back to Home
+            </a>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="pt-24 pb-20">
+        <div class="max-w-7xl mx-auto px-4 md:px-6">
+            <!-- Page Title -->
+            <div class="text-center mb-16">
+                <div class="inline-flex items-center gap-2 px-4 py-2 bg-orange-50 border border-orange-200 rounded-full text-[#E54B2A] text-sm font-medium mb-6">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                    </svg>
+                    Desktop Applications
+                </div>
+                <h1 class="text-4xl md:text-5xl font-bold text-gray-900 mb-4">Download Our App</h1>
+                <p class="text-lg md:text-xl text-gray-600 max-w-2xl mx-auto">Choose your platform and start using XoW offline</p>
+            </div>
+
+            <!-- Download Cards -->
+            <div class="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+                <!-- Windows Card -->
+                <div id="card-windows" class="download-card bg-white rounded-2xl p-8 border border-gray-200 shadow-lg text-center">
+                    <div class="w-20 h-20 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-12 h-12 icon-windows" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.451L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Windows</h3>
+                    <p class="text-gray-600 mb-2">For Windows 10 and later</p>
+                    <p class="text-sm text-gray-500 mb-6">.exe installer</p>
+                    <button onclick="downloadFile('windows')" id="btn-windows" class="w-full py-4 btn-primary text-white rounded-lg text-lg font-semibold flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        <span id="text-windows">Download for Windows</span>
+                    </button>
+                </div>
+
+                <!-- macOS Card -->
+                <div id="card-mac" class="download-card bg-white rounded-2xl p-8 border border-gray-200 shadow-lg text-center">
+                    <div class="w-20 h-20 rounded-2xl bg-gray-100 flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-12 h-12 icon-mac" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">macOS</h3>
+                    <p class="text-gray-600 mb-2">For macOS 10.15 and later</p>
+                    <p class="text-sm text-gray-500 mb-6">.dmg installer</p>
+                    <button onclick="downloadFile('mac')" id="btn-mac" class="w-full py-4 btn-primary text-white rounded-lg text-lg font-semibold flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        <span id="text-mac">Download for Mac</span>
+                    </button>
+                </div>
+
+                <!-- Linux Card -->
+                <div id="card-linux" class="download-card bg-white rounded-2xl p-8 border border-gray-200 shadow-lg text-center">
+                    <div class="w-20 h-20 rounded-2xl bg-yellow-50 flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-12 h-12 icon-linux" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12.504 0c-.155 0-.315.008-.48.021-4.226.333-3.105 4.807-3.17 6.298-.076 1.092-.3 1.953-1.05 3.02-.885 1.051-2.127 2.75-2.716 4.521-.278.84-.41 1.684-.287 2.489a.424.424 0 00-.011.078c0 .072.003.142.011.211.012.097.027.188.052.277.098.34.306.64.586.88.094.08.185.15.287.207.379.216.8.216 1.136.175.082-.01.156-.03.229-.054.228-.076.437-.203.614-.376.177-.173.31-.384.398-.616.177-.464.177-.98 0-1.444-.09-.232-.214-.434-.382-.604-.168-.17-.371-.3-.595-.39-.111-.045-.227-.074-.346-.088-.119-.014-.24-.011-.358.009-.235.04-.46.15-.65.32-.19.17-.337.39-.428.64-.182.5-.182 1.06 0 1.56.091.25.238.47.428.64.19.17.415.28.65.32.118.02.239.023.358.009.119-.014.235-.043.346-.088.224-.09.427-.22.595-.39.168-.17.292-.372.382-.604.177-.464.177-.98 0-1.444-.088-.232-.221-.443-.398-.616-.177-.173-.386-.3-.614-.376-.073-.024-.147-.044-.229-.054-.336-.041-.757-.041-1.136.175-.102.057-.193.127-.287.207-.28.24-.488.54-.586.88-.025.089-.04.18-.052.277-.008.069-.011.139-.011.211 0 .026.004.052.011.078.123.805-.009 1.649-.287 2.489-.589 1.771-1.831 3.47-2.716 4.521-.75 1.067-.974 1.928-1.05 3.02-.065 1.491.944 5.965-3.17 6.298-.165.013-.325.021-.48.021-2.769 0-2.969-1.35-3.159-2.928-.19-1.578.602-3.514.602-3.514.007-.018.02-.033.027-.05.384-.81.766-1.6 1.15-2.39.383-.79.766-1.58 1.149-2.37.383-.79.766-1.58 1.15-2.37.383-.79.766-1.58 1.149-2.37.007-.017.02-.032.027-.05 0 0 .792-1.936.602-3.514-.19-1.578.39-2.928-3.159-2.928z"/>
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-gray-900 mb-2">Linux</h3>
+                    <p class="text-gray-600 mb-2">For Ubuntu, Debian, Fedora</p>
+                    <p class="text-sm text-gray-500 mb-6">.AppImage portable</p>
+                    <button onclick="downloadFile('linux')" id="btn-linux" class="w-full py-4 btn-primary text-white rounded-lg text-lg font-semibold flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        <span id="text-linux">Download for Linux</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Additional Info -->
+            <div class="mt-16 max-w-4xl mx-auto">
+                <div class="bg-white rounded-xl p-6 md:p-8 border border-gray-200 shadow-sm">
+                    <h3 class="text-xl font-bold text-gray-900 mb-4">Installation Instructions</h3>
+                    <div class="space-y-4 text-gray-600">
+                        <div class="flex items-start gap-3">
+                            <div class="w-6 h-6 rounded-full bg-[#E54B2A] text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
+                            <p><strong>Download</strong> the installer for your operating system</p>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-6 h-6 rounded-full bg-[#E54B2A] text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
+                            <p><strong>Run</strong> the installer and follow the on-screen instructions</p>
+                        </div>
+                        <div class="flex items-start gap-3">
+                            <div class="w-6 h-6 rounded-full bg-[#E54B2A] text-white text-sm font-bold flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
+                            <p><strong>Launch</strong> XoW and sign in with your account credentials</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Requirements -->
+                <div class="mt-8 grid md:grid-cols-3 gap-6">
+                    <div class="bg-blue-50 rounded-lg p-6 border border-blue-100">
+                        <h4 class="font-bold text-gray-900 mb-2">Windows Requirements</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>• Windows 10 or later</li>
+                            <li>• 4GB RAM minimum</li>
+                            <li>• 500MB disk space</li>
+                        </ul>
+                    </div>
+                    <div class="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                        <h4 class="font-bold text-gray-900 mb-2">macOS Requirements</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>• macOS 10.15 or later</li>
+                            <li>• 4GB RAM minimum</li>
+                            <li>• 500MB disk space</li>
+                        </ul>
+                    </div>
+                    <div class="bg-yellow-50 rounded-lg p-6 border border-yellow-100">
+                        <h4 class="font-bold text-gray-900 mb-2">Linux Requirements</h4>
+                        <ul class="text-sm text-gray-600 space-y-1">
+                            <li>• Ubuntu 18.04+ / Debian 10+</li>
+                            <li>• 4GB RAM minimum</li>
+                            <li>• 500MB disk space</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-gray-400 py-8 md:py-12">
+        <div class="max-w-7xl mx-auto px-4 md:px-6">
+            <div class="flex flex-col md:flex-row items-center md:items-start justify-between gap-4 md:gap-2">
+                <div class="flex flex-col items-center md:items-start gap-3 max-w-md">
+                    <img src="/assets/xow-logo-light.svg" alt="XoW" class="h-8 w-auto">
+                    <p class="text-xs md:text-sm text-gray-400 text-center md:text-left">
+                        AI-powered booth intelligence for modern exhibitions.
+                    </p>
+                </div>
+                <div class="text-xs md:text-sm text-center md:text-right self-center">
+                    &copy; 2026 XoW. All rights reserved.
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Detect user's OS and highlight recommended platform
+        function detectOS() {
+            const userAgent = window.navigator.userAgent.toLowerCase();
+            const platform = window.navigator.platform.toLowerCase();
+            
+            let detectedOS = null;
+            
+            if (platform.includes('mac') || userAgent.includes('mac')) {
+                detectedOS = 'mac';
+            } else if (platform.includes('win') || userAgent.includes('win')) {
+                detectedOS = 'windows';
+            } else if (platform.includes('linux') || userAgent.includes('linux')) {
+                detectedOS = 'linux';
+            }
+            
+            if (detectedOS) {
+                const card = document.getElementById(`card-${detectedOS}`);
+                if (card) {
+                    card.classList.add('recommended');
+                    
+                    // Add recommended badge
+                    const badge = document.createElement('div');
+                    badge.className = 'absolute -top-3 left-1/2 -translate-x-1/2 bg-[#E54B2A] text-white px-4 py-1 rounded-full text-sm font-semibold shadow-lg';
+                    badge.textContent = 'Recommended';
+                    card.style.position = 'relative';
+                    card.insertBefore(badge, card.firstChild);
+                }
+            }
+        }
+
+        // Download file function
+        function downloadFile(platform) {
+            const button = document.getElementById(`btn-${platform}`);
+            const text = document.getElementById(`text-${platform}`);
+            
+            // Change button state to downloading
+            button.disabled = true;
+            button.classList.add('downloading');
+            text.textContent = 'Downloading...';
+            
+            // File URLs - update these with your actual file paths on the server
+            const fileUrls = {
+                'windows': '/eight/downloads/XoW-Play.exe',
+                'mac': '/eight/downloads/XoW-Play.dmg',
+                'linux': '/eight/downloads/XoW-Play.AppImage'
+            };
+            
+            // Create a temporary link and trigger download
+            const link = document.createElement('a');
+            link.href = fileUrls[platform];
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            // Reset button after 2 seconds
+            setTimeout(() => {
+                button.disabled = false;
+                button.classList.remove('downloading');
+                const labels = {
+                    'windows': 'Download for Windows',
+                    'mac': 'Download for Mac',
+                    'linux': 'Download for Linux'
+                };
+                text.textContent = labels[platform];
+            }, 2000);
+        }
+
+        // Run OS detection on page load
+        document.addEventListener('DOMContentLoaded', detectOS);
+    </script>
+</body>
+</html>

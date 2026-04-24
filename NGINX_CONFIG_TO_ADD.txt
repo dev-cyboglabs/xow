@@ -1,0 +1,46 @@
+================================================================================
+COPY THIS INTO YOUR NGINX CONFIG
+================================================================================
+
+Add this AFTER the /eight/ location block in:
+/etc/nginx/sites-available/cyboglabs.work
+
+--------------------------------------------------------------------------------
+
+# XoW Downloads
+location /eight/downloads/ {
+    alias /path/to/xow/backend/static/downloads/;
+    autoindex off;
+    add_header Content-Disposition 'attachment';
+    add_header X-Content-Type-Options nosniff;
+    add_header Access-Control-Allow-Origin '*';
+    add_header Access-Control-Allow-Methods 'GET, OPTIONS';
+    expires 7d;
+    add_header Cache-Control "public, immutable";
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+}
+
+--------------------------------------------------------------------------------
+
+⚠️  IMPORTANT: Replace /path/to/xow/ with your actual server path!
+
+To find your path, run on your server:
+    cd /path/to/your/xow/backend/static/downloads && pwd
+
+Example paths:
+    /home/ubuntu/xow/backend/static/downloads/
+    /var/www/xow/backend/static/downloads/
+    /root/xow/backend/static/downloads/
+
+--------------------------------------------------------------------------------
+
+After adding, run:
+    sudo nginx -t              # Test config
+    sudo systemctl reload nginx # Reload Nginx
+
+Then test:
+    https://cyboglabs.work/eight/downloads/XoW-Play.exe
+
+================================================================================

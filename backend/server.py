@@ -3905,6 +3905,13 @@ if assets_dir.exists() and assets_dir.is_dir():
 else:
     logger.warning(f"Static assets directory not found: {assets_dir}")
 
+# Mount downloads directory for installer files
+downloads_dir = ROOT_DIR / "static" / "downloads"
+if downloads_dir.exists() and downloads_dir.is_dir():
+    app.mount("/downloads", StaticFiles(directory=downloads_dir), name="downloads")
+else:
+    logger.warning(f"Downloads directory not found: {downloads_dir}")
+
 # Serve home page
 @app.get("/api/home")
 async def serve_home():
@@ -3942,6 +3949,13 @@ async def serve_data_encryptor():
     if not path.exists():
         raise HTTPException(status_code=404, detail="Data encryptor not found")
     return FileResponse(path)
+
+@app.get("/download")
+async def serve_download():
+    download_path = ROOT_DIR / "static" / "download.html"
+    if not download_path.exists():
+        raise HTTPException(status_code=404, detail="Download page not found")
+    return FileResponse(download_path)
 
 # Partner form submission
 @api_router.post("/partner-request")
