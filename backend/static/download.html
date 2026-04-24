@@ -248,11 +248,14 @@
             button.classList.add('downloading');
             text.textContent = 'Downloading...';
             
-            // File URLs - update these with your actual file paths on the server
+            // File URLs - detect if we're on exhibitonwatch.in or cyboglabs.work/eight/
+            const isExhibitonWatch = window.location.hostname === 'exhibitonwatch.in' || window.location.hostname === 'www.exhibitonwatch.in';
+            const basePath = isExhibitonWatch ? '/downloads/' : '/eight/downloads/';
+            
             const fileUrls = {
-                'windows': '/eight/downloads/XoW-Play.exe',
-                'mac': '/eight/downloads/XoW-Play.dmg',
-                'linux': '/eight/downloads/XoW-Play.AppImage'
+                'windows': basePath + 'XoW-Play.exe',
+                'mac': basePath + 'XoW-Play.dmg',
+                'linux': basePath + 'XoW-Play.AppImage'
             };
             
             // Create a temporary link and trigger download
