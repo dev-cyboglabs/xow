@@ -96,6 +96,7 @@ export default function RecorderScreen() {
   const [autoUpload, setAutoUpload] = useState(false);
   const autoUploadRef = useRef(false);
   const [showExitModal, setShowExitModal] = useState(false);
+  const [exitConfirmText, setExitConfirmText] = useState('');
   const [storageLocation, setStorageLocation] = useState<'Internal' | 'External'>('Internal');
   const [currentChunkIndex, setCurrentChunkIndex] = useState(0);
   const [recordingChunks, setRecordingChunks] = useState<ChunkType[]>([]);
@@ -1439,14 +1440,20 @@ const startRecording = async () => {
 
   const handleLogout = () => {
     if (isRecording) {
-      Alert.alert('Recording Active', 'Please stop recording before disconnecting.');
+      Alert.alert('Recording Active', 'Please stop recording before exiting.');
       return;
     }
+    setExitConfirmText('');
     setShowExitModal(true);
   };
 
   const confirmExit = async () => {
+    if (exitConfirmText.toLowerCase() !== 'exit') {
+      Alert.alert('Invalid Input', 'Please type "exit" to confirm.');
+      return;
+    }
     setShowExitModal(false);
+    setExitConfirmText('');
     try {
       const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
       const password  = await AsyncStorage.getItem('xow_permanent_device_password');
@@ -1674,7 +1681,7 @@ const startRecording = async () => {
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={handleLogout}>
             <Ionicons name="power" size={24} color="#E54B2A" />
-            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Disconnect</Text>
+            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Exit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1682,14 +1689,24 @@ const startRecording = async () => {
       {showExitModal && (
         <Pressable style={styles.exitOverlay} onPress={() => setShowExitModal(false)}>
           <Pressable style={styles.exitModal} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.exitTitle}>Disconnect Device?</Text>
+            <Text style={styles.exitTitle}>Exit and Unpair Device?</Text>
             <Text style={styles.exitSub}>This will unpair the device and return to the pairing screen.</Text>
+            <Text style={styles.exitConfirmLabel}>Type "exit" to confirm:</Text>
+            <TextInput
+              style={styles.exitConfirmInput}
+              value={exitConfirmText}
+              onChangeText={setExitConfirmText}
+              placeholder="exit"
+              placeholderTextColor="#666"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
             <View style={styles.exitBtnRow}>
               <TouchableOpacity style={styles.exitCancelBtn} onPress={() => setShowExitModal(false)}>
                 <Text style={styles.exitCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.exitConfirmBtn} onPress={confirmExit}>
-                <Text style={styles.exitConfirmText}>Disconnect</Text>
+                <Text style={styles.exitConfirmText}>Exit</Text>
               </TouchableOpacity>
             </View>
           </Pressable>
@@ -2011,7 +2028,19 @@ const styles = StyleSheet.create({
     borderColor: '#2a2a2a' 
   },
   exitTitle: { color: '#fff', fontSize: 37, fontWeight: '700', textAlign: 'center', marginBottom: 21 },
-  exitSub: { color: '#888', fontSize: 25, textAlign: 'center', marginBottom: 42, lineHeight: 37 },
+  exitSub: { color: '#888', fontSize: 25, textAlign: 'center', marginBottom: 28, lineHeight: 37 },
+  exitConfirmLabel: { color: '#fff', fontSize: 23, fontWeight: '600', marginBottom: 14 },
+  exitConfirmInput: {
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#333',
+    borderRadius: 12,
+    paddingHorizontal: 21,
+    paddingVertical: 19,
+    fontSize: 25,
+    color: '#fff',
+    marginBottom: 35,
+  },
   exitBtnRow: { flexDirection: 'row', gap: 23 },
   exitCancelBtn: { 
     flex: 1, 
