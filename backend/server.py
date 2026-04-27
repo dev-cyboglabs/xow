@@ -1282,7 +1282,11 @@ async def pair_device(pairing_code: str, session_id: Optional[str] = None):
     device = await db.devices.find_one({"pairing_code": pairing_code})
     if not device:
         raise HTTPException(status_code=404, detail="Invalid pairing code")
-    if device.get("pairing_expires_at") and device["pairing_expires_at"] < now:
+    # Make expires_at timezone-aware if it's naive (for old DB records)
+    expires_at = device.get("pairing_expires_at")
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < now:
         raise HTTPException(status_code=400, detail="Pairing code has expired. Open the mobile app for a new code.")
     if device.get("is_paired") and device.get("dashboard_session_id") != session_id:
         raise HTTPException(status_code=409, detail="This device is already linked to another dashboard session.")
