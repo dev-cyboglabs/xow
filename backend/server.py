@@ -1107,19 +1107,19 @@ def _make_pairing_code() -> str:
     return ''.join([str(_random.randint(0, 9)) for _ in range(6)])
 
 async def _next_booth_name() -> str:
-    """Return the next unique Booth-XX name by finding the highest existing number."""
+    """Return the next unique Xow-box-XX name by finding the highest existing number."""
     import re
     devices = await db.devices.find(
-        {"name": {"$regex": r"^Booth-\d+$"}},
+        {"name": {"$regex": r"^Xow-box-\d+$"}},
         {"name": 1}
     ).to_list(None)
     numbers = []
     for d in devices:
-        m = re.match(r"^Booth-(\d+)$", d.get("name", ""))
+        m = re.match(r"^Xow-box-(\d+)$", d.get("name", ""))
         if m:
             numbers.append(int(m.group(1)))
     next_num = (max(numbers) + 1) if numbers else 1
-    return f"Booth-{next_num:02d}"
+    return f"Xow-box-{next_num:02d}"
 
 async def _refresh_pairing_code(device_id: str) -> dict:
     """Generate a new pairing code for a device and persist it. Returns {pairing_code, expires_at}."""
@@ -1243,7 +1243,7 @@ async def remove_device_pairing(device_id: str, password: str):
     # Migrate legacy generic names (e.g. "Expo Booth") to unique sequential booth names
     import re
     current_name = device.get("name", "")
-    is_generic = not re.match(r"^Booth-\d+$", current_name)
+    is_generic = not re.match(r"^Xow-box-\d+$", current_name)
     if is_generic:
         current_name = await _next_booth_name()
         await db.devices.update_one(
