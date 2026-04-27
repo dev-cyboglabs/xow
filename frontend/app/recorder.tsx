@@ -1439,7 +1439,7 @@ const startRecording = async () => {
 
   const handleLogout = () => {
     if (isRecording) {
-      Alert.alert('Recording Active', 'Please stop recording before exiting.');
+      Alert.alert('Recording Active', 'Please stop recording before disconnecting.');
       return;
     }
     setShowExitModal(true);
@@ -1447,6 +1447,18 @@ const startRecording = async () => {
 
   const confirmExit = async () => {
     setShowExitModal(false);
+    try {
+      const device_id = await AsyncStorage.getItem('xow_permanent_device_id');
+      const password  = await AsyncStorage.getItem('xow_permanent_device_password');
+      if (device_id && password) {
+        await axios.post(
+          `${API_URL}/api/devices/${device_id}/remove-pairing?password=${password}`
+        );
+      }
+    } catch (_) {
+      // ignore unpair errors — still clear local state
+    }
+    await AsyncStorage.removeItem('xow_is_paired');
     router.replace('/');
   };
 
@@ -1662,7 +1674,7 @@ const startRecording = async () => {
           </TouchableOpacity>
           <TouchableOpacity style={styles.actBtn} onPress={handleLogout}>
             <Ionicons name="power" size={24} color="#E54B2A" />
-            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Exit</Text>
+            <Text style={[styles.actLabel, { color: '#E54B2A' }]}>Disconnect</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1670,14 +1682,14 @@ const startRecording = async () => {
       {showExitModal && (
         <Pressable style={styles.exitOverlay} onPress={() => setShowExitModal(false)}>
           <Pressable style={styles.exitModal} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.exitTitle}>Exit App?</Text>
-            <Text style={styles.exitSub}>Are you sure you want to exit the application?</Text>
+            <Text style={styles.exitTitle}>Disconnect Device?</Text>
+            <Text style={styles.exitSub}>This will unpair the device and return to the pairing screen.</Text>
             <View style={styles.exitBtnRow}>
               <TouchableOpacity style={styles.exitCancelBtn} onPress={() => setShowExitModal(false)}>
                 <Text style={styles.exitCancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.exitConfirmBtn} onPress={confirmExit}>
-                <Text style={styles.exitConfirmText}>Exit</Text>
+                <Text style={styles.exitConfirmText}>Disconnect</Text>
               </TouchableOpacity>
             </View>
           </Pressable>

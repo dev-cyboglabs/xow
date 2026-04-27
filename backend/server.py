@@ -1124,7 +1124,7 @@ async def _next_booth_name() -> str:
 async def _refresh_pairing_code(device_id: str) -> dict:
     """Generate a new pairing code for a device and persist it. Returns {pairing_code, expires_at}."""
     code = _make_pairing_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
     await db.devices.update_one(
         {"device_id": device_id},
         {"$set": {"pairing_code": code, "pairing_expires_at": expires_at}}
@@ -1161,12 +1161,12 @@ async def register_device(device: DeviceCreate):
     assigned_name = await _next_booth_name()
 
     code = _make_pairing_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=PAIRING_CODE_TTL_MINUTES)
     device_doc = {
         "device_id": device.device_id,
         "password": device.password,
         "name": assigned_name,
-        "created_at": datetime.utcnow(),
+        "created_at": datetime.now(timezone.utc),
         "is_active": True,
         "pairing_code": code,
         "pairing_expires_at": expires_at,
@@ -1189,7 +1189,7 @@ async def login_device(login: DeviceLogin):
 
     # Ensure pairing code exists and is fresh
     expires_at = device.get("pairing_expires_at")
-    if not expires_at or expires_at < datetime.utcnow() or not device.get("pairing_code"):
+    if not expires_at or expires_at < datetime.now(timezone.utc) or not device.get("pairing_code"):
         code_info = await _refresh_pairing_code(login.device_id)
         device["pairing_code"] = code_info["pairing_code"]
         device["pairing_expires_at"] = code_info["pairing_expires_at"]
@@ -1208,7 +1208,7 @@ async def get_pairing_code(device_id: str, password: str):
         raise HTTPException(status_code=401, detail="Invalid device credentials")
 
     expires_at = device.get("pairing_expires_at")
-    needs_refresh = (not expires_at) or (expires_at < datetime.utcnow()) or not device.get("pairing_code")
+    needs_refresh = (not expires_at) or (expires_at < datetime.now(timezone.utc)) or not device.get("pairing_code")
     if needs_refresh:
         code_info = await _refresh_pairing_code(device_id)
         pairing_code = code_info["pairing_code"]
@@ -1217,7 +1217,7 @@ async def get_pairing_code(device_id: str, password: str):
         pairing_code = device["pairing_code"]
         pairing_expires_at = expires_at
 
-    seconds_left = max(0, int((pairing_expires_at - datetime.utcnow()).total_seconds()))
+    seconds_left = max(0, int((pairing_expires_at - datetime.now(timezone.utc)).total_seconds()))
     return {
         "pairing_code": pairing_code,
         "expires_at": pairing_expires_at.isoformat() + "Z",
@@ -1272,7 +1272,7 @@ async def pair_device(pairing_code: str, session_id: Optional[str] = None):
     Validates code, expiry, and availability.
     Returns or creates a dashboard session that the browser stores.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     device = await db.devices.find_one({"pairing_code": pairing_code})
     if not device:
         raise HTTPException(status_code=404, detail="Invalid pairing code")

@@ -20,6 +20,7 @@ const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const DEVICE_ID_KEY   = 'xow_permanent_device_id';
 const DEVICE_PWD_KEY  = 'xow_permanent_device_password';
 const DEVICE_NAME_KEY = 'xow_permanent_device_name';
+const IS_PAIRED_KEY   = 'xow_is_paired';
 
 function randomHex(len: number) {
   let result = '';
@@ -66,9 +67,32 @@ export default function SetupScreen() {
       const { device_id, password } = await getOrCreateCredentials();
       console.log('📱 Device ID:', device_id);
 
-      // Try to reset pairing (also confirms the device exists on the server).
+      // FIRST: check if this device is already paired — if so skip straight to recorder.
       try {
-        console.log('🔄 Attempting to remove pairing...');
+        console.log('🔍 Checking existing pairing status...');
+        const res = await axios.get(
+          `${API_URL}/api/devices/${device_id}/pairing-code?password=${password}`
+        );
+        if (res.data?.is_paired) {
+          console.log('✅ Device already paired, entering recorder');
+          await AsyncStorage.setItem(IS_PAIRED_KEY, 'true');
+          router.replace('/recorder');
+          return;
+        }
+      } catch (err: any) {
+        console.log('⚠️ Pairing check failed:', err.message);
+        // Offline or server error — trust local cache so user can keep recording.
+        const cached = await AsyncStorage.getItem(IS_PAIRED_KEY);
+        if (cached === 'true') {
+          console.log('� Cached paired state found, entering recorder');
+          router.replace('/recorder');
+          return;
+        }
+      }
+
+      // Not paired (or no cache) — show a fresh pairing code.
+      try {
+        console.log('🔄 Generating new pairing code...');
         const res = await axios.post(
           `${API_URL}/api/devices/${device_id}/remove-pairing?password=${password}`
         );
@@ -80,6 +104,7 @@ export default function SetupScreen() {
         if (res.data?.name) {
           await AsyncStorage.setItem(DEVICE_NAME_KEY, res.data.name);
         }
+        await AsyncStorage.removeItem(IS_PAIRED_KEY);
         setPairingCode(code);
         startCountdown(secs);
         setStatus('ready');
@@ -195,6 +220,7 @@ export default function SetupScreen() {
         `${API_URL}/api/devices/${device_id}/pairing-code?password=${password}`
       );
       if (res.data?.is_paired) {
+        await AsyncStorage.setItem(IS_PAIRED_KEY, 'true');
         router.replace('/recorder');
       }
     } catch (_) {
