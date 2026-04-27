@@ -117,11 +117,61 @@ export default function GalleryScreen() {
   const progressTrackWidthRef = useRef(0);
   const pendingSeekMsRef = useRef<number | null>(null);
   const pendingSeekResumeRef = useRef<boolean | null>(null);
+  
+  // Pairing modal for offline mode
+  const [showPairingModal, setShowPairingModal] = useState(false);
+  const [pairingCode, setPairingCode] = useState('------');
+  const [pairingSecondsLeft, setPairingSecondsLeft] = useState(300);
+  const pairingCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pairingPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dragSeekSecondsRef = useRef<number | null>(null);
   const wasPlayingBeforeSeekRef = useRef(true);
 
   useEffect(() => { loadDevice(); }, []);
   useEffect(() => { if (deviceId) fetchRecordings(); }, [deviceId]);
+  
+  // Poll for pairing status when modal is open
+  useEffect(() => {
+    if (showPairingModal && deviceId) {
+      let pollCount = 0;
+      
+      const checkPairing = async () => {
+        try {
+          const password = await AsyncStorage.getItem('xow_permanent_device_password');
+          const res = await axios.get(
+            `${API_URL}/api/devices/${deviceId}/pairing-code?password=${password}`,
+            { timeout: 5000 }
+          );
+          if (res.data?.is_paired) {
+            // Device is now paired! Close modal and clear offline mode
+            await AsyncStorage.removeItem('xow_offline_mode');
+            await AsyncStorage.setItem('xow_is_paired', 'true');
+            setShowPairingModal(false);
+            if (pairingCountdownRef.current) clearInterval(pairingCountdownRef.current);
+            if (pairingPollRef.current) clearInterval(pairingPollRef.current);
+            Alert.alert('Connected!', 'Device paired successfully. You can now upload recordings.');
+          }
+        } catch (err) {
+          // Ignore polling errors
+        }
+        
+        pollCount++;
+        // After 10 polls (30s), slow down to every 5 seconds to reduce API calls
+        if (pollCount === 10 && pairingPollRef.current) {
+          clearInterval(pairingPollRef.current);
+          pairingPollRef.current = setInterval(checkPairing, 5000);
+        }
+      };
+      
+      // Start with 3 second polling for quick response
+      pairingPollRef.current = setInterval(checkPairing, 3000);
+      checkPairing(); // Check immediately
+    }
+    
+    return () => {
+      if (pairingPollRef.current) clearInterval(pairingPollRef.current);
+    };
+  }, [showPairingModal, deviceId]);
   
   // Check for existing resumable uploads on mount
   useEffect(() => {
@@ -605,6 +655,48 @@ export default function GalleryScreen() {
 
   const uploadToCloud = async (recording: LocalRecording) => {
     if (!deviceId) return;
+
+    // Check if in offline mode
+    const offlineMode = await AsyncStorage.getItem('xow_offline_mode');
+    if (offlineMode === 'true') {
+      // Check if device is now paired
+      try {
+        const password = await AsyncStorage.getItem('xow_permanent_device_password');
+        const res = await axios.get(
+          `${API_URL}/api/devices/${deviceId}/pairing-code?password=${password}`
+        );
+        
+        // If paired, clear offline mode and proceed with upload
+        if (res.data?.is_paired) {
+          await AsyncStorage.removeItem('xow_offline_mode');
+          await AsyncStorage.setItem('xow_is_paired', 'true');
+          // Don't return - continue to upload below
+        } else {
+          // Not paired yet - show pairing modal
+          setPairingCode(res.data?.pairing_code || '------');
+          const expiresIn = res.data?.expires_in_seconds || 300;
+          setPairingSecondsLeft(expiresIn);
+          
+          // Start countdown
+          if (pairingCountdownRef.current) clearInterval(pairingCountdownRef.current);
+          pairingCountdownRef.current = setInterval(() => {
+            setPairingSecondsLeft(prev => {
+              if (prev <= 1) {
+                if (pairingCountdownRef.current) clearInterval(pairingCountdownRef.current);
+                return 0;
+              }
+              return prev - 1;
+            });
+          }, 1000);
+          
+          setShowPairingModal(true);
+          return;
+        }
+      } catch (err) {
+        Alert.alert('Error', 'Could not check pairing status. Please check your connection.');
+        return;
+      }
+    }
 
     setUploadingId(recording.localId);
     setUploadProgress(0);
@@ -1446,6 +1538,56 @@ export default function GalleryScreen() {
             </View>
         </View>
       </Modal>
+
+      {/* Pairing Modal for Offline Mode */}
+      <Modal
+        visible={showPairingModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setShowPairingModal(false);
+          if (pairingCountdownRef.current) clearInterval(pairingCountdownRef.current);
+          if (pairingPollRef.current) clearInterval(pairingPollRef.current);
+        }}
+      >
+        <View style={styles.pairingOverlay}>
+          <View style={styles.pairingModal}>
+            <View style={styles.pairingHeader}>
+              <Ionicons name="link" size={32} color="#E54B2A" />
+              <Text style={styles.pairingTitle}>Pairing Required</Text>
+            </View>
+            <Text style={styles.pairingSub}>
+              To upload recordings, pair this device with the dashboard. Enter this code:
+            </Text>
+            
+            <View style={styles.pairingCodeBox}>
+              <Text style={styles.pairingCodeText}>{pairingCode}</Text>
+            </View>
+            
+            <View style={styles.pairingTimerRow}>
+              <Ionicons name="time-outline" size={20} color="#555" />
+              <Text style={styles.pairingTimerText}>
+                Expires in {Math.floor(pairingSecondsLeft / 60)}:{(pairingSecondsLeft % 60).toString().padStart(2, '0')}
+              </Text>
+            </View>
+            
+            <Text style={styles.pairingHint}>
+              Open the XoW dashboard and enter this code under Devices. Once paired, you can upload recordings.
+            </Text>
+            
+            <TouchableOpacity
+              style={styles.pairingCloseBtn}
+              onPress={() => {
+                setShowPairingModal(false);
+                if (pairingCountdownRef.current) clearInterval(pairingCountdownRef.current);
+                if (pairingPollRef.current) clearInterval(pairingPollRef.current);
+              }}
+            >
+              <Text style={styles.pairingCloseBtnText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1560,4 +1702,18 @@ const styles = StyleSheet.create({
   progressTrack: { flex: 1, height: 8, borderRadius: 5, backgroundColor: '#222', overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#E54B2A' },
   progressThumb: { position: 'absolute', top: -5, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff' },
+
+  // Pairing Modal
+  pairingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  pairingModal: { width: '100%', maxWidth: 500, backgroundColor: '#0a0a0a', borderRadius: 24, padding: 36, borderWidth: 1, borderColor: '#1a1a1a' },
+  pairingHeader: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 14 },
+  pairingTitle: { color: '#fff', fontSize: 28, fontWeight: '700' },
+  pairingSub: { color: '#888', fontSize: 20, lineHeight: 28, marginBottom: 24 },
+  pairingCodeBox: { backgroundColor: 'rgba(229,75,42,0.1)', borderWidth: 2, borderColor: 'rgba(229,75,42,0.3)', borderRadius: 18, paddingVertical: 24, alignItems: 'center', marginBottom: 16 },
+  pairingCodeText: { color: '#fff', fontSize: 56, fontWeight: '800', fontFamily: 'monospace', letterSpacing: 12 },
+  pairingTimerRow: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginBottom: 20 },
+  pairingTimerText: { color: '#555', fontSize: 18 },
+  pairingHint: { color: '#666', fontSize: 17, lineHeight: 24, textAlign: 'center', marginBottom: 28 },
+  pairingCloseBtn: { backgroundColor: '#E54B2A', paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
+  pairingCloseBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
 });

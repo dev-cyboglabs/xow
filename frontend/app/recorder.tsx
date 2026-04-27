@@ -1469,16 +1469,9 @@ const startRecording = async () => {
     router.replace('/');
   };
 
+  // Auto-request camera permission if not granted
   if (!cameraPermission?.granted) {
-    return (
-      <View style={[styles.container, { width, height, justifyContent: 'center', alignItems: 'center' }]}>
-        <Ionicons name="videocam-off" size={40} color="#E54B2A" />
-        <Text style={{ color: '#fff', marginTop: 12, fontSize: 16 }}>Camera Permission Required</Text>
-        <TouchableOpacity onPress={requestCameraPermission} style={{ marginTop: 16, backgroundColor: '#E54B2A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '600' }}>Enable Camera</Text>
-        </TouchableOpacity>
-      </View>
-    );
+    requestCameraPermission();
   }
 
   // Responsive panel width with better spacing for different screen sizes
@@ -1517,6 +1510,7 @@ const startRecording = async () => {
             facing="back"
             mode="video"
             mute={false}
+            videoQuality="480p"
           />
 
         {/* Top Bar */}
@@ -1598,7 +1592,7 @@ const startRecording = async () => {
       {/* Control Panel */}
       <View style={[styles.panel, { width: panelWidth }]}>
         <View>
-          <Text style={styles.boothName} numberOfLines={1}>{device?.name || 'Booth'}</Text>
+          <Text style={styles.boothName} numberOfLines={1}>{device?.name || 'Xow-box'}</Text>
           <Text style={styles.boothSub}>Expo Recording</Text>
           <View style={styles.uploadModeBadge}>
             <Ionicons name={autoUpload ? 'cloud' : 'save'} size={16} color={autoUpload ? '#E54B2A' : '#bcbcbc'} />

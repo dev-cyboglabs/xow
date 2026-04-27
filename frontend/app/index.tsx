@@ -37,6 +37,7 @@ export default function SetupScreen() {
   const [secondsLeft, setSecondsLeft] = useState(300);
   const [errorMsg, setErrorMsg] = useState('');
   const [showNetworkError, setShowNetworkError] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -59,6 +60,12 @@ export default function SetupScreen() {
     return { device_id, password };
   };
 
+  const goOffline = async () => {
+    console.log('📴 Entering offline mode');
+    await AsyncStorage.setItem('xow_offline_mode', 'true');
+    router.replace('/recorder');
+  };
+
   const init = async () => {
     try {
       console.log('🔧 Starting initialization...');
@@ -76,6 +83,7 @@ export default function SetupScreen() {
         if (res.data?.is_paired) {
           console.log('✅ Device already paired, entering recorder');
           await AsyncStorage.setItem(IS_PAIRED_KEY, 'true');
+          await AsyncStorage.removeItem('xow_offline_mode');
           router.replace('/recorder');
           return;
         }
@@ -84,7 +92,8 @@ export default function SetupScreen() {
         // Offline or server error — trust local cache so user can keep recording.
         const cached = await AsyncStorage.getItem(IS_PAIRED_KEY);
         if (cached === 'true') {
-          console.log('� Cached paired state found, entering recorder');
+          console.log('📦 Cached paired state found, entering recorder');
+          await AsyncStorage.removeItem('xow_offline_mode');
           router.replace('/recorder');
           return;
         }
@@ -305,16 +314,18 @@ export default function SetupScreen() {
             <Text style={styles.timerText}>Refreshes in {formatTime(secondsLeft)}</Text>
           </View>
 
-          <Text style={styles.hint}>
-            {isLoading ? 'Initializing device…' : 'Waiting for pairing… The app will open automatically once connected.'}
+          <Text style={styles.offlineHint}>
+            You can use the app without pairing. Upload features will require connection.
           </Text>
 
-          <View style={styles.waitingRow}>
-            <ActivityIndicator color="#E54B2A" size="small" />
-            <Text style={styles.waitingText}>
-              {isLoading ? 'Setting up' : 'Waiting for connection'}
-            </Text>
-          </View>
+          <TouchableOpacity 
+            style={styles.offlineBtn} 
+            onPress={goOffline}
+            disabled={isLoading}
+          >
+            <Ionicons name="cloud-offline" size={20} color="#fff" />
+            <Text style={styles.offlineBtnText}>Continue in Offline Mode</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -391,8 +402,18 @@ const styles = StyleSheet.create({
 
   hint: { color: '#444', fontSize: 20, textAlign: 'center', marginBottom: 29, lineHeight: 29 },
 
-  waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 18 },
-  waitingText: { color: '#555', fontSize: 22 },
+  offlineHint: { color: '#555', fontSize: 19, textAlign: 'center', lineHeight: 26, marginTop: 26, marginBottom: 20 },
+  offlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    backgroundColor: '#E54B2A',
+    paddingVertical: 18,
+    paddingHorizontal: 28,
+    borderRadius: 14,
+  },
+  offlineBtnText: { color: '#fff', fontSize: 22, fontWeight: '600' },
 
   // Network Error Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 20 },

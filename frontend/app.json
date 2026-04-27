@@ -4,7 +4,7 @@
     "slug": "xow-recorder",
     "version": "1.0.0",
     "orientation": "landscape",
-    "icon": "./assets/images/xow-logo-light.png",
+    "icon": "./assets/images/icon.png",
     "scheme": "xow",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
