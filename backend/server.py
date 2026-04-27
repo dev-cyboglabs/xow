@@ -1189,6 +1189,9 @@ async def login_device(login: DeviceLogin):
 
     # Ensure pairing code exists and is fresh
     expires_at = device.get("pairing_expires_at")
+    # Make expires_at timezone-aware if it's naive (for old DB records)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     if not expires_at or expires_at < datetime.now(timezone.utc) or not device.get("pairing_code"):
         code_info = await _refresh_pairing_code(login.device_id)
         device["pairing_code"] = code_info["pairing_code"]
@@ -1208,6 +1211,9 @@ async def get_pairing_code(device_id: str, password: str):
         raise HTTPException(status_code=401, detail="Invalid device credentials")
 
     expires_at = device.get("pairing_expires_at")
+    # Make expires_at timezone-aware if it's naive (for old DB records)
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
     needs_refresh = (not expires_at) or (expires_at < datetime.now(timezone.utc)) or not device.get("pairing_code")
     if needs_refresh:
         code_info = await _refresh_pairing_code(device_id)
