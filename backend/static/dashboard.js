@@ -1233,7 +1233,7 @@
                         <!-- Search Bar -->
                         <div class="px-4 py-3 bg-gray-50 border-b border-gray-200">
                             <div class="relative">
-                                <input type="text" id="contact-search" placeholder="Search contacts..." oninput="filterContacts()" class="w-full pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
+                                <input type="text" id="contact-search" placeholder="Search contacts..." oninput="filterContacts()" class="w-200 pl-9 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-orange-200 focus:border-orange-400 outline-none">
                                 <svg class="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
                             </div>
                         </div>
@@ -1259,19 +1259,37 @@
                                     const phone = contact['phone'] || contact['phone number'] || contact['mobile'] || contact['contact'] || '';
                                     const company = contact['company'] || contact['company name'] || contact['organization'] || '';
                                     
-                                    return `<div class="contact-item px-4 py-3 hover:bg-gray-50 transition-colors" data-name="${name.toLowerCase()}" data-email="${email.toLowerCase()}" data-phone="${phone.toLowerCase()}" data-company="${company.toLowerCase()}">
-                                        <div class="flex items-center gap-3">
-                                            <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
-                                                <span class="text-orange-700 font-semibold text-sm">${name.charAt(0).toUpperCase()}</span>
+                                    return `<div class="contact-item" data-name="${name.toLowerCase()}" data-email="${email.toLowerCase()}" data-phone="${phone.toLowerCase()}" data-company="${company.toLowerCase()}">
+                                        <div class="px-4 py-3 hover:bg-gray-50 transition-colors cursor-pointer" onclick="toggleContactDropdown(${idx})">
+                                            <div class="flex items-center gap-3">
+                                                <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+                                                    <span class="text-orange-700 font-semibold text-sm">${name.charAt(0).toUpperCase()}</span>
+                                                </div>
+                                                <div class="flex-1 min-w-0">
+                                                    <div class="font-medium text-gray-900 text-sm truncate">${name}</div>
+                                                    ${company ? `<div class="text-xs text-gray-500 truncate">${company}</div>` : 
+                                                    phone ? `<div class="text-xs text-gray-500 truncate">${phone}</div>` : ''}
+                                                </div>
+                                                <svg id="contact-chevron-${idx}" class="w-4 h-4 text-gray-400 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                                                </svg>
                                             </div>
-                                            <div class="flex-1 min-w-0">
-                                                <div class="font-medium text-gray-900 text-sm truncate">${name}</div>
-                                                ${company ? `<div class="text-xs text-gray-500 truncate">${company}</div>` : 
-                                                phone ? `<div class="text-xs text-gray-500 truncate">${phone}</div>` : ''}
-                                            </div>
-                                            <button onclick="showContactInfo(${idx})" class="flex items-center justify-center w-7 h-7 rounded hover:bg-gray-200 text-gray-500 hover:text-gray-700 transition-colors flex-shrink-0" title="View details">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                            </button>
+                                        </div>
+                                        <div id="contact-dropdown-${idx}" class="hidden pl-16 pr-4 pb-3 pt-2 bg-gray-50/50">
+                                            ${phone || email ? `<div class="flex items-center gap-4 text-xs">
+                                                ${phone ? `<div class="flex items-center gap-1.5">
+                                                    <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                                                    </svg>
+                                                    <span class="text-gray-700 font-medium">${phone}</span>
+                                                </div>` : ''}
+                                                ${email ? `<div class="flex items-center gap-1.5 flex-1 min-w-0">
+                                                    <svg class="w-3.5 h-3.5 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                                                    </svg>
+                                                    <span class="text-gray-700 font-medium truncate">${email}</span>
+                                                </div>` : ''}
+                                            </div>` : `<div class="text-xs text-gray-400 italic">No contact details available</div>`}
                                         </div>
                                     </div>`;
                                 }).join('')}
@@ -1385,91 +1403,35 @@
             });
         }
 
-        function showContactInfo(idx) {
-            const contact = importedContacts[idx];
-            if (!contact) return;
+        function toggleContactDropdown(idx) {
+            const dropdown = document.getElementById(`contact-dropdown-${idx}`);
+            const chevron = document.getElementById(`contact-chevron-${idx}`);
             
-            const name = contactDisplayName(contact);
-            const email = contact['email'] || contact['email id'] || contact['emailid'] || contact['e-mail'] || '';
-            const phone = contact['phone'] || contact['phone number'] || contact['mobile'] || contact['contact'] || '';
-            const company = contact['company'] || contact['company name'] || contact['organization'] || '';
-            const designation = contact['designation'] || contact['title'] || contact['position'] || '';
-            const address = contact['address'] || contact['location'] || '';
-            const notes = contact['notes'] || contact['remarks'] || '';
+            if (!dropdown || !chevron) return;
             
-            // Create modal HTML
-            const modalHtml = `
-                <div id="contact-info-modal" class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onclick="if(event.target===this) closeContactInfo()">
-                    <div class="bg-white rounded-xl shadow-xl max-w-sm w-full" onclick="event.stopPropagation()">
-                        <!-- Header -->
-                        <div class="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-                            <div class="flex items-center gap-3">
-                                <div class="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                                    <span class="text-orange-700 font-semibold text-lg">${name.charAt(0).toUpperCase()}</span>
-                                </div>
-                                <div>
-                                    <h3 class="text-gray-900 font-semibold text-base">${name}</h3>
-                                    ${company ? `<p class="text-gray-500 text-xs">${company}</p>` : ''}
-                                </div>
-                            </div>
-                            <button onclick="closeContactInfo()" class="text-gray-400 hover:text-gray-600 transition-colors">
-                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-                            </button>
-                        </div>
-                        
-                        <!-- Content -->
-                        <div class="px-5 py-4 space-y-3 max-h-[60vh] overflow-y-auto">
-                            ${email ? `
-                            <div>
-                                <div class="text-xs text-gray-500 mb-1">Email</div>
-                                <a href="mailto:${email}" class="text-sm text-orange-600 hover:text-orange-700 break-all">${email}</a>
-                            </div>` : ''}
-                            
-                            ${phone ? `
-                            <div>
-                                <div class="text-xs text-gray-500 mb-1">Phone</div>
-                                <a href="tel:${phone}" class="text-sm text-gray-900 hover:text-orange-600">${phone}</a>
-                            </div>` : ''}
-                            
-                            ${designation ? `
-                            <div>
-                                <div class="text-xs text-gray-500 mb-1">Designation</div>
-                                <div class="text-sm text-gray-900">${designation}</div>
-                            </div>` : ''}
-                            
-                            ${address ? `
-                            <div>
-                                <div class="text-xs text-gray-500 mb-1">Address</div>
-                                <div class="text-sm text-gray-900">${address}</div>
-                            </div>` : ''}
-                            
-                            ${notes ? `
-                            <div>
-                                <div class="text-xs text-gray-500 mb-1">Notes</div>
-                                <div class="text-sm text-gray-900">${notes}</div>
-                            </div>` : ''}
-                            
-                            ${!email && !phone && !designation && !address && !notes ? `
-                            <div class="text-center py-6">
-                                <svg class="w-10 h-10 text-gray-300 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                <p class="text-xs text-gray-500">No details available</p>
-                            </div>` : ''}
-                        </div>
-                    </div>
-                </div>
-            `;
+            // Close all other dropdowns
+            document.querySelectorAll('[id^="contact-dropdown-"]').forEach(el => {
+                if (el.id !== `contact-dropdown-${idx}`) {
+                    el.classList.add('hidden');
+                }
+            });
             
-            // Remove existing modal if any
-            const existing = document.getElementById('contact-info-modal');
-            if (existing) existing.remove();
+            // Reset all other chevrons
+            document.querySelectorAll('[id^="contact-chevron-"]').forEach(el => {
+                if (el.id !== `contact-chevron-${idx}`) {
+                    el.style.transform = '';
+                }
+            });
             
-            // Add modal to body
-            document.body.insertAdjacentHTML('beforeend', modalHtml);
-        }
-
-        function closeContactInfo() {
-            const modal = document.getElementById('contact-info-modal');
-            if (modal) modal.remove();
+            // Toggle current dropdown
+            const isHidden = dropdown.classList.contains('hidden');
+            if (isHidden) {
+                dropdown.classList.remove('hidden');
+                chevron.style.transform = 'rotate(180deg)';
+            } else {
+                dropdown.classList.add('hidden');
+                chevron.style.transform = '';
+            }
         }
 
         // Device management
