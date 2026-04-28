@@ -1,11 +1,27 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import RecordingList from './screens/RecordingList';
 import BadgeGrid from './screens/BadgeGrid';
 import VideoPlayer from './screens/VideoPlayer';
+import TermsAndConditions from './screens/TermsAndConditions';
 
-// screens: 'recordings' | 'badges' | 'video'
+// screens: 'terms' | 'recordings' | 'badges' | 'video'
 export default function App() {
   const [screen, setScreen] = useState('recordings');
+  const [termsChecked, setTermsChecked] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
+
+  useEffect(() => {
+    window.xowAPI.checkTerms()
+      .then((accepted) => {
+        setTermsAccepted(!!accepted);
+        setTermsChecked(true);
+      })
+      .catch(() => {
+        setTermsAccepted(false);
+        setTermsChecked(true);
+      });
+  }, []);
+
   const [selectedDrive, setSelectedDrive] = useState(null);
   const [selectedRecording, setSelectedRecording] = useState(null);
   const [videoParams, setVideoParams] = useState(null); // { startTimestamp, visitor }
@@ -29,6 +45,12 @@ export default function App() {
     setVideoParams(params);
     setScreen('video');
   };
+
+  if (!termsChecked) return null;
+
+  if (!termsAccepted) {
+    return <TermsAndConditions onAccepted={() => setTermsAccepted(true)} />;
+  }
 
   return (
     <div className="app-root">

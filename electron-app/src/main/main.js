@@ -8,6 +8,27 @@ const isDev = process.env.NODE_ENV === 'development' || process.env.ELECTRON_DEV
 
 let mainWindow;
 
+function getTermsFilePath() {
+  return path.join(app.getPath('userData'), 'xow-terms-accepted.json');
+}
+
+function isTermsAccepted() {
+  try {
+    const data = JSON.parse(fs.readFileSync(getTermsFilePath(), 'utf8'));
+    return data.accepted === true && data.version === app.getVersion();
+  } catch {
+    return false;
+  }
+}
+
+function saveTermsAccepted() {
+  fs.writeFileSync(
+    getTermsFilePath(),
+    JSON.stringify({ accepted: true, version: app.getVersion(), date: new Date().toISOString() }),
+    'utf8'
+  );
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -62,6 +83,17 @@ app.on('window-all-closed', () => {
 });
 
 // --- IPC Handlers ---
+
+ipcMain.handle('check-terms', () => isTermsAccepted());
+
+ipcMain.handle('accept-terms', () => {
+  saveTermsAccepted();
+  return true;
+});
+
+ipcMain.handle('decline-terms', () => {
+  app.quit();
+});
 
 ipcMain.handle('get-drives', async () => {
   const localXoWPath = path.join(app.getPath('userData'), 'XoW');

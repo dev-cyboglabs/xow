@@ -53,3 +53,4 @@ cd android && ./gradlew assembleRelease
 
 # build pc apps all
 1. npm run build:all
+2. npm run build:mac

@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('xowAPI', {
   openEncFile: () => ipcRenderer.invoke('open-enc-file'),
   importToLocal: (drivePath) => ipcRenderer.invoke('import-to-local', drivePath),
   getLocalPath: () => ipcRenderer.invoke('get-local-path'),
+  checkTerms: () => ipcRenderer.invoke('check-terms'),
+  acceptTerms: () => ipcRenderer.invoke('accept-terms'),
+  declineTerms: () => ipcRenderer.invoke('decline-terms'),
   // Utility: convert a local file path to a file:// URL the renderer can use
   filePathToUrl: (filePath) => {
     if (!filePath) return null;
