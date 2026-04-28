@@ -38,7 +38,7 @@ function VisitorCard({ visitor, importedData, active, cardRef, onClick, onInfo }
       {/* Avatar */}
       <div style={{
         width: 38, height: 38, borderRadius: '50%', flexShrink: 0,
-        background: active ? '#E54B2A' : '#7A706A',
+        background: active ? '#E54B2A' : '#625f5c', //avator color
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 13, fontWeight: 700, color: '#fff',
         transition: 'background 0.15s',
@@ -50,7 +50,7 @@ function VisitorCard({ visitor, importedData, active, cardRef, onClick, onInfo }
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{
           fontSize: 13, fontWeight: 600,
-          color: active ? 'var(--accent)' : 'var(--text)',
+          color: active ? 'var(--accent)' : '#000',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
           marginBottom: 2,
         }}>
@@ -58,14 +58,14 @@ function VisitorCard({ visitor, importedData, active, cardRef, onClick, onInfo }
         </div>
         {company && (
           <div style={{
-            fontSize: 11, color: 'var(--text-muted)',
+            fontSize: 11, color: '#000',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             marginBottom: 2,
           }}>
             {company}
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--text-sub)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#000' }}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
           </svg>
@@ -113,12 +113,23 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
   const [infoVisitor, setInfoVisitor] = useState(null);
   const [importing, setImporting]     = useState(false);
   const [toast, setToast]             = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const chunks       = recording.videoChunks || [];
   const scans        = recording.barcodeScans || [];
   const totalDuration = recording.totalDuration || 0;
   const importedCount = Object.keys(visitorDataMap || {}).length;
   const dt = formatDateTime12Hour(recording.createdAt);
+
+  // Filter scans based on search query
+  const filteredScans = scans.filter(scan => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const importedData = (visitorDataMap || {})[scan.barcode];
+    const name = (importedData?.visitorName || scan.visitorName || '').toLowerCase();
+    const company = (importedData?.company || scan.company || '').toLowerCase();
+    return name.includes(query) || company.includes(query);
+  });
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -301,7 +312,7 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <polyline points="15 18 9 12 15 6" />
             </svg>
-            Recordings
+            Back
           </button>
           <div className="header-divider" />
           <div className="header-info">
@@ -465,16 +476,44 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
         }}>
           {/* Sidebar header */}
           <div style={{
-            padding: '12px 14px',
             borderBottom: '1px solid var(--border)',
             background: 'var(--surface-2)',
             flexShrink: 0,
           }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              Visitors
+            <div style={{ padding: '12px 14px' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Visitors
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 2 }}>
+                {scans.length} recorded · click to jump
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--text-sub)', marginTop: 2 }}>
-              {scans.length} recorded · click to jump
+            {/* Search box */}
+            <div style={{ padding: '0 14px 12px 14px' }}>
+              <div style={{ position: 'relative' }}>
+                <svg style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-sub)" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  type="text"
+                  placeholder="Search by name or company..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '7px 10px 7px 32px',
+                    fontSize: '12px',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    background: 'var(--surface)',
+                    color: 'var(--text)',
+                    outline: 'none',
+                  }}
+                  onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+                  onBlur={(e) => e.target.style.borderColor = 'var(--border)'}
+                />
+              </div>
             </div>
           </div>
 
@@ -484,18 +523,25 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
               <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-sub)', fontSize: 13 }}>
                 No visitor scans in this recording.
               </div>
+            ) : filteredScans.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-sub)', fontSize: 13 }}>
+                No visitors found matching "{searchQuery}"
+              </div>
             ) : (
-              scans.map((scan, idx) => (
-                <VisitorCard
-                  key={scan.barcode + idx}
-                  visitor={scan}
-                  importedData={(visitorDataMap || {})[scan.barcode] || null}
-                  active={activeIdx === idx}
-                  cardRef={el => { cardRefs.current[idx] = el; }}
-                  onClick={() => seekToGlobalTime(scan.timestamp)}
-                  onInfo={v => setInfoVisitor(v)}
-                />
-              ))
+              filteredScans.map((scan, idx) => {
+                const originalIdx = scans.indexOf(scan);
+                return (
+                  <VisitorCard
+                    key={scan.barcode + originalIdx}
+                    visitor={scan}
+                    importedData={(visitorDataMap || {})[scan.barcode] || null}
+                    active={activeIdx === originalIdx}
+                    cardRef={el => { cardRefs.current[originalIdx] = el; }}
+                    onClick={() => seekToGlobalTime(scan.timestamp)}
+                    onInfo={v => setInfoVisitor(v)}
+                  />
+                );
+              })
             )}
           </div>
         </div>

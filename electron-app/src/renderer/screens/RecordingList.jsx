@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { formatDuration, formatDateTime, formatDateTime12Hour } from '../utils/formatTime';
 import xowLogo from '../../../assets/xow-logo-light.svg';
+import fadeLogo from '../../../assets/fade-logo.svg';
 
-export default function RecordingList({ selectedDrive, onDriveChange, onOpenRecording }) {
+export default function RecordingList({ selectedDrive, onDriveChange, onOpenRecording, onOpenContactBook, visitorDataMap }) {
   const [drives, setDrives] = useState([]);
   const [recordings, setRecordings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -319,23 +320,29 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
         )}
 
         {selectedDrive && !loading && recordings.length > 0 && (
-          <div style={{padding: '0 20px 20px'}}>
+          <div style={{
+            padding: '0 20px 20px',
+            position: 'relative',
+            minHeight: 'calc(100vh - 200px)',
+            backgroundImage: `url(${fadeLogo})`,
+            backgroundPosition: 'center center',
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: '30%',
+            backgroundAttachment: 'fixed',
+          }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'space-between',
+              gap: '8px',
               marginBottom: '20px'
             }}>
-              <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--play)" strokeWidth="2">
-                  <polygon points="23 7 16 12 23 17 23 7" />
-                  <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-                </svg>
-                <h2 style={{fontSize: '16px', fontWeight: 600, color: 'var(--text)'}}>
-                  {recordings.length} Recording{recordings.length !== 1 ? 's' : ''}
-                </h2>
-              </div>
-              <span style={{fontSize: '12px', color: 'var(--text-sub)'}}>{selectedDrive.description}</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--play)" strokeWidth="2">
+                <polygon points="23 7 16 12 23 17 23 7" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+              <h2 style={{fontSize: '16px', fontWeight: 600, color: 'var(--text)'}}>
+                {recordings.length} Recording{recordings.length !== 1 ? 's' : ''}
+              </h2>
             </div>
             <div style={{
               display: 'grid',
@@ -347,6 +354,8 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
                   key={rec.sessionId}
                   recording={rec}
                   onOpen={() => onOpenRecording(rec, selectedDrive)}
+                  onOpenContacts={() => onOpenContactBook(rec)}
+                  hasContactData={visitorDataMap && Object.keys(visitorDataMap).length > 0}
                 />
               ))}
             </div>
@@ -357,7 +366,7 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
   );
 }
 
-function RecordingItem({ recording, onOpen }) {
+function RecordingItem({ recording, onOpen, onOpenContacts, hasContactData }) {
   const dt = formatDateTime12Hour(recording.createdAt);
   const duration = formatDuration(recording.totalDuration);
   const visitorCount = recording.barcodeScans?.length || 0;
@@ -438,17 +447,56 @@ function RecordingItem({ recording, onOpen }) {
         </div>
       </div>
 
-      {/* Action button */}
-      <button className="btn-primary" onClick={onOpen} style={{
-        width: '100%',
-        justifyContent: 'center',
-        marginTop: '4px'
-      }}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
-          <polygon points="5 3 19 12 5 21 5 3" />
-        </svg>
-        Open Recording
-      </button>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+        <button className="btn-primary" onClick={onOpen} style={{
+          width: '100%',
+          justifyContent: 'center',
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          Open Recording
+        </button>
+        
+        {hasContactData && (
+          <button 
+            onClick={onOpenContacts}
+            style={{
+              width: '100%',
+              padding: '10px 16px',
+              background: 'var(--surface-2)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              color: 'var(--text)',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+              transition: 'all 0.15s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--surface)';
+              e.currentTarget.style.borderColor = 'var(--accent)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--surface-2)';
+              e.currentTarget.style.borderColor = 'var(--border)';
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+            Contact Book
+          </button>
+        )}
+      </div>
     </div>
   );
 }

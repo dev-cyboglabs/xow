@@ -1222,7 +1222,7 @@
                                 ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2">
-                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Encrypted data received</span>` : `
+                                ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Data received</span>` : `
                                 <span class="text-xs text-emerald-600 flex items-center gap-1">
                                     <svg class="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20"><circle cx="10" cy="10" r="3"/></svg>
                                     Connected 

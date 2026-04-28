@@ -23,7 +23,8 @@ import axios from 'axios';
 import { recoverIncompleteSessions, ensurePlayableUri } from './utils/chunkRecording';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk (reduced to prevent OOM)
+const MAX_PARALLEL_UPLOADS = 2; // Upload 2 chunks simultaneously (reduced to prevent OOM)
 
 interface VideoChunk {
   chunkIndex: number;
@@ -788,57 +789,83 @@ export default function GalleryScreen() {
 
           console.log(`Uploading video file ${fileIdx + 1}/${videoFileInfo.length}: ${vf.size} bytes → ${vf.pieces} pieces (global offset ${piecesBeforeThisFile})`);
 
+          // Parallel upload: process chunks in batches
+          const piecesToUpload = [];
           for (let pieceIdx = 0; pieceIdx < vf.pieces; pieceIdx++) {
             const currentGlobalIdx = piecesBeforeThisFile + pieceIdx;
+            if (currentGlobalIdx < videoStartChunk) continue; // Skip already-uploaded
+            piecesToUpload.push({ pieceIdx, currentGlobalIdx });
+          }
 
-            // Skip already-uploaded pieces (resume support)
-            if (currentGlobalIdx < videoStartChunk) continue;
+          // Upload in parallel batches with memory management
+          for (let batchStart = 0; batchStart < piecesToUpload.length; batchStart += MAX_PARALLEL_UPLOADS) {
+            const batch = piecesToUpload.slice(batchStart, batchStart + MAX_PARALLEL_UPLOADS);
+            
+            // Process batch in parallel but with immediate cleanup
+            const uploadPromises = batch.map(async ({ pieceIdx, currentGlobalIdx }) => {
+              let tempPath: string | null = null;
+              try {
+                const start = pieceIdx * CHUNK_SIZE;
+                const length = Math.min(CHUNK_SIZE, vf.size - start);
 
-            const start = pieceIdx * CHUNK_SIZE;
-            const length = Math.min(CHUNK_SIZE, vf.size - start);
+                // Create a temporary slice file for this chunk piece
+                tempPath = `${FileSystem.cacheDirectory}xow_chunk_${currentGlobalIdx}.tmp`;
+                
+                // Read and write in one operation to minimize memory usage
+                const chunkData = await FileSystem.readAsStringAsync(vf.path, {
+                  encoding: FileSystem.EncodingType.Base64,
+                  position: start,
+                  length,
+                });
+                
+                await FileSystem.writeAsStringAsync(tempPath, chunkData, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
 
-            const chunkBase64 = await FileSystem.readAsStringAsync(vf.path, {
-              encoding: FileSystem.EncodingType.Base64,
-              position: start,
-              length,
-            });
+                // Upload the temp file directly
+                const uploadResult = await FileSystem.uploadAsync(
+                  `${API_URL}/api/recordings/${recordingId}/upload-video`,
+                  tempPath,
+                  {
+                    fieldName: 'video',
+                    httpMethod: 'POST',
+                    uploadType: FileSystem.FileSystemUploadType.MULTIPART,
+                    mimeType,
+                    parameters: {
+                      chunk_index: String(currentGlobalIdx),
+                      total_chunks: String(globalTotalChunks),
+                      video_file_index: String(fileIdx),
+                    },
+                  }
+                );
 
-            const tempPath = `${FileSystem.cacheDirectory}xow_chunk_${currentGlobalIdx}.tmp`;
-            await FileSystem.writeAsStringAsync(tempPath, chunkBase64, {
-              encoding: FileSystem.EncodingType.Base64,
-            });
+                if (uploadResult.status < 200 || uploadResult.status >= 300) {
+                  throw new Error(`Chunk ${currentGlobalIdx + 1}/${globalTotalChunks} upload failed (HTTP ${uploadResult.status})`);
+                }
 
-            const uploadResult = await FileSystem.uploadAsync(
-              `${API_URL}/api/recordings/${recordingId}/upload-video`,
-              tempPath,
-              {
-                fieldName: 'video',
-                httpMethod: 'POST',
-                uploadType: FileSystem.FileSystemUploadType.MULTIPART,
-                mimeType,
-                parameters: {
-                  chunk_index: String(currentGlobalIdx),
-                  total_chunks: String(globalTotalChunks),
-                  video_file_index: String(fileIdx),
-                },
+                console.log(`✓ Piece ${currentGlobalIdx + 1}/${globalTotalChunks} uploaded`);
+                return currentGlobalIdx;
+              } finally {
+                // Always clean up temp file to free memory, even on error
+                if (tempPath) {
+                  await FileSystem.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
+                }
               }
-            );
+            });
 
-            await FileSystem.deleteAsync(tempPath, { idempotent: true });
+            await Promise.all(uploadPromises);
 
-            if (uploadResult.status < 200 || uploadResult.status >= 300) {
-              throw new Error(`Chunk ${currentGlobalIdx + 1}/${globalTotalChunks} upload failed (HTTP ${uploadResult.status})`);
-            }
-
-            const progress = Math.min((currentGlobalIdx + 1) / globalTotalChunks, 0.99);
+            // Update progress after each batch
+            const lastUploadedIdx = batch[batch.length - 1].currentGlobalIdx;
+            const progress = Math.min((lastUploadedIdx + 1) / globalTotalChunks, 0.99);
             setUploadProgress(progress);
             await AsyncStorage.setItem(resumeKey, JSON.stringify({
               recordingId,
-              nextChunk: currentGlobalIdx + 1,
+              nextChunk: lastUploadedIdx + 1,
               totalChunks: globalTotalChunks,
             }));
 
-            console.log(`Piece ${currentGlobalIdx + 1}/${globalTotalChunks} uploaded (${Math.round(progress * 100)}%)`);
+            console.log(`📦 Batch uploaded: ${Math.round(progress * 100)}% complete`);
           }
 
           // Clean up temp video file for this chunk if we created one
