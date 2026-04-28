@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { formatTimestamp } from '../utils/formatTime';
+import { formatTimestamp, formatDurationWithUnit } from '../utils/formatTime';
 
 /* ── Video thumbnail captured at visitor's timestamp ─────── */
 function VideoThumbnail({ recording, timestamp }) {
@@ -107,7 +107,7 @@ export default function VisitorInfoModal({ visitor, importedData, recording, isO
       `Email: ${resolvedEmail || '—'}`,
       `Phone: ${resolvedPhone || '—'}`,
       `Badge ID: ${visitor.barcode}`,
-      `Scanned: ${formatTimestamp(visitor.timestamp)} (${visitor.timestamp}s)`,
+      `Scanned: ${formatDurationWithUnit(visitor.timestamp)}`,
     ].join('\n');
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
@@ -167,7 +167,7 @@ export default function VisitorInfoModal({ visitor, importedData, recording, isO
           <InfoRow
             icon={<ClockIcon />}
             label="Scanned"
-            value={`${formatTimestamp(visitor.timestamp)} (${visitor.timestamp}s)`}
+            value={formatDurationWithUnit(visitor.timestamp)}
           />
         </div>
 

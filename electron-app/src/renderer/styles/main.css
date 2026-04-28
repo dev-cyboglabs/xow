@@ -103,26 +103,28 @@ body {
 .drive-selector-bar {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  padding: 10px 20px;
+  padding: 14px 24px;
   flex-shrink: 0;
 }
-.drive-selector-inner { display: flex; align-items: center; gap: 10px; }
+.drive-selector-inner { display: flex; align-items: center; gap: 14px; }
 .drive-selector-label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 600;
   white-space: nowrap;
 }
 .drive-select {
   background: var(--surface-2);
   border: 1px solid var(--border);
   color: var(--text);
-  padding: 6px 12px;
+  padding: 9px 14px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  min-width: 220px;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 260px;
   outline: none;
   cursor: pointer;
 }
@@ -229,7 +231,8 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
   padding: 80px 20px;
   text-align: center;
   color: var(--text-muted);
-  min-height: 400px;
+  flex: 1;
+  height: 100%;
 }
 .empty-sub { color: var(--text-sub); font-size: 13px; max-width: 420px; line-height: 1.5; }
 .error-text { color: var(--play); font-weight: 600; font-size: 18px; margin-top: 8px; }
@@ -567,9 +570,9 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
 .timeline-container { margin-bottom: 12px; }
 .timeline-track {
   position: relative;
-  height: 24px;
+  height: 6px;
   background: var(--surface-2);
-  border-radius: 12px;
+  border-radius: 3px;
   cursor: pointer;
   overflow: visible;
   border: 1px solid var(--border);
@@ -580,19 +583,19 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
   left: 0;
   height: 100%;
   background: var(--play);
-  border-radius: 12px;
+  border-radius: 3px;
   pointer-events: none;
 }
 .timeline-thumb {
   position: absolute;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   background: var(--play);
   border-radius: 50%;
   pointer-events: none;
-  box-shadow: 0 2px 6px rgba(229,75,42,0.4);
+  box-shadow: 0 1px 4px rgba(229,75,42,0.5);
   z-index: 2;
 }
 .timeline-marker {
@@ -606,12 +609,7 @@ button { cursor: pointer; border: none; font-family: inherit; transition: all 0.
   z-index: 3;
 }
 .marker-dot {
-  width: 10px;
-  height: 10px;
-  background: var(--surface);
-  border: 2px solid var(--play);
-  border-radius: 50%;
-  margin-bottom: 2px;
+  display: none;
 }
 .marker-label {
   background: var(--surface);

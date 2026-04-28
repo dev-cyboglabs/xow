@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import RecordingList from './screens/RecordingList';
-import BadgeGrid from './screens/BadgeGrid';
-import VideoPlayer from './screens/VideoPlayer';
+import RecordingView from './screens/RecordingView';
 import TermsAndConditions from './screens/TermsAndConditions';
 
-// screens: 'terms' | 'recordings' | 'badges' | 'video'
 export default function App() {
   const [screen, setScreen] = useState('recordings');
   const [termsChecked, setTermsChecked] = useState(false);
@@ -24,26 +22,17 @@ export default function App() {
 
   const [selectedDrive, setSelectedDrive] = useState(null);
   const [selectedRecording, setSelectedRecording] = useState(null);
-  const [videoParams, setVideoParams] = useState(null); // { startTimestamp, visitor }
-  // visitorDataMap: keyed by barcode string → { visitorName, company, email, phone }
   const [visitorDataMap, setVisitorDataMap] = useState({});
 
   const goToRecordings = () => {
     setSelectedRecording(null);
-    setVideoParams(null);
     setScreen('recordings');
   };
 
-  const goToBadges = (recording, drive) => {
+  const goToRecording = (recording, drive) => {
     setSelectedRecording(recording);
     if (drive) setSelectedDrive(drive);
-    setVideoParams(null);
-    setScreen('badges');
-  };
-
-  const goToVideo = (params) => {
-    setVideoParams(params);
-    setScreen('video');
+    setScreen('recording');
   };
 
   if (!termsChecked) return null;
@@ -58,26 +47,16 @@ export default function App() {
         <RecordingList
           selectedDrive={selectedDrive}
           onDriveChange={setSelectedDrive}
-          onOpenRecording={(rec, drive) => goToBadges(rec, drive)}
+          onOpenRecording={(rec, drive) => goToRecording(rec, drive)}
         />
       )}
-      {screen === 'badges' && selectedRecording && (
-        <BadgeGrid
+      {screen === 'recording' && selectedRecording && (
+        <RecordingView
           recording={selectedRecording}
           drive={selectedDrive}
           onBack={goToRecordings}
-          onPlay={(params) => goToVideo(params)}
           visitorDataMap={visitorDataMap}
           onSetVisitorDataMap={setVisitorDataMap}
-        />
-      )}
-      {screen === 'video' && selectedRecording && videoParams && (
-        <VideoPlayer
-          recording={selectedRecording}
-          drive={selectedDrive}
-          startTimestamp={videoParams.startTimestamp}
-          visitor={videoParams.visitor}
-          onBack={() => setScreen('badges')}
         />
       )}
     </div>

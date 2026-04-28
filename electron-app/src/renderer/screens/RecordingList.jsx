@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { formatDuration, formatDateTime } from '../utils/formatTime';
+import { formatDuration, formatDateTime, formatDateTime12Hour } from '../utils/formatTime';
 import xowLogo from '../../../assets/xow-logo-light.svg';
 
 export default function RecordingList({ selectedDrive, onDriveChange, onOpenRecording }) {
@@ -168,7 +168,7 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
       <div className="drive-selector-bar">
         <div className="drive-selector-inner">
           <div className="drive-selector-label">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <rect x="2" y="3" width="20" height="14" rx="2" />
               <path d="M8 21h8M12 17v4" />
             </svg>
@@ -205,7 +205,7 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
                   </>
                 ) : (
                   <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                       <polyline points="7 10 12 15 17 10" />
                       <line x1="12" y1="15" x2="12" y2="3" />
@@ -216,14 +216,14 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
               </button>
             )}
             <button className="btn-ghost" onClick={showLocalPath} title="Show local storage path">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
             </button>
             <button className="btn-ghost" onClick={handleRefresh} disabled={scanning} title="Manual refresh">
               <svg
-                width="16"
-                height="16"
+                width="18"
+                height="18"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -269,22 +269,26 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
       <main className="main-content">
         {!selectedDrive && (
           <div className="empty-state">
-            <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
+            <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
               <path d="M20 7h-3a2 2 0 0 1-2-2V2"/>
               <path d="M9 18a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2z"/>
               <path d="M3 7v11a2 2 0 0 0 2 2h2"/>
               <rect x="9" y="2" width="11" height="20" rx="2"/>
             </svg>
-            <p style={{fontSize: '18px', fontWeight: 600, marginTop: '20px'}}>Insert External Storage</p>
-            <p className="empty-sub">Connect a USB drive or SD card with XoW recordings</p>
+            <p style={{fontSize: '22px', fontWeight: 600, marginTop: '20px'}}>Insert External Storage</p>
+            <p style={{fontSize:'18px'}} className="empty-sub">Connect a USB drive or SD card with XoW Play</p>
       
           </div>
         )}
 
         {selectedDrive && loading && (
           <div className="empty-state">
-            <div className="spinner" />
-            <p>Scanning for recordings...</p>
+            <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" opacity="0.4">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 6v6l4 2" />
+            </svg>
+            <p style={{fontSize: '22px', fontWeight: 600, marginTop: '20px'}}>Scanning for recordings...</p>
+            <p style={{fontSize:'18px'}} className="empty-sub">Please wait while we search the drive</p>
           </div>
         )}
 
@@ -335,7 +339,7 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
               gap: '16px'
             }}>
               {recordings.map((rec) => (
@@ -354,116 +358,93 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
 }
 
 function RecordingItem({ recording, onOpen }) {
-  const dt = formatDateTime(recording.createdAt);
+  const dt = formatDateTime12Hour(recording.createdAt);
   const duration = formatDuration(recording.totalDuration);
   const visitorCount = recording.barcodeScans?.length || 0;
+  
+  const durationHours = Math.floor(recording.totalDuration / 3600);
+  const durationMinutes = Math.floor((recording.totalDuration % 3600) / 60);
+  const formattedDuration = durationHours > 0 
+    ? `${durationHours}:${String(durationMinutes).padStart(2, '0')} hr`
+    : `${durationMinutes}:${String(Math.floor(recording.totalDuration % 60)).padStart(2, '0')} min`;
 
   return (
     <div style={{
       background: 'var(--surface)',
       border: '1px solid var(--border)',
-      borderRadius: 'var(--radius)',
-      padding: '20px',
+      borderRadius: '8px',
+      padding: '18px',
       display: 'flex',
       flexDirection: 'column',
       gap: '16px',
-      transition: 'all 0.2s',
-      cursor: 'pointer',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.transform = 'translateY(-2px)';
-      e.currentTarget.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)';
-      e.currentTarget.style.borderColor = 'var(--border-light)';
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.transform = 'translateY(0)';
-      e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-      e.currentTarget.style.borderColor = 'var(--border)';
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)'
     }}>
-      {/* Header with icon and date */}
-      <div style={{display: 'flex', alignItems: 'flex-start', gap: '12px'}}>
+      {/* Header */}
+      <div style={{display: 'flex', alignItems: 'center', gap: '12px', paddingBottom: '12px', borderBottom: '1px solid var(--border)'}}>
         <div style={{
-          width: '48px',
-          height: '48px',
-          borderRadius: '12px',
-          background: 'linear-gradient(135deg, rgba(229,75,42,0.1), rgba(229,75,42,0.05))',
+          width: '40px',
+          height: '40px',
+          borderRadius: '6px',
+          background: 'var(--surface-2)',
+          border: '1px solid var(--border)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0
         }}>
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--play)" strokeWidth="2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
             <polygon points="23 7 16 12 23 17 23 7" />
             <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
           </svg>
         </div>
-        <div style={{flex: 1, minWidth: 0}}>
-          <div style={{fontSize: '15px', fontWeight: 600, color: 'var(--text)', marginBottom: '4px'}}>{dt.date}</div>
-          <div style={{fontSize: '13px', color: 'var(--text-muted)'}}>{dt.time}</div>
+        <div style={{flex: 1}}>
+          <div style={{fontSize: '14px', fontWeight: 600, color: 'var(--text)'}}>Recording Session</div>
+          {recording.isComplete && (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px',
+              marginTop: '3px',
+              color: 'var(--text-sub)',
+              fontSize: '11px',
+              fontWeight: 500
+            }}>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              Complete
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '5px',
-          background: 'var(--surface-2)',
-          border: '1px solid var(--border)',
-          color: 'var(--text-muted)',
-          fontSize: '12px',
-          fontWeight: 500,
-          padding: '5px 10px',
-          borderRadius: '6px'
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-          </svg>
-          {duration}
-        </span>
-        <span style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '5px',
-          background: 'rgba(229,75,42,0.08)',
-          color: '#C93D1E',
-          fontSize: '12px',
-          fontWeight: 600,
-          padding: '5px 10px',
-          borderRadius: '6px'
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-            <circle cx="9" cy="7" r="4" />
-            <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-          </svg>
-          {visitorCount} visitor{visitorCount !== 1 ? 's' : ''}
-        </span>
-        {recording.isComplete && (
-          <span style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '5px',
-            background: 'rgba(22,163,74,0.1)',
-            color: '#16a34a',
-            fontSize: '12px',
-            fontWeight: 600,
-            padding: '5px 10px',
-            borderRadius: '6px'
-          }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            Complete
-          </span>
-        )}
+      {/* Details */}
+      <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          <span style={{color: 'var(--text-sub)', fontWeight: 500, minWidth: '100px', fontSize: '12px'}}>Date:</span>
+          <span style={{color: 'var(--text)', fontWeight: 600, fontSize: '13px'}}>{dt.date}</span>
+        </div>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          <span style={{color: 'var(--text-sub)', fontWeight: 500, minWidth: '100px', fontSize: '12px'}}>Time start:</span>
+          <span style={{color: 'var(--text)', fontWeight: 600, fontSize: '13px'}}>{dt.time}</span>
+        </div>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          <span style={{color: 'var(--text-sub)', fontWeight: 500, minWidth: '100px', fontSize: '12px'}}>Total duration:</span>
+          <span style={{color: 'var(--text)', fontWeight: 600, fontSize: '13px'}}>{formattedDuration}</span>
+        </div>
+        <div style={{display: 'flex', alignItems: 'center'}}>
+          <span style={{color: 'var(--text-sub)', fontWeight: 500, minWidth: '100px', fontSize: '12px'}}>Visitor count:</span>
+          <span style={{color: 'var(--text)', fontWeight: 700, fontSize: '13px'}}>{visitorCount}</span>
+        </div>
       </div>
 
       {/* Action button */}
-      <button className="btn-primary" onClick={onOpen} style={{width: '100%', justifyContent: 'center'}}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <button className="btn-primary" onClick={onOpen} style={{
+        width: '100%',
+        justifyContent: 'center',
+        marginTop: '4px'
+      }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <polygon points="5 3 19 12 5 21 5 3" />
         </svg>
         Open Recording
