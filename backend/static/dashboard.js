@@ -1147,6 +1147,150 @@
             return { time: convTime, groupKey: '' };
         }
 
+        function getScannedVisitorSignals(recordings) {
+            const visitorIds = new Set();
+            const phones = new Set();
+            const names = new Set();
+
+            const normalizeId = (value) => {
+                const v = `${value || ''}`.trim();
+                if (!v) return '';
+                if (v.includes('_')) {
+                    const parts = v.split('_');
+                    const last = `${parts[parts.length - 1] || ''}`.trim();
+                    if (last && /^[A-Z0-9]{3,20}$/i.test(last)) return last.toUpperCase();
+                }
+                if (/^[A-Z0-9]{3,20}$/i.test(v)) return v.toUpperCase();
+                return '';
+            };
+
+            const safeParse = (raw) => {
+                if (!raw) return {};
+                if (typeof raw === 'object') return raw;
+                if (typeof raw !== 'string') return {};
+                const trimmed = raw.trim();
+                if (!trimmed) return {};
+                try { return JSON.parse(trimmed); } catch (_) { return { _raw: trimmed }; }
+            };
+
+            const extractId = (scanData) => {
+                const parsed = safeParse(scanData);
+                if (parsed && typeof parsed === 'object') {
+                    const idFields = ['visitor_id', 'visitorid', 'id', 'visitor id', 'badge_id', 'badgeid', 'badge id', 'unique_id', 'uniqueid'];
+                    for (const key of Object.keys(parsed)) {
+                        const keyLc = `${key}`.toLowerCase().trim();
+                        if (!idFields.includes(keyLc)) continue;
+                        const id = normalizeId(parsed[key]);
+                        if (id) return id;
+                    }
+                }
+                if (typeof scanData === 'string') {
+                    const id = normalizeId(scanData);
+                    if (id) return id;
+                }
+                return '';
+            };
+
+            const extractPhone = (scanData) => {
+                const parsed = safeParse(scanData);
+                if (parsed && typeof parsed === 'object') {
+                    const phoneFields = ['phone', 'phone_number', 'phonenumber', 'mobile', 'mobile_number', 'contact', 'contact_number', 'tel', 'telephone'];
+                    for (const key of Object.keys(parsed)) {
+                        const keyLc = `${key}`.toLowerCase().trim();
+                        if (!phoneFields.includes(keyLc) && !/phone|mobile|cell|mob|tel|telephone|contact/i.test(keyLc)) continue;
+                        const digits = normalizePhoneNumber(parsed[key]);
+                        if (digits && digits.length >= 7) return digits;
+                    }
+                    for (const key of Object.keys(parsed)) {
+                        const digits = extractPhoneFromAnyString(`${parsed[key] || ''}`);
+                        if (digits && digits.length >= 7) return digits;
+                    }
+                }
+                if (typeof scanData === 'string') {
+                    const digits = extractPhoneFromAnyString(scanData);
+                    if (digits && digits.length >= 7) return digits;
+                }
+                return '';
+            };
+
+            const extractName = (scanData) => {
+                const parsed = safeParse(scanData);
+                if (parsed && typeof parsed === 'object') {
+                    const n = `${parsed.name || parsed.visitor_name || parsed.visitorName || ''}`.trim();
+                    if (n) return n;
+                }
+                return '';
+            };
+
+            for (const rec of (recordings || [])) {
+                const barcodeScans = rec?.barcode_scans || rec?.barcodeScans || [];
+                for (const scan of (barcodeScans || [])) {
+                    const scanData = scan?.barcode_data || scan?.barcode_json || scan?.barcodeData || '';
+                    const id = extractId(scanData);
+                    if (id) visitorIds.add(id);
+                    const phone = extractPhone(scanData);
+                    if (phone) phones.add(phone);
+                    const name = extractName(scanData);
+                    if (name) {
+                        const lowered = name.trim().toLowerCase();
+                        if (lowered && !/^visitor\s*\d+$/i.test(lowered)) names.add(lowered);
+                    }
+                }
+
+                if ((barcodeScans || []).length === 0) {
+                    const visitors = rec?.visitors || rec?.visitor_badges || [];
+                    for (const v of (visitors || [])) {
+                        if (!v || !v.is_barcode_linked) continue;
+                        const scanData = v.barcode_data || v || {};
+                        const id = extractId(scanData);
+                        if (id) visitorIds.add(id);
+                        const phone = extractPhone(scanData);
+                        if (phone) phones.add(phone);
+                        const name = `${v.visitor_label || ''}`.trim();
+                        if (name) {
+                            const lowered = name.toLowerCase();
+                            if (lowered && !/^visitor\s*\d+$/i.test(lowered)) names.add(lowered);
+                        }
+                    }
+                }
+            }
+
+            return { visitorIds, phones, names };
+        }
+
+        function contactMatchesScannedSignals(contact, signals) {
+            if (!contact || !signals) return false;
+
+            const idKeys = ['visitor_id', 'visitorid', 'id', 'visitor id', 'badge_id', 'badgeid', 'badge id', 'unique_id', 'uniqueid'];
+            for (const key of Object.keys(contact)) {
+                const keyLc = `${key}`.toLowerCase().trim();
+                if (!idKeys.includes(keyLc)) continue;
+                const raw = `${contact[key] || ''}`.trim();
+                if (!raw) continue;
+                let id = raw.toUpperCase();
+                if (raw.includes('_')) {
+                    const parts = raw.split('_');
+                    const last = `${parts[parts.length - 1] || ''}`.trim();
+                    if (last && /^[A-Z0-9]{3,20}$/i.test(last)) id = last.toUpperCase();
+                }
+                if (id && signals.visitorIds.has(id)) return true;
+            }
+
+            const contactDigits = normalizePhoneNumber(contactPhoneValue(contact));
+            if (contactDigits && contactDigits.length >= 7) {
+                if (signals.phones.has(contactDigits)) return true;
+                for (const scanDigits of signals.phones) {
+                    if (!scanDigits) continue;
+                    if (scanDigits.endsWith(contactDigits) || contactDigits.endsWith(scanDigits)) return true;
+                }
+            }
+
+            const name = `${contactDisplayName(contact) || ''}`.trim().toLowerCase();
+            if (name && !/^visitor\s*\d+$/i.test(name) && signals.names.has(name)) return true;
+
+            return false;
+        }
+
         function renderVisitors() {
             // Build conversation labels for follow-up detection
             const allConversations = [];
@@ -1247,6 +1391,9 @@
                 return { conv, idx, key, trigger, matchedKw };
             }).filter(Boolean);
 
+            const scannedSignals = getScannedVisitorSignals(data.recordings || []);
+            const scannedContacts = (importedContacts || []).filter((c) => contactMatchesScannedSignals(c, scannedSignals));
+
             return `<div class="fade">
                 <div class="mb-6">
                     <p class="text-sm text-gray-500 mt-1">Contact book &bull; Follow-up leads</p>
@@ -1261,7 +1408,7 @@
                             <div class="flex items-center gap-2">
                                 <svg class="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                                 <span class="text-gray-900 font-semibold text-sm">Contacts</span>
-                                ${importedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${importedContacts.length}</span>` : ''}
+                                ${scannedContacts.length > 0 ? `<span class="bg-orange-100 text-orange-700 text-xs font-bold px-2 py-0.5 rounded-full">${scannedContacts.length}</span>` : ''}
                             </div>
                             <div class="flex items-center gap-2">
                                 ${importedContacts.length > 0 ? `<span class="text-xs text-gray-500">Data received</span>` : `
@@ -1294,8 +1441,16 @@
                                 <p class="text-xs text-gray-500 mb-2">Your contact list will appear here once it’s available.</p>
                                 
                             </div>` :
+                            scannedContacts.length === 0 ? `
+                            <div class="px-5 py-12 text-center">
+                                <div class="w-14 h-14 rounded-2xl bg-orange-100 flex items-center justify-center mx-auto mb-4">
+                                    <svg class="w-7 h-7 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                                </div>
+                                <h3 class="text-sm font-semibold text-gray-900 mb-1">No scanned visitors yet</h3>
+                                <p class="text-xs text-gray-500 mb-2">Only visitors scanned in Sessions will appear here.</p>
+                            </div>` :
                             `<div class="divide-y divide-gray-100">
-                                ${importedContacts.map((contact, idx) => {
+                                ${scannedContacts.map((contact, idx) => {
                                     const name = contactDisplayName(contact);
                                     const email = contact['email'] || contact['email id'] || contact['emailid'] || contact['e-mail'] || '';
                                     const phone = contact['phone'] || contact['phone number'] || contact['mobile'] || contact['contact'] || '';
