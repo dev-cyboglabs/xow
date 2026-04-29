@@ -1511,6 +1511,7 @@ const startRecording = async () => {
             mode="video"
             mute={false}
             videoQuality="480p"
+            videoBitrate={2500000}
           />
 
         {/* Top Bar */}

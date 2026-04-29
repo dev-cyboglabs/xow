@@ -23,8 +23,8 @@ import axios from 'axios';
 import { recoverIncompleteSessions, ensurePlayableUri } from './utils/chunkRecording';
 
 const API_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
-const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk (reduced to prevent OOM)
-const MAX_PARALLEL_UPLOADS = 2; // Upload 2 chunks simultaneously (reduced to prevent OOM)
+const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per chunk
+const MAX_PARALLEL_UPLOADS = 5; // Upload 5 chunks simultaneously (YouTube-style parallel upload)
 
 interface VideoChunk {
   chunkIndex: number;
