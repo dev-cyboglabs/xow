@@ -177,7 +177,14 @@
                 </button>
             </div>
             <div class="flex">
-                <div class="flex-1">
+                <div class="flex-1 relative">
+                    <!-- Loading Spinner -->
+                    <div id="video-loading" class="absolute inset-0 bg-gray-900 flex items-center justify-center z-10 hidden">
+                        <div class="text-center">
+                            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-700 border-t-violet-500 mb-3"></div>
+                            <p class="text-white text-sm font-medium">Loading video...</p>
+                        </div>
+                    </div>
                     <!-- Video Player -->
                     <video id="video" class="w-full aspect-video bg-gray-900" controls data-testid="video-player"></video>
                     <!-- Audio Player (shown when no video) -->
@@ -316,7 +323,14 @@
                 </button>
             </div>
             <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.35fr)_minmax(360px,1fr)] min-h-[560px]">
-                <div class="bg-black flex items-center justify-center">
+                <div class="bg-black flex items-center justify-center relative">
+                    <!-- Loading Spinner -->
+                    <div id="clip-video-loading" class="absolute inset-0 bg-black flex items-center justify-center z-10 hidden">
+                        <div class="text-center">
+                            <div class="inline-block animate-spin rounded-full h-12 w-12 border-4 border-gray-700 border-t-violet-500 mb-3"></div>
+                            <p class="text-white text-sm font-medium">Loading video...</p>
+                        </div>
+                    </div>
                     <video id="clip-video" class="w-full max-h-[560px] bg-black" controls></video>
                     <div id="clip-audio-wrap" class="hidden w-full h-full px-6 py-8 bg-gray-800 flex items-center justify-center">
                         <audio id="clip-audio" class="w-full" controls></audio>

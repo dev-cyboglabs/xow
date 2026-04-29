@@ -368,8 +368,16 @@
                 <div class="w-full max-w-7xl">
                     <div class="bg-gray-900 rounded-2xl overflow-hidden shadow-2xl">
                         <div class="relative">
+                            <!-- Loading Spinner -->
+                            <div id="session-video-loading" class="absolute inset-0 bg-black flex items-center justify-center z-10">
+                                <div class="text-center">
+                                    <div class="inline-block animate-spin rounded-full h-16 w-16 border-4 border-gray-700 border-t-violet-500 mb-4"></div>
+                                    <p class="text-white text-lg font-medium">Loading video...</p>
+                                </div>
+                            </div>
                             <video id="session-video-player" 
                                    class="w-full aspect-video bg-black" 
+                                   preload="metadata"
                                    autoplay>
                                 <source src="${API}/recordings/${recordings[0].id}/video" type="video/mp4">
                             </video>
@@ -432,6 +440,7 @@
             document.body.appendChild(modal);
             
             const videoPlayer = document.getElementById('session-video-player');
+            const loadingSpinner = document.getElementById('session-video-loading');
             const progressBarVideo = document.getElementById('session-progress-bar-video');
             const timeDisplay = document.getElementById('session-time-display');
             const videoLabel = document.getElementById('session-current-video-label');
@@ -439,9 +448,39 @@
             const playIcon = document.getElementById('play-icon');
             const pauseIcon = document.getElementById('pause-icon');
             
+            // Hide loading spinner when video starts playing
+            videoPlayer.addEventListener('loadeddata', () => {
+                console.log('[Session Player] Video loaded and ready to play');
+                loadingSpinner.classList.add('hidden');
+            });
+            
+            videoPlayer.addEventListener('waiting', () => {
+                console.log('[Session Player] Video buffering...');
+                loadingSpinner.classList.remove('hidden');
+            });
+            
+            videoPlayer.addEventListener('canplay', () => {
+                console.log('[Session Player] Video can play');
+                loadingSpinner.classList.add('hidden');
+            });
+            
+            videoPlayer.addEventListener('error', (e) => {
+                console.error('[Session Player] Video error:', e);
+                loadingSpinner.innerHTML = `
+                    <div class="text-center">
+                        <svg class="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <p class="text-white text-lg font-medium">Video unavailable</p>
+                        <p class="text-gray-400 text-sm mt-2">The video may still be processing</p>
+                    </div>
+                `;
+            });
+            
             // Store player state globally for control functions
             window.sessionPlayerState = {
                 videoPlayer,
+                loadingSpinner,
                 recordings,
                 totalDuration,
                 currentIndex,
@@ -495,6 +534,7 @@
                 if (currentIndex < recordings.length) {
                     globalTime += recordings[currentIndex - 1].duration;
                     window.sessionPlayerState.globalTime = globalTime;
+                    loadingSpinner.classList.remove('hidden');
                     videoPlayer.src = `${API}/recordings/${recordings[currentIndex].id}/video`;
                     videoPlayer.play();
                     videoLabel.textContent = recordings[currentIndex].booth_name || `Recording ${currentIndex + 1}`;
@@ -545,6 +585,7 @@
                 if (currentIndex < recordings.length - 1) {
                     currentIndex++;
                     window.sessionPlayerState.currentIndex = currentIndex;
+                    loadingSpinner.classList.remove('hidden');
                     videoPlayer.src = `${API}/recordings/${recordings[currentIndex].id}/video`;
                     videoPlayer.play();
                 }
@@ -632,6 +673,7 @@
                 state.currentIndex = targetIndex;
                 window.sessionPlayerState.currentIndex = targetIndex;
                 
+                state.loadingSpinner.classList.remove('hidden');
                 state.videoPlayer.src = `${API}/recordings/${state.recordings[targetIndex].id}/video`;
                 
                 const onLoadedMetadata = () => {
@@ -1661,8 +1703,10 @@
             
             // Determine media type and set source
             if (rec.has_video) {
+                const videoLoading = document.getElementById('video-loading');
                 videoEl.classList.remove('hidden');
                 audioContainer.classList.add('hidden');
+                videoLoading.classList.remove('hidden');
                 videoEl.src = `${API}/recordings/${id}/video`;
                 modalType.textContent = 'Video';
                 
@@ -1674,7 +1718,16 @@
                     }
                 };
                 
+                videoEl.onloadeddata = () => {
+                    videoLoading.classList.add('hidden');
+                };
+                
+                videoEl.onwaiting = () => {
+                    videoLoading.classList.remove('hidden');
+                };
+                
                 videoEl.oncanplay = () => {
+                    videoLoading.classList.add('hidden');
                     videoEl.play().catch(e => console.log('Autoplay prevented:', e));
                 };
             } else if (rec.has_audio) {
@@ -2045,11 +2098,18 @@
             }
             if (transcriptSelect) transcriptSelect.selectedIndex = 0;
             if (rec.has_video) {
+                const clipLoading = document.getElementById('clip-video-loading');
                 videoEl.classList.remove('hidden');
                 audioWrap.classList.add('hidden');
+                clipLoading.classList.remove('hidden');
                 videoEl.src = `${API}/recordings/${recId}/video`;
                 videoEl.onloadedmetadata = () => { if (time > 0) videoEl.currentTime = time; };
-                videoEl.oncanplay = () => { videoEl.play().catch(() => {}); };
+                videoEl.onloadeddata = () => { clipLoading.classList.add('hidden'); };
+                videoEl.onwaiting = () => { clipLoading.classList.remove('hidden'); };
+                videoEl.oncanplay = () => { 
+                    clipLoading.classList.add('hidden');
+                    videoEl.play().catch(() => {}); 
+                };
             } else if (rec.has_audio) {
                 videoEl.classList.add('hidden');
                 audioWrap.classList.remove('hidden');
