@@ -857,8 +857,8 @@ async def _run_video_pipeline(recording_id: str, video_path: str,
             in_size = os.path.getsize(video_path)
         except Exception:
             in_size = -1
-        logger.info(f"Adding video overlay for recording {recording_id} (input_size={in_size} bytes)")
-        overlay_path = await add_video_overlay_file(video_path, ext, booth_name, recording_time)
+        logger.info(f"Skipping video overlay for recording {recording_id} (input_size={in_size} bytes)")
+        overlay_path = video_path
 
         logger.info(f"Remuxing video for recording {recording_id}")
         remux_path = await remux_video_for_streaming_file(overlay_path, ext)

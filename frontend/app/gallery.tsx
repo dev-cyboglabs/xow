@@ -610,6 +610,10 @@ export default function GalleryScreen() {
         return;
       }
 
+      if (!status.didJustFinish && typeof status.isPlaying === 'boolean') {
+        setIsPlaying(prev => (prev === status.isPlaying ? prev : status.isPlaying));
+      }
+
       const positionSeconds = status.positionMillis / 1000;
       const baseOffset = isChunkedPlayback ? (chunkStartOffsets[currentChunkIndex] || 0) : 0;
       const mergedPosition = baseOffset + positionSeconds;
@@ -1505,7 +1509,7 @@ export default function GalleryScreen() {
                     {...{ ref: videoRef }}
                     source={{ uri: previewUri }}
                     style={styles.videoPlayer}
-                    useNativeControls={false}
+                    useNativeControls={true}
                     resizeMode={ResizeMode.CONTAIN}
                     shouldPlay={isPlaying}
                     isLooping={false}
@@ -1527,52 +1531,54 @@ export default function GalleryScreen() {
                 )}
 
                 {/* Replay button - shown when video ends */}
-                {videoHasEnded && (
+                {false && videoHasEnded && (
                   <TouchableOpacity style={styles.replayButton} onPress={replayVideo}>
                     <Ionicons name="refresh" size={32} color="#fff" />
                     {/* <Text style={styles.replayText}>Replay</Text> */}
                   </TouchableOpacity>
                 )}
 
-                <View style={styles.controlsBar}>
-                  <TouchableOpacity style={styles.controlPlayBtn} onPress={togglePlayPause}>
-                    <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
-                  </TouchableOpacity>
-                  <Text style={styles.controlTimeText}>{formatTC(displayPosition)}</Text>
-                  <View
-                    style={styles.progressTrack}
-                    onLayout={(e) => {
-                      progressTrackWidthRef.current = e.nativeEvent.layout.width;
-                    }}
-                    onStartShouldSetResponder={() => true}
-                    onMoveShouldSetResponder={() => true}
-                    onResponderGrant={(e) => {
-                      wasPlayingBeforeSeekRef.current = isPlaying;
-                      const target = getSeekTargetSeconds(e.nativeEvent.locationX);
-                      dragSeekSecondsRef.current = target;
-                      setVideoPosition(target);
-                      setVideoHasEnded(false);
-                      setIsSeeking(true);
-                    }}
-                    onResponderMove={(e) => {
-                      const target = getSeekTargetSeconds(e.nativeEvent.locationX);
-                      dragSeekSecondsRef.current = target;
-                      setVideoPosition(target);
-                    }}
-                    onResponderRelease={async () => {
-                      const target = dragSeekSecondsRef.current;
-                      dragSeekSecondsRef.current = null;
-                      setIsSeeking(false);
-                      if (typeof target === 'number') {
-                        await seekToGlobalSeconds(target, wasPlayingBeforeSeekRef.current);
-                      }
-                    }}
-                  >
-                    <View style={[styles.progressFill, { width: `${progressRatio * 100}%` }]} />
-                    <View style={[styles.progressThumb, { left: `${progressRatio * 100}%` }]} />
+                {false && (
+                  <View style={styles.controlsBar}>
+                    <TouchableOpacity style={styles.controlPlayBtn} onPress={togglePlayPause}>
+                      <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
+                    </TouchableOpacity>
+                    <Text style={styles.controlTimeText}>{formatTC(displayPosition)}</Text>
+                    <View
+                      style={styles.progressTrack}
+                      onLayout={(e) => {
+                        progressTrackWidthRef.current = e.nativeEvent.layout.width;
+                      }}
+                      onStartShouldSetResponder={() => true}
+                      onMoveShouldSetResponder={() => true}
+                      onResponderGrant={(e) => {
+                        wasPlayingBeforeSeekRef.current = isPlaying;
+                        const target = getSeekTargetSeconds(e.nativeEvent.locationX);
+                        dragSeekSecondsRef.current = target;
+                        setVideoPosition(target);
+                        setVideoHasEnded(false);
+                        setIsSeeking(true);
+                      }}
+                      onResponderMove={(e) => {
+                        const target = getSeekTargetSeconds(e.nativeEvent.locationX);
+                        dragSeekSecondsRef.current = target;
+                        setVideoPosition(target);
+                      }}
+                      onResponderRelease={async () => {
+                        const target = dragSeekSecondsRef.current;
+                        dragSeekSecondsRef.current = null;
+                        setIsSeeking(false);
+                        if (typeof target === 'number') {
+                          await seekToGlobalSeconds(target, wasPlayingBeforeSeekRef.current);
+                        }
+                      }}
+                    >
+                      <View style={[styles.progressFill, { width: `${progressRatio * 100}%` }]} />
+                      <View style={[styles.progressThumb, { left: `${progressRatio * 100}%` }]} />
+                    </View>
+                    <Text style={styles.controlTimeText}>{formatTC(previewTotalDuration)}</Text>
                   </View>
-                  <Text style={styles.controlTimeText}>{formatTC(previewTotalDuration)}</Text>
-                </View>
+                )}
               </View>
             </View>
         </View>
