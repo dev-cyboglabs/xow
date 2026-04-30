@@ -1428,7 +1428,7 @@
                         </div>
                         
                         <!-- Contact List -->
-                        <div class="max-h-[65vh] overflow-y-auto bg-white" id="contact-list">
+                        <div class="h-[65vh] overflow-y-auto bg-white" id="contact-list">
                             ${importedContacts.length === 0 ? `
                             <div class="px-5 py-12 text-center">
                                 <div class="relative inline-block mb-4">

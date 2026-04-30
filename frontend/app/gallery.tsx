@@ -108,6 +108,7 @@ export default function GalleryScreen() {
   const [videoFps, setVideoFps] = useState(30);
   const [previewFpsTimeline, setPreviewFpsTimeline] = useState<number[]>([]);
   const [videoHasEnded, setVideoHasEnded] = useState(false);
+  const [isVideoLoading, setIsVideoLoading] = useState(false);
   
   // Chunked playback state
   const [allChunks, setAllChunks] = useState<VideoChunk[]>([]);
@@ -401,6 +402,7 @@ export default function GalleryScreen() {
   };
 
   const openPreview = async (recording: CombinedRecording) => {
+    setIsVideoLoading(true);
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
 
@@ -526,6 +528,7 @@ export default function GalleryScreen() {
     setIsPlaying(false);
     setPreviewFpsTimeline([]);
     setVideoHasEnded(false);
+    setIsVideoLoading(false);
     
     // Reset chunked playback state
     setIsChunkedPlayback(false);
@@ -562,6 +565,7 @@ export default function GalleryScreen() {
     if (!status.isLoaded) {
       if (status.error) {
         console.error('Video load error:', status.error, '| URI:', previewUri);
+        setIsVideoLoading(false);
         Alert.alert(
           'Cannot Play Video',
           `The player could not open this video chunk.\n\n${status.error}`,
@@ -571,6 +575,7 @@ export default function GalleryScreen() {
       return;
     }
     if (status.isLoaded) {
+      setIsVideoLoading(false);
       if (pendingSeekMsRef.current !== null && videoRef.current) {
         const ms = pendingSeekMsRef.current;
         pendingSeekMsRef.current = null;
@@ -1491,9 +1496,18 @@ export default function GalleryScreen() {
                     onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
                     onError={(error) => {
                       console.error('❌ Video playback error:', error, 'URI:', previewUri);
+                      setIsVideoLoading(false);
                       Alert.alert('Playback Error', 'Unable to play this video chunk.');
                     }}
                   />
+                )}
+                
+                {/* Loading Spinner */}
+                {isVideoLoading && (
+                  <View style={styles.videoLoadingOverlay}>
+                    <ActivityIndicator size="large" color="#E54B2A" />
+                    <Text style={styles.videoLoadingText}>Loading video...</Text>
+                  </View>
                 )}
                 
                 {/* Left-side overlay with Timecode and FPS */}
@@ -1729,6 +1743,10 @@ const styles = StyleSheet.create({
   progressTrack: { flex: 1, height: 8, borderRadius: 5, backgroundColor: '#222', overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: '#E54B2A' },
   progressThumb: { position: 'absolute', top: -5, marginLeft: -8, width: 16, height: 16, borderRadius: 8, backgroundColor: '#fff' },
+
+  // Video Loading Overlay
+  videoLoadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  videoLoadingText: { color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16 },
 
   // Pairing Modal
   pairingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center', padding: 20 },
