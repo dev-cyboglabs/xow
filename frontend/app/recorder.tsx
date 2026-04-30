@@ -1162,6 +1162,10 @@ const startRecording = async () => {
       // Finish the save UI immediately — upload happens silently in background
       setSaveProgress(100);
       showToast('Recording saved');
+      
+      // Wait briefly to show 100% before resetting
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       setCurrentRecording(null);
       currentRecordingRef.current = null;
       setIsSaving(false);
@@ -1532,7 +1536,7 @@ const startRecording = async () => {
           <View style={[styles.pairingBadge, isPaired ? styles.pairingPaired : styles.pairingInactive]}>
             <View style={[styles.pairingDot, isPaired ? styles.pairingDotPaired : styles.pairingDotInactive]} />
             <Text style={[styles.pairingText, isPaired ? styles.pairingTextPaired : styles.pairingTextInactive]}>
-              {isPaired ? 'Paired' : 'Unpaired'}
+              {isPaired ? 'Device Paired' : 'Device Unpaired'}
             </Text>
           </View>
         </View>
@@ -1583,7 +1587,7 @@ const startRecording = async () => {
         {/* Toast */}
         {toastVisible && (
           <Animated.View style={[styles.toast, { opacity: toastAnim, transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) }] }]}>
-            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
             <Text style={styles.toastText}>{toastMessage}</Text>
           </Animated.View>
         )}

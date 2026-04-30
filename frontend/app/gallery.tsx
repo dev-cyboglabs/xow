@@ -122,6 +122,15 @@ export default function GalleryScreen() {
   
   // Pairing modal for offline mode
   const [showPairingModal, setShowPairingModal] = useState(false);
+  
+  // Success modal for upload completion
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  // Delete confirmation modal
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CombinedRecording | null>(null);
   const [pairingCode, setPairingCode] = useState('------');
   const [pairingSecondsLeft, setPairingSecondsLeft] = useState(300);
   const pairingCountdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1036,9 +1045,18 @@ export default function GalleryScreen() {
         await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(localRecordings));
       }
 
-      // Set 100% immediately before the alert so user sees the transition 99% → 100% → Alert
+      // Set 100% immediately before showing success modal
       setUploadProgress(1);
-      Alert.alert('Upload Complete', 'Recording uploaded to cloud successfully!');
+      
+      // Show custom success modal
+      setSuccessMessage('Recording uploaded to cloud successfully!');
+      setShowSuccessModal(true);
+      
+      // Auto-hide after 3 seconds
+      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
+      successTimeoutRef.current = setTimeout(() => {
+        setShowSuccessModal(false);
+      }, 3000);
       
       // Clear resume state from resumableUploads
       setResumableUploads(prev => {
@@ -1088,58 +1106,55 @@ export default function GalleryScreen() {
   };
 
   const handleDelete = (item: CombinedRecording) => {
+    setDeleteTarget(item);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    
+    const item = deleteTarget;
     const isLocal = item.source === 'local';
     const itemId = isLocal ? (item as LocalRecording).localId : item.id;
-    const dateStr = isLocal ? fmtDate((item as LocalRecording).createdAt) : fmtDate((item as CloudRecording).start_time);
     
-    Alert.alert(
-      'Delete Recording',
-      `Delete ${isLocal ? 'local' : 'cloud'} recording from ${dateStr}?\n\n${isLocal ? 'This will remove the local files.' : 'This will remove all data including AI analysis.'}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setDeletingId(itemId);
-            try {
-              if (isLocal) {
-                // Delete local files
-                const localRec = item as LocalRecording;
-                if (localRec.videoPath) {
-                  try {
-                    await FileSystem.deleteAsync(localRec.videoPath, { idempotent: true });
-                  } catch {}
-                }
-                if (localRec.audioPath) {
-                  try {
-                    await FileSystem.deleteAsync(localRec.audioPath, { idempotent: true });
-                  } catch {}
-                }
-                
-                // Remove from local storage
-                const localRecordings = await getLocalRecordings();
-                const filtered = localRecordings.filter(r => r.localId !== localRec.localId);
-                await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(filtered));
-              } else {
-                // Delete from cloud
-                await axios.delete(`${API_URL}/api/recordings/${item.id}`);
-              }
-              
-              setRecordings(prev => prev.filter(r => 
-                r.source === 'local' 
-                  ? (r as LocalRecording).localId !== itemId 
-                  : r.id !== itemId
-              ));
-            } catch (e) {
-              Alert.alert('Error', 'Failed to delete recording');
-            } finally {
-              setDeletingId(null);
-            }
-          }
+    setShowDeleteModal(false);
+    setDeletingId(itemId);
+    
+    try {
+      if (isLocal) {
+        // Delete local files
+        const localRec = item as LocalRecording;
+        if (localRec.videoPath) {
+          try {
+            await FileSystem.deleteAsync(localRec.videoPath, { idempotent: true });
+          } catch {}
         }
-      ]
-    );
+        if (localRec.audioPath) {
+          try {
+            await FileSystem.deleteAsync(localRec.audioPath, { idempotent: true });
+          } catch {}
+        }
+        
+        // Remove from local storage
+        const localRecordings = await getLocalRecordings();
+        const filtered = localRecordings.filter(r => r.localId !== localRec.localId);
+        await AsyncStorage.setItem('xow_local_recordings', JSON.stringify(filtered));
+      } else {
+        // Delete from cloud
+        await axios.delete(`${API_URL}/api/recordings/${item.id}`);
+      }
+      
+      setRecordings(prev => prev.filter(r => 
+        r.source === 'local' 
+          ? (r as LocalRecording).localId !== itemId 
+          : r.id !== itemId
+      ));
+    } catch (e) {
+      Alert.alert('Error', 'Failed to delete recording');
+    } finally {
+      setDeletingId(null);
+      setDeleteTarget(null);
+    }
   };
 
   const handleReprocess = async (item: CloudRecording) => {
@@ -1328,12 +1343,12 @@ export default function GalleryScreen() {
               </View>
             )}
           </View>
-          {!isLocal && cloudItem.total_speakers != null && cloudItem.total_speakers > 0 && (
+          {/* {!isLocal && cloudItem.total_speakers != null && cloudItem.total_speakers > 0 && (
             <View style={styles.stat}>
               <Ionicons name="chatbubbles" size={21} color="#10B981" />
               <Text style={styles.statText}>{String(cloudItem.total_speakers)} speakers</Text>
             </View>
-          )}
+          )} */}
           {isLocal && (
             <View style={styles.localBadge}>
               <Text style={styles.localBadgeText}>NOT UPLOADED</Text>
@@ -1342,12 +1357,11 @@ export default function GalleryScreen() {
         </View>
 
         {/* Summary (cloud only) */}
-        {summaryText != null && summaryText !== '' && (
+        {/* {summaryText != null && summaryText !== '' && (
           <View style={styles.summarySection}>
-            <Ionicons name="sparkles" size={18} color="#E54B2A" />
-            <Text style={styles.summary} numberOfLines={2}>{summaryText}</Text>
+            <Text style={styles.summary} numberOfLines={1}>{summaryText}</Text>
           </View>
-        )}
+        )} */}
       </View>
     );
   };
@@ -1580,6 +1594,69 @@ export default function GalleryScreen() {
         </View>
       </Modal>
 
+      {/* Success Modal */}
+      <Modal
+        visible={showSuccessModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSuccessModal(false)}
+      >
+        <View style={styles.successOverlay}>
+          <View style={styles.successModal}>
+            <View style={styles.successIconContainer}>
+              <Ionicons name="checkmark-circle" size={80} color="#10B981" />
+            </View>
+            <Text style={styles.successTitle}>Upload Complete!</Text>
+            <Text style={styles.successMessage}>{successMessage}</Text>
+            <View style={styles.successProgressBar}>
+              <View style={styles.successProgressFill} />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={showDeleteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowDeleteModal(false)}
+      >
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteModal}>
+            <View style={styles.deleteIconContainer}>
+              <Ionicons name="trash" size={64} color="#EF4444" />
+            </View>
+            <Text style={styles.deleteTitle}>Delete Recording?</Text>
+            <Text style={styles.deleteMessage}>
+              {deleteTarget && (
+                deleteTarget.source === 'local'
+                  ? `Delete local recording from ${fmtDate((deleteTarget as LocalRecording).createdAt)}?`
+                  : `Delete cloud recording from ${fmtDate((deleteTarget as CloudRecording).start_time)}`
+              )}
+            </Text>
+            <View style={styles.deleteActions}>
+              <TouchableOpacity
+                style={styles.deleteCancelBtn}
+                onPress={() => {
+                  setShowDeleteModal(false);
+                  setDeleteTarget(null);
+                }}
+              >
+                <Text style={styles.deleteCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteConfirmBtn}
+                onPress={confirmDelete}
+              >
+                <Ionicons name="trash" size={20} color="#fff" />
+                <Text style={styles.deleteConfirmText}>Delete</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* Pairing Modal for Offline Mode */}
       <Modal
         visible={showPairingModal}
@@ -1747,6 +1824,27 @@ const styles = StyleSheet.create({
   // Video Loading Overlay
   videoLoadingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
   videoLoadingText: { color: '#fff', fontSize: 18, fontWeight: '600', marginTop: 16 },
+
+  // Success Modal
+  successOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  successModal: { width: '100%', maxWidth: 450, backgroundColor: '#0a0a0a', borderRadius: 20, padding: 40, alignItems: 'center', borderWidth: 1, borderColor: '#1a1a1a' },
+  successIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  successTitle: { color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 8 },
+  successMessage: { color: '#888', fontSize: 18, textAlign: 'center', lineHeight: 26, marginBottom: 20 },
+  successProgressBar: { width: '100%', height: 4, backgroundColor: '#1a1a1a', borderRadius: 2, overflow: 'hidden' },
+  successProgressFill: { height: '100%', backgroundColor: '#10B981', width: '100%', borderRadius: 2 },
+
+  // Delete Confirmation Modal
+  deleteOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  deleteModal: { width: '100%', maxWidth: 500, backgroundColor: '#0a0a0a', borderRadius: 20, padding: 36, alignItems: 'center', borderWidth: 1, borderColor: '#1a1a1a' },
+  deleteIconContainer: { width: 110, height: 110, borderRadius: 55, backgroundColor: '#111', justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
+  deleteTitle: { color: '#fff', fontSize: 28, fontWeight: '700', marginBottom: 12 },
+  deleteMessage: { color: '#888', fontSize: 18, textAlign: 'center', lineHeight: 26, marginBottom: 32 },
+  deleteActions: { flexDirection: 'row', gap: 16, width: '100%' },
+  deleteCancelBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, backgroundColor: '#111', alignItems: 'center', borderWidth: 1, borderColor: '#1a1a1a' },
+  deleteCancelText: { color: '#888', fontSize: 18, fontWeight: '600' },
+  deleteConfirmBtn: { flex: 1, paddingVertical: 16, borderRadius: 12, backgroundColor: '#EF4444', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  deleteConfirmText: { color: '#fff', fontSize: 18, fontWeight: '600' },
 
   // Pairing Modal
   pairingOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.9)', justifyContent: 'center', alignItems: 'center', padding: 20 },
