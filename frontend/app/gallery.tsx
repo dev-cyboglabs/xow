@@ -1188,7 +1188,7 @@ export default function GalleryScreen() {
   const statusConfig: Record<string, { color: string; icon: string; label: string }> = {
     local: { color: '#888', icon: 'save', label: 'Local' },
     recording: { color: '#EF4444', icon: 'radio-button-on', label: 'Recording' },
-    completed: { color: '#10B981', icon: 'checkmark-circle', label: 'Completed' },
+    completed: { color: '#10B981', icon: 'checkmark-circle', label: 'Uploaded' },
     uploaded: { color: '#10B981', icon: 'cloud-done', label: 'Uploaded' },
     processing: { color: '#E54B2A', icon: 'hourglass', label: 'Processing' },
     processed: { color: '#10B981', icon: 'sparkles', label: 'AI Ready' },
@@ -1284,17 +1284,6 @@ export default function GalleryScreen() {
                 </TouchableOpacity>
               </View>
             )}
-            <TouchableOpacity
-              style={styles.deleteBtn}
-              onPress={() => handleDelete(item)}
-              disabled={deletingId === itemId}
-            >
-              {deletingId === itemId ? (
-                <ActivityIndicator size="small" color="#EF4444" />
-              ) : (
-                <Ionicons name="trash" size={23} color="#EF4444" />
-              )}
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -1362,6 +1351,19 @@ export default function GalleryScreen() {
             <Text style={styles.summary} numberOfLines={1}>{summaryText}</Text>
           </View>
         )} */}
+
+        {/* Delete Button - Absolute Bottom Right */}
+        <TouchableOpacity
+          style={styles.deleteBtnAbsolute}
+          onPress={() => handleDelete(item)}
+          disabled={deletingId === itemId}
+        >
+          {deletingId === itemId ? (
+            <ActivityIndicator size="small" color="#EF4444" />
+          ) : (
+            <Ionicons name="trash" size={23} color="#EF4444" />
+          )}
+        </TouchableOpacity>
       </View>
     );
   };
@@ -1749,7 +1751,7 @@ const styles = StyleSheet.create({
   list: { padding: 18 },
 
   // Card
-  card: { backgroundColor: '#0a0a0a', borderRadius: 14, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#1a1a1a' },
+  card: { backgroundColor: '#0a0a0a', borderRadius: 14, padding: 20, marginBottom: 16, borderWidth: 1, borderColor: '#1a1a1a', position: 'relative' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   dateSection: { flex: 1 },
   cardDate: { color: '#fff', fontSize: 20, fontWeight: '600' },
@@ -1766,6 +1768,7 @@ const styles = StyleSheet.create({
   resumeInfo: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingHorizontal: 8 },
   resumeInfoText: { color: '#F59E0B', fontSize: 12, fontWeight: '500' },
   deleteBtn: { padding: 12 },
+  deleteBtnAbsolute: { position: 'absolute', bottom: 16, right: 16, padding: 12, backgroundColor: 'rgba(239,68,68,0.15)', borderRadius: 8 },
 
   // Media Row
   mediaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
