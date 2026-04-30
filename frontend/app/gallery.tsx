@@ -100,6 +100,7 @@ export default function GalleryScreen() {
   const [previewVisible, setPreviewVisible] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewTitle, setPreviewTitle] = useState('');
+  const [previewStartMs, setPreviewStartMs] = useState<number | null>(null);
   const videoRef = useRef<any>(null);
   const [videoPosition, setVideoPosition] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
@@ -414,6 +415,8 @@ export default function GalleryScreen() {
     setIsVideoLoading(true);
     if (recording.source === 'local') {
       const localRec = recording as LocalRecording;
+      const startMs = new Date(localRec.createdAt).getTime();
+      setPreviewStartMs(Number.isFinite(startMs) ? startMs : null);
 
       // Handle chunked recordings - set up sequential playback
       if (localRec.isChunked && localRec.videoChunks && localRec.videoChunks.length > 0) {
@@ -513,6 +516,8 @@ export default function GalleryScreen() {
       const cloudRec = recording as CloudRecording;
       if (cloudRec.has_video) {
         const videoUrl = `${API_URL}/api/recordings/${cloudRec.id}/video`;
+        const startMs = new Date(cloudRec.start_time).getTime();
+        setPreviewStartMs(Number.isFinite(startMs) ? startMs : null);
         setPreviewUri(videoUrl);
         setPreviewTitle(fmtDate(cloudRec.start_time));
         setVideoFps(30);
@@ -538,6 +543,7 @@ export default function GalleryScreen() {
     setPreviewFpsTimeline([]);
     setVideoHasEnded(false);
     setIsVideoLoading(false);
+    setPreviewStartMs(null);
     
     // Reset chunked playback state
     setIsChunkedPlayback(false);
@@ -671,6 +677,42 @@ export default function GalleryScreen() {
   const displayPosition = isSeeking && dragSeekSecondsRef.current !== null ? dragSeekSecondsRef.current : videoPosition;
   const previewTotalDuration = globalDuration || videoDuration;
   const progressRatio = previewTotalDuration > 0 ? Math.min(displayPosition / previewTotalDuration, 1) : 0;
+  const cctvOverlayText = previewStartMs != null
+    ? fmtCctvDateTime(previewStartMs + Math.floor(displayPosition) * 1000)
+    : null;
+
+  const formatElapsedTime = (seconds: number, smoothMs: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${smoothMs.toString().padStart(2, '0')}`;
+  };
+
+  const [smoothMs, setSmoothMs] = useState(0);
+
+  // Smooth milliseconds animation
+  useEffect(() => {
+    if (!previewVisible || !isPlaying) return;
+
+    let animationFrameId: number;
+    let lastUpdate = Date.now();
+
+    const animate = () => {
+      const now = Date.now();
+      const elapsed = (now - lastUpdate) / 1000;
+      const currentSeconds = displayPosition;
+      const ms = Math.floor((currentSeconds % 1) * 100);
+      setSmoothMs(ms);
+      animationFrameId = requestAnimationFrame(animate);
+    };
+
+    animationFrameId = requestAnimationFrame(animate);
+    return () => {
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    };
+  }, [previewVisible, isPlaying, displayPosition]);
+
+  const elapsedTimeText = formatElapsedTime(displayPosition, smoothMs);
 
   const uploadToCloud = async (recording: LocalRecording) => {
     if (!deviceId) return;
@@ -1189,6 +1231,21 @@ export default function GalleryScreen() {
 
   const fmtDate = (d: string) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
+  function fmtCctvDateTime(ms: number) {
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = String(d.getFullYear());
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12;
+    if (h === 0) h = 12;
+    const hh = String(h).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hh}:${mm}:${ss} ${ampm}`;
+  }
+
   const statusConfig: Record<string, { color: string; icon: string; label: string }> = {
     local: { color: '#888', icon: 'save', label: 'Local' },
     recording: { color: '#EF4444', icon: 'radio-button-on', label: 'Recording' },
@@ -1521,7 +1578,14 @@ export default function GalleryScreen() {
                     }}
                   />
                 )}
-                
+
+                {cctvOverlayText != null && (
+                  <View pointerEvents="none" style={styles.cctvOverlay}>
+                    <Text style={styles.cctvOverlayText}>{cctvOverlayText}</Text>
+                    <Text style={styles.cctvOverlayTimeText}>{elapsedTimeText}</Text>
+                  </View>
+                )}
+
                 {/* Loading Spinner */}
                 {isVideoLoading && (
                   <View style={styles.videoLoadingOverlay}>
@@ -1531,15 +1595,15 @@ export default function GalleryScreen() {
                 )}
 
                 {/* Replay button - shown when video ends */}
-                {false && videoHasEnded && (
+                {videoHasEnded && (
                   <TouchableOpacity style={styles.replayButton} onPress={replayVideo}>
                     <Ionicons name="refresh" size={32} color="#fff" />
                     {/* <Text style={styles.replayText}>Replay</Text> */}
                   </TouchableOpacity>
                 )}
 
-                {false && (
-                  <View style={styles.controlsBar}>
+                {/* Custom controls bar */}
+                <View style={styles.controlsBar}>
                     <TouchableOpacity style={styles.controlPlayBtn} onPress={togglePlayPause}>
                       <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
                     </TouchableOpacity>
@@ -1578,7 +1642,6 @@ export default function GalleryScreen() {
                     </View>
                     <Text style={styles.controlTimeText}>{formatTC(previewTotalDuration)}</Text>
                   </View>
-                )}
               </View>
             </View>
         </View>
@@ -1793,6 +1856,9 @@ const styles = StyleSheet.create({
   // Video container and overlay
   videoContainer: { position: 'relative', width: '100%', backgroundColor: '#000' },
   videoPlayer: { width: '100%', aspectRatio: 16/9, backgroundColor: '#000' },
+  cctvOverlay: { position: 'absolute', top: 16, left: 16, backgroundColor: 'rgba(0,0,0,0.72)', paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)' },
+  cctvOverlayText: { color: '#fff', fontSize: 18, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 0.2 },
+  cctvOverlayTimeText: { color: '#fff', fontSize: 20, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', marginTop: 4, letterSpacing: 0.5 },
   videoOverlay: { position: 'absolute', top: 18, left: 18, backgroundColor: 'rgba(0,0,0,0.85)', paddingVertical: 13, paddingHorizontal: 16, borderRadius: 10, borderLeftWidth: 4, borderLeftColor: '#E54B2A', gap: 8 },
   overlayLogo: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 4 },
   overlayLogoText: { color: '#fff', fontSize: 18, fontWeight: '800', letterSpacing: 0.5 },

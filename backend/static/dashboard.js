@@ -82,6 +82,8 @@
         let visitorsWebSocket = null;
         let currentDuration = 0;
         let timeUpdateHandler = null;
+        let cctvOverlayHandler = null;
+        let currentRecordingStartMs = null;
         let speakerSegmentsFlat = [];
         const SPEAKER_COLORS = ['#f97316','#3b82f6','#10b981','#8b5cf6','#ef4444','#f59e0b','#06b6d4','#ec4899'];
         let analyticsQuery = '';
@@ -375,12 +377,17 @@
                                     <p class="text-white text-lg font-medium">Loading video...</p>
                                 </div>
                             </div>
-                            <video id="session-video-player" 
-                                   class="w-full aspect-video bg-black" 
+                            <video id="session-video-player"
+                                   class="w-full aspect-video bg-black"
                                    preload="metadata"
                                    autoplay>
                                 <source src="${API}/recordings/${recordings[0].id}/video" type="video/mp4">
                             </video>
+                            <!-- CCTV Timestamp Overlay -->
+                            <div id="session-cctv-overlay" class="absolute top-4 left-4 bg-black/75 px-3 py-2 rounded-lg border border-white/10 pointer-events-none">
+                                <span id="session-cctv-overlay-text" class="text-white font-mono text-sm font-semibold tracking-wide block"></span>
+                                <span id="session-cctv-overlay-time" class="text-white font-mono text-base font-bold tracking-wide block mt-1"></span>
+                            </div>
                             <!-- Custom Controls Overlay -->
                             <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent p-4">
                                 <!-- Progress Bar -->
@@ -447,7 +454,39 @@
             const recordingInfoDisplay = document.getElementById('session-recording-info');
             const playIcon = document.getElementById('play-icon');
             const pauseIcon = document.getElementById('pause-icon');
-            
+            const cctvOverlay = document.getElementById('session-cctv-overlay');
+            const cctvOverlayText = document.getElementById('session-cctv-overlay-text');
+            const cctvOverlayTime = document.getElementById('session-cctv-overlay-time');
+
+            // Set initial recording start time for CCTV overlay
+            let currentRecordingStartMs = recordings[0].start_time ? new Date(recordings[0].start_time).getTime() : null;
+            let sessionAnimationFrameId = null;
+
+            // Smooth milliseconds animation
+            const animateSessionMs = () => {
+                if (!videoPlayer.paused) {
+                    const ms = Math.floor((videoPlayer.currentTime % 1) * 100);
+                    cctvOverlayTime.textContent = formatElapsedTime(videoPlayer.currentTime, ms);
+                    sessionAnimationFrameId = requestAnimationFrame(animateSessionMs);
+                }
+            };
+
+            if (cctvOverlay && cctvOverlayText && cctvOverlayTime && currentRecordingStartMs != null) {
+                cctvOverlayText.textContent = fmtCctvDateTime(currentRecordingStartMs);
+                cctvOverlayTime.textContent = formatElapsedTime(0, 0);
+                videoPlayer.addEventListener('play', () => {
+                    if (!sessionAnimationFrameId) animateSessionMs();
+                });
+                videoPlayer.addEventListener('pause', () => {
+                    if (sessionAnimationFrameId) {
+                        cancelAnimationFrame(sessionAnimationFrameId);
+                        sessionAnimationFrameId = null;
+                    }
+                });
+            } else if (cctvOverlay) {
+                cctvOverlay.classList.add('hidden');
+            }
+
             // Hide loading spinner when video starts playing
             videoPlayer.addEventListener('loadeddata', () => {
                 console.log('[Session Player] Video loaded and ready to play');
@@ -539,6 +578,15 @@
                     videoPlayer.play();
                     videoLabel.textContent = recordings[currentIndex].booth_name || `Recording ${currentIndex + 1}`;
                     recordingInfoDisplay.textContent = `Recording ${currentIndex + 1} of ${recordings.length} • Total: ${formatTime(totalDuration)}`;
+
+                    // Update recording start time for CCTV overlay
+                    currentRecordingStartMs = recordings[currentIndex].start_time ? new Date(recordings[currentIndex].start_time).getTime() : null;
+                    if (cctvOverlayText && cctvOverlayTime && currentRecordingStartMs != null) {
+                        cctvOverlayText.textContent = fmtCctvDateTime(currentRecordingStartMs);
+                        cctvOverlayTime.textContent = formatElapsedTime(0, 0);
+                    } else if (cctvOverlay) {
+                        cctvOverlay.classList.add('hidden');
+                    }
                 } else {
                     // Session complete
                     setTimeout(() => {
@@ -552,19 +600,25 @@
             videoPlayer.addEventListener('timeupdate', () => {
                 // Don't update if we're currently seeking to prevent jumps
                 if (window.sessionPlayerState.isSeeking) return;
-                
+
                 // Use state.currentIndex to get the correct index after video switches
                 const state = window.sessionPlayerState;
                 const baseTime = state.recordings.slice(0, state.currentIndex).reduce((sum, r) => sum + r.duration, 0);
                 const newGlobalTime = baseTime + videoPlayer.currentTime;
-                
+
                 state.globalTime = newGlobalTime;
                 window.sessionPlayerState.globalTime = newGlobalTime;
-                
+
                 timeDisplay.textContent = `${formatTime(newGlobalTime)} / ${formatTime(state.totalDuration)}`;
-                
+
                 const progressPercent = (newGlobalTime / state.totalDuration) * 100;
                 progressBarVideo.style.width = progressPercent + '%';
+
+                // Update CCTV overlay timestamp (elapsed time handled by animation)
+                if (cctvOverlayText && currentRecordingStartMs != null) {
+                    const currentTimeMs = currentRecordingStartMs + (videoPlayer.currentTime * 1000);
+                    cctvOverlayText.textContent = fmtCctvDateTime(currentTimeMs);
+                }
             });
             
             // Update play/pause icon
@@ -1864,7 +1918,54 @@
                 videoLoading.classList.remove('hidden');
                 videoEl.src = `${API}/recordings/${id}/video`;
                 modalType.textContent = 'Video';
-                
+
+                // Set recording start time for CCTV overlay
+                currentRecordingStartMs = rec.start_time ? new Date(rec.start_time).getTime() : null;
+
+                // Setup CCTV overlay
+                const cctvOverlay = document.getElementById('cctv-overlay');
+                const cctvOverlayText = document.getElementById('cctv-overlay-text');
+                const cctvOverlayTime = document.getElementById('cctv-overlay-time');
+                if (cctvOverlay && cctvOverlayText && cctvOverlayTime && currentRecordingStartMs != null) {
+                    cctvOverlay.classList.remove('hidden');
+                    let animationFrameId = null;
+
+                    // Smooth milliseconds animation
+                    const animateMs = () => {
+                        if (!videoEl.paused) {
+                            const ms = Math.floor((videoEl.currentTime % 1) * 100);
+                            cctvOverlayTime.textContent = formatElapsedTime(videoEl.currentTime, ms);
+                            animationFrameId = requestAnimationFrame(animateMs);
+                        }
+                    };
+
+                    // Update overlay on timeupdate (for timestamp)
+                    cctvOverlayHandler = () => {
+                        const currentTimeMs = currentRecordingStartMs + (videoEl.currentTime * 1000);
+                        cctvOverlayText.textContent = fmtCctvDateTime(currentTimeMs);
+                        // Start smooth animation if playing
+                        if (videoEl.paused) {
+                            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+                        } else if (!animationFrameId) {
+                            animateMs();
+                        }
+                    };
+                    videoEl.addEventListener('timeupdate', cctvOverlayHandler);
+                    videoEl.addEventListener('play', () => {
+                        if (!animationFrameId) animateMs();
+                    });
+                    videoEl.addEventListener('pause', () => {
+                        if (animationFrameId) {
+                            cancelAnimationFrame(animationFrameId);
+                            animationFrameId = null;
+                        }
+                    });
+                    // Initial update
+                    cctvOverlayHandler();
+                } else if (cctvOverlay) {
+                    cctvOverlay.classList.add('hidden');
+                }
+
                 // Wait for metadata to load before seeking
                 videoEl.onloadedmetadata = () => {
                     console.log(`Video metadata loaded. Duration: ${videoEl.duration}, seeking to: ${time}`);
@@ -1889,6 +1990,9 @@
                 videoEl.classList.add('hidden');
                 audioContainer.classList.remove('hidden');
                 document.getElementById('audio-error').classList.add('hidden');
+                const cctvOverlay = document.getElementById('cctv-overlay');
+                if (cctvOverlay) cctvOverlay.classList.add('hidden');
+                currentRecordingStartMs = null;
                 
                 const audioUrl = `${API}/recordings/${id}/audio`;
                 audioEl.src = audioUrl;
@@ -2258,16 +2362,67 @@
                 audioWrap.classList.add('hidden');
                 clipLoading.classList.remove('hidden');
                 videoEl.src = `${API}/recordings/${recId}/video`;
+
+                // Set recording start time for CCTV overlay
+                const clipStartMs = rec.start_time ? new Date(rec.start_time).getTime() : null;
+
+                // Setup CCTV overlay for clip
+                const clipCctvOverlay = document.getElementById('clip-cctv-overlay');
+                const clipCctvOverlayText = document.getElementById('clip-cctv-overlay-text');
+                const clipCctvOverlayTime = document.getElementById('clip-cctv-overlay-time');
+                if (clipCctvOverlay && clipCctvOverlayText && clipCctvOverlayTime && clipStartMs != null) {
+                    clipCctvOverlay.classList.remove('hidden');
+                    let clipAnimationFrameId = null;
+
+                    // Smooth milliseconds animation
+                    const animateClipMs = () => {
+                        if (!videoEl.paused) {
+                            const ms = Math.floor((videoEl.currentTime % 1) * 100);
+                            clipCctvOverlayTime.textContent = formatElapsedTime(videoEl.currentTime, ms);
+                            clipAnimationFrameId = requestAnimationFrame(animateClipMs);
+                        }
+                    };
+
+                    // Store handler on element for cleanup
+                    const clipCctvHandler = () => {
+                        const currentTimeMs = clipStartMs + (videoEl.currentTime * 1000);
+                        clipCctvOverlayText.textContent = fmtCctvDateTime(currentTimeMs);
+                        // Start smooth animation if playing
+                        if (videoEl.paused) {
+                            if (clipAnimationFrameId) cancelAnimationFrame(clipAnimationFrameId);
+                        } else if (!clipAnimationFrameId) {
+                            animateClipMs();
+                        }
+                    };
+                    videoEl.addEventListener('timeupdate', clipCctvHandler);
+                    videoEl.addEventListener('play', () => {
+                        if (!clipAnimationFrameId) animateClipMs();
+                    });
+                    videoEl.addEventListener('pause', () => {
+                        if (clipAnimationFrameId) {
+                            cancelAnimationFrame(clipAnimationFrameId);
+                            clipAnimationFrameId = null;
+                        }
+                    });
+                    videoEl.dataset.cctvHandler = 'true';
+                    // Initial update
+                    clipCctvHandler();
+                } else if (clipCctvOverlay) {
+                    clipCctvOverlay.classList.add('hidden');
+                }
+
                 videoEl.onloadedmetadata = () => { if (time > 0) videoEl.currentTime = time; };
                 videoEl.onloadeddata = () => { clipLoading.classList.add('hidden'); };
                 videoEl.onwaiting = () => { clipLoading.classList.remove('hidden'); };
-                videoEl.oncanplay = () => { 
+                videoEl.oncanplay = () => {
                     clipLoading.classList.add('hidden');
-                    videoEl.play().catch(() => {}); 
+                    videoEl.play().catch(() => {});
                 };
             } else if (rec.has_audio) {
                 videoEl.classList.add('hidden');
                 audioWrap.classList.remove('hidden');
+                const clipCctvOverlay = document.getElementById('clip-cctv-overlay');
+                if (clipCctvOverlay) clipCctvOverlay.classList.add('hidden');
                 audioEl.src = `${API}/recordings/${recId}/audio`;
                 audioEl.onloadedmetadata = () => { if (time > 0) audioEl.currentTime = time; };
                 audioEl.oncanplay = () => { audioEl.play().catch(() => {}); };
@@ -2284,6 +2439,14 @@
             const transcriptText = document.getElementById('clip-transcript-text');
             videoEl.pause(); videoEl.src = '';
             audioEl.pause(); audioEl.src = '';
+            // Clean up CCTV overlay handler
+            if (videoEl.dataset.cctvHandler === 'true') {
+                // Clone node to remove all event listeners
+                const newVideoEl = videoEl.cloneNode(true);
+                videoEl.parentNode.replaceChild(newVideoEl, videoEl);
+            }
+            const clipCctvOverlay = document.getElementById('clip-cctv-overlay');
+            if (clipCctvOverlay) clipCctvOverlay.classList.add('hidden');
             if (transcriptText) {
                 transcriptText.textContent = '';
                 transcriptText.dataset.originalText = '';
@@ -3253,6 +3416,13 @@
                 audioEl.removeEventListener('timeupdate', timeUpdateHandler);
                 timeUpdateHandler = null;
             }
+            if (cctvOverlayHandler) {
+                videoEl.removeEventListener('timeupdate', cctvOverlayHandler);
+                cctvOverlayHandler = null;
+            }
+            const cctvOverlay = document.getElementById('cctv-overlay');
+            if (cctvOverlay) cctvOverlay.classList.add('hidden');
+            currentRecordingStartMs = null;
             document.getElementById('video-sidebar').classList.add('hidden');
             const segSearch = document.getElementById('segment-search');
             if (segSearch) { segSearch.value = ''; filterSegments(''); }
@@ -3270,6 +3440,28 @@
             if (!s && s !== 0) return '0:00';
             const m = Math.floor(s / 60), sec = Math.floor(s % 60);
             return `${m}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        function fmtCctvDateTime(ms) {
+            const d = new Date(ms);
+            const day = String(d.getDate()).padStart(2, '0');
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const year = String(d.getFullYear());
+            let h = d.getHours();
+            const ampm = h >= 12 ? 'pm' : 'am';
+            h = h % 12;
+            if (h === 0) h = 12;
+            const hh = String(h).padStart(2, '0');
+            const mm = String(d.getMinutes()).padStart(2, '0');
+            const ss = String(d.getSeconds()).padStart(2, '0');
+            return `${day}/${month}/${year} ${hh}:${mm}:${ss} ${ampm}`;
+        }
+
+        function formatElapsedTime(seconds, smoothMs) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${smoothMs.toString().padStart(2, '0')}`;
         }
 
         function statusClass(s) {

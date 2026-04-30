@@ -187,6 +187,11 @@
                     </div>
                     <!-- Video Player -->
                     <video id="video" class="w-full aspect-video bg-gray-900" controls data-testid="video-player"></video>
+                    <!-- CCTV Timestamp Overlay -->
+                    <div id="cctv-overlay" class="absolute top-4 left-4 bg-black/75 px-3 py-2 rounded-lg border border-white/10 hidden pointer-events-none">
+                        <span id="cctv-overlay-text" class="text-white font-mono text-sm font-semibold tracking-wide block"></span>
+                        <span id="cctv-overlay-time" class="text-white font-mono text-base font-bold tracking-wide block mt-1"></span>
+                    </div>
                     <!-- Audio Player (shown when no video) -->
                     <div id="audio-container" class="hidden p-8 bg-gradient-to-br from-orange-50 to-red-50 flex flex-col items-center justify-center" style="min-height: 300px;">
                         <div class="w-24 h-24 rounded-full bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center mb-6 shadow-xl shadow-orange-200">
@@ -332,6 +337,11 @@
                         </div>
                     </div>
                     <video id="clip-video" class="w-full max-h-[560px] bg-black" controls></video>
+                    <!-- CCTV Timestamp Overlay -->
+                    <div id="clip-cctv-overlay" class="absolute top-4 left-4 bg-black/75 px-3 py-2 rounded-lg border border-white/10 hidden pointer-events-none">
+                        <span id="clip-cctv-overlay-text" class="text-white font-mono text-sm font-semibold tracking-wide block"></span>
+                        <span id="clip-cctv-overlay-time" class="text-white font-mono text-base font-bold tracking-wide block mt-1"></span>
+                    </div>
                     <div id="clip-audio-wrap" class="hidden w-full h-full px-6 py-8 bg-gray-800 flex items-center justify-center">
                         <audio id="clip-audio" class="w-full" controls></audio>
                     </div>
