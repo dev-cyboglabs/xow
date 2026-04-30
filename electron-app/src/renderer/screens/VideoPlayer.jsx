@@ -13,10 +13,41 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
   const [volume, setVolume] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [smoothMs, setSmoothMs] = useState(0);
   const timelineRef = useRef(null);
   const globalTimeRef = useRef(0);   // tracks accumulated time across chunks
   const chunkStartOffsetRef = useRef(0); // globalTime at start of current chunk
   const initialLoadDone = useRef(false); // prevent multiple initial loads
+
+  // CCTV timestamp formatting
+  function fmtCctvDateTime(ms) {
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = String(d.getFullYear());
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12;
+    if (h === 0) h = 12;
+    const hh = String(h).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hh}:${mm}:${ss} ${ampm}`;
+  }
+
+  function formatElapsedTime(seconds, smoothMs) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${smoothMs.toString().padStart(2, '0')}`;
+  }
+
+  // Get recording start time from createdAt (metadata field from SD card)
+  const recordingStartTime = recording.createdAt ? new Date(recording.createdAt).getTime() : Date.now();
+  const cctvOverlayText = recordingStartTime != null
+    ? fmtCctvDateTime(recordingStartTime + Math.floor(currentTime) * 1000)
+    : 'No timestamp';
+  const elapsedTimeText = formatElapsedTime(currentTime, smoothMs);
 
   const chunks = recording.videoChunks || [];
   const scans = recording.barcodeScans || [];
@@ -132,7 +163,7 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
       const globalT = chunkStartOffsetRef.current + video.currentTime;
       globalTimeRef.current = globalT;
       setCurrentTime(globalT);
-      
+
       // Stop at segment end for individual visitor playback
       if (visitor && globalT >= segmentEnd) {
         video.pause();
@@ -146,7 +177,7 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
         setIsPlaying(false);
         return;
       }
-      
+
       const nextIdx = currentChunkIdx + 1;
       if (nextIdx < resolvedChunks.length) {
         chunkStartOffsetRef.current = chunks[nextIdx]?.startTime || 0;
@@ -170,7 +201,43 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
       video.removeEventListener('play', onPlay);
       video.removeEventListener('pause', onPause);
     };
-  }, [currentChunkIdx, resolvedChunks, chunks]);
+  }, [currentChunkIdx, resolvedChunks, chunks, visitor, segmentEnd]);
+
+  // Smooth milliseconds animation
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let animationFrameId = null;
+
+    const animateMs = () => {
+      if (!video.paused) {
+        const ms = Math.floor((video.currentTime % 1) * 100);
+        setSmoothMs(ms);
+        animationFrameId = requestAnimationFrame(animateMs);
+      }
+    };
+
+    const startAnimation = () => {
+      if (!animationFrameId) animateMs();
+    };
+
+    const stopAnimation = () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+    };
+
+    video.addEventListener('play', startAnimation);
+    video.addEventListener('pause', stopAnimation);
+
+    return () => {
+      video.removeEventListener('play', startAnimation);
+      video.removeEventListener('pause', stopAnimation);
+      stopAnimation();
+    };
+  }, []);
 
   function togglePlay() {
     const video = videoRef.current;
@@ -269,12 +336,18 @@ export default function VideoPlayer({ recording, drive, startTimestamp, visitor,
           </div>
         )}
         {!loading && !error && (
-          <video
-            ref={videoRef}
-            className="main-video"
-            playsInline
-            onClick={togglePlay}
-          />
+          <>
+            <video
+              ref={videoRef}
+              className="main-video"
+              playsInline
+              onClick={togglePlay}
+            />
+            <div className="cctv-overlay">
+              <div className="cctv-overlay-text">{cctvOverlayText}</div>
+              <div className="cctv-overlay-time">{elapsedTimeText}</div>
+            </div>
+          </>
         )}
       </main>
 

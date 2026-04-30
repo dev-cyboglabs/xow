@@ -56,5 +56,5 @@ cd android && ./gradlew assembleRelease
 2. npm run build:mac
 
 git add .
-git commit -m "apk enhance"
+git commit -m "final"
 git push

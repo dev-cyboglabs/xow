@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('xowAPI', {
   openPrintDialog: () => ipcRenderer.invoke('open-print-dialog'),
   openEncFile: () => ipcRenderer.invoke('open-enc-file'),
   importToLocal: (drivePath) => ipcRenderer.invoke('import-to-local', drivePath),
+  formatDrive: (drivePath) => ipcRenderer.invoke('format-drive', drivePath),
   getLocalPath: () => ipcRenderer.invoke('get-local-path'),
   checkTerms: () => ipcRenderer.invoke('check-terms'),
   acceptTerms: () => ipcRenderer.invoke('accept-terms'),

@@ -272,3 +272,84 @@ ipcMain.handle('open-enc-file', async () => {
   const buffer = fs.readFileSync(filePath);
   return { data: Array.from(buffer), fileName: path.basename(filePath) };
 });
+
+ipcMain.handle('format-drive', async (event, drivePath) => {
+  try {
+    // Find all XoW folders and delete their contents
+    const metaFiles = fileReader.findMetadataFiles(drivePath);
+
+    if (metaFiles.length === 0) {
+      return { success: false, error: 'No XoW recordings found on this drive.' };
+    }
+
+    let deletedFiles = 0;
+    let errors = 0;
+
+    // Collect all directories to delete
+    const dirsToDelete = new Set();
+
+    for (const metaPath of metaFiles) {
+      const metaDir = path.dirname(metaPath);
+      dirsToDelete.add(metaDir);
+
+      // Also add parent directories that might contain Videos/Audio
+      const parentDir = path.dirname(metaDir);
+      dirsToDelete.add(parentDir);
+
+      // Add Videos and Audio subdirectories
+      const videosDir = path.join(metaDir, 'Videos');
+      const audioDir = path.join(metaDir, 'Audio');
+      if (fs.existsSync(videosDir)) dirsToDelete.add(videosDir);
+      if (fs.existsSync(audioDir)) dirsToDelete.add(audioDir);
+
+      const parentVideosDir = path.join(parentDir, 'Videos');
+      const parentAudioDir = path.join(parentDir, 'Audio');
+      if (fs.existsSync(parentVideosDir)) dirsToDelete.add(parentVideosDir);
+      if (fs.existsSync(parentAudioDir)) dirsToDelete.add(parentAudioDir);
+    }
+
+    // Delete all files in each directory
+    for (const dir of dirsToDelete) {
+      try {
+        if (fs.existsSync(dir)) {
+          const files = fs.readdirSync(dir);
+          for (const file of files) {
+            const filePath = path.join(dir, file);
+            try {
+              const stat = fs.statSync(filePath);
+              if (stat.isDirectory()) {
+                // Recursively delete subdirectories
+                fs.rmSync(filePath, { recursive: true, force: true });
+              } else {
+                fs.unlinkSync(filePath);
+              }
+              deletedFiles++;
+            } catch (e) {
+              errors++;
+              console.error('Delete error:', e.message);
+            }
+          }
+        }
+      } catch (e) {
+        errors++;
+        console.error('Directory delete error:', e.message);
+      }
+    }
+
+    // Try to delete the empty directories
+    for (const dir of dirsToDelete) {
+      try {
+        if (fs.existsSync(dir)) {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+      } catch (e) {
+        // Ignore errors when deleting directories
+      }
+    }
+
+    return { success: true, deletedFiles, errors };
+  } catch (e) {
+    console.error('Format drive error:', e);
+    return { success: false, error: e.message };
+  }
+});

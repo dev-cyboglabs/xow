@@ -98,21 +98,52 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
   const timelineRef     = useRef(null);
   const chunkStartRef   = useRef(0);
   const globalTimeRef   = useRef(0);
-  const initialLoadDone = useRef(false);
-  const cardRefs        = useRef([]);
-
   const [resolvedChunks, setResolvedChunks] = useState([]);
+  const [resolvedAudio, setResolvedAudio]   = useState(null);
   const [currentChunkIdx, setCurrentChunkIdx] = useState(0);
-  const [isPlaying, setIsPlaying]   = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [volume, setVolume]         = useState(1);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
+  const [isPlaying, setIsPlaying]           = useState(false);
+  const [currentTime, setCurrentTime]       = useState(0);
+  const [volume, setVolume]                 = useState(1);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState('');
+  const [smoothMs, setSmoothMs]             = useState(0);
+  const [importing, setImporting]           = useState(false);
+  const [toast, setToast]                   = useState(null);
+  const cardRefs                             = useRef({});
+  const initialLoadDone                      = useRef(false);
+
+  // CCTV timestamp formatting
+  function fmtCctvDateTime(ms) {
+    const d = new Date(ms);
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = String(d.getFullYear());
+    let h = d.getHours();
+    const ampm = h >= 12 ? 'pm' : 'am';
+    h = h % 12;
+    if (h === 0) h = 12;
+    const hh = String(h).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    return `${day}/${month}/${year} ${hh}:${mm}:${ss} ${ampm}`;
+  }
+
+  function formatElapsedTime(seconds, smoothMs) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${smoothMs.toString().padStart(2, '0')}`;
+  }
+
+  // Get recording start time from createdAt (metadata field from SD card)
+  const recordingStartTime = recording.createdAt ? new Date(recording.createdAt).getTime() : Date.now();
+  const cctvOverlayText = recordingStartTime != null
+    ? fmtCctvDateTime(recordingStartTime + Math.floor(currentTime) * 1000)
+    : 'No timestamp';
+  const elapsedTimeText = formatElapsedTime(currentTime, smoothMs);
 
   // UI state
   const [infoVisitor, setInfoVisitor] = useState(null);
-  const [importing, setImporting]     = useState(false);
-  const [toast, setToast]             = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const chunks       = recording.videoChunks || [];
@@ -219,6 +250,46 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
       video.removeEventListener('pause', onPause);
     };
   }, [currentChunkIdx, resolvedChunks, chunks]);
+
+  // Smooth milliseconds animation
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let animationFrameId = null;
+
+    const animateMs = () => {
+      if (!video.paused) {
+        const ms = Math.floor((video.currentTime % 1) * 100);
+        setSmoothMs(ms);
+        animationFrameId = requestAnimationFrame(animateMs);
+      } else {
+        setSmoothMs(0);
+      }
+    };
+
+    const startAnimation = () => {
+      if (!animationFrameId) {
+        animateMs();
+      }
+    };
+
+    const stopAnimation = () => {
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+    };
+
+    video.addEventListener('play', startAnimation);
+    video.addEventListener('pause', stopAnimation);
+
+    return () => {
+      video.removeEventListener('play', startAnimation);
+      video.removeEventListener('pause', stopAnimation);
+      stopAnimation();
+    };
+  }, []);
 
   function seekToGlobalTime(globalTime) {
     const clamped = Math.max(0, Math.min(totalDuration, globalTime));
@@ -376,7 +447,7 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: '#0a0a0a', minWidth: 0 }}>
 
           {/* Video area */}
-          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000', minHeight: 0, position: 'relative' }}>
             {loading && (
               <div className="video-loading">
                 <div className="spinner large" />
@@ -394,12 +465,18 @@ export default function RecordingView({ recording, drive, onBack, visitorDataMap
               </div>
             )}
             {!loading && !error && (
-              <video
-                ref={videoRef}
-                className="main-video"
-                playsInline
-                onClick={togglePlay}
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  className="main-video"
+                  playsInline
+                  onClick={togglePlay}
+                />
+                <div className="cctv-overlay">
+                  <div className="cctv-overlay-text">{cctvOverlayText}</div>
+                  <div className="cctv-overlay-time">{elapsedTimeText}</div>
+                </div>
+              </>
             )}
           </div>
 

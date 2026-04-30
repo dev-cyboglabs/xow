@@ -66,6 +66,8 @@ async function getRecordings(drivePath) {
       });
     } catch (e) {
       console.error(`Failed to parse ${path.basename(metaPath)}:`, e.message);
+      console.error(`Skipping corrupted file: ${metaPath}`);
+      // Continue processing other files instead of stopping
     }
   }
 

@@ -11,6 +11,8 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
   const [scanning, setScanning] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveToast, setSaveToast] = useState(null);
+  const [showFormatModal, setShowFormatModal] = useState(false);
+  const [formatting, setFormatting] = useState(false);
 
   // Auto-dismiss save toast
   useEffect(() => {
@@ -43,6 +45,30 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
       setSaveToast({ type: 'error', msg: 'Import failed: ' + e.message });
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleFormatDrive() {
+    if (!selectedDrive) {
+      setSaveToast({ type: 'error', msg: 'No drive selected.' });
+      return;
+    }
+
+    setFormatting(true);
+    try {
+      const result = await window.xowAPI.formatDrive(selectedDrive.mountpoint);
+      if (!result.success) {
+        setSaveToast({ type: 'error', msg: result.error || 'Format failed.' });
+        return;
+      }
+      setSaveToast({ type: 'success', msg: 'Storage formatted successfully! All data has been deleted.' });
+      // Refresh recordings
+      await loadRecordings(selectedDrive.mountpoint);
+    } catch (e) {
+      setSaveToast({ type: 'error', msg: 'Format failed: ' + e.message });
+    } finally {
+      setFormatting(false);
+      setShowFormatModal(false);
     }
   }
 
@@ -236,6 +262,21 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
                 <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
               </svg>
             </button>
+            {selectedDrive && (
+              <button
+                className="btn-ghost"
+                onClick={() => setShowFormatModal(true)}
+                title="Format storage - delete all data"
+                style={{ color: '#E54B2A', borderColor: '#E54B2A' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M3 6h18" />
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                </svg>
+                Format
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -263,6 +304,90 @@ export default function RecordingList({ selectedDrive, onDriveChange, onOpenReco
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
+        </div>
+      )}
+
+      {/* Format confirmation modal */}
+      {showFormatModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'var(--surface)',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '400px',
+            width: '90%',
+            boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '16px',
+            }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#E54B2A" strokeWidth="2">
+                <path d="M3 6h18" />
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+              </svg>
+              <h3 style={{ fontSize: '18px', fontWeight: 600, color: 'var(--text)', margin: 0 }}>
+                {selectedDrive?.isLocal ? 'Clear Local Storage' : 'Format Drive'}
+              </h3>
+            </div>
+            <p style={{ fontSize: '14px', color: 'var(--text-muted)', marginBottom: '24px', lineHeight: '1.5' }}>
+              This will permanently delete all data from {selectedDrive?.isLocal ? 'local storage' : 'the drive'} including:
+              <br />• Video files
+              <br />• Audio files
+              <br />• Metadata JSON files
+              <br /><br />
+              <strong style={{ color: '#E54B2A' }}>This action cannot be undone!</strong>
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowFormatModal(false)}
+                disabled={formatting}
+                style={{
+                  padding: '10px 20px',
+                  background: 'var(--surface-2)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '6px',
+                  color: 'var(--text)',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: formatting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleFormatDrive}
+                disabled={formatting}
+                style={{
+                  padding: '10px 20px',
+                  background: '#E54B2A',
+                  border: '1px solid #E54B2A',
+                  borderRadius: '6px',
+                  color: '#fff',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: formatting ? 'not-allowed' : 'pointer',
+                  opacity: formatting ? 0.6 : 1,
+                }}
+              >
+                {formatting ? 'Formatting...' : 'Delete All Data'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
