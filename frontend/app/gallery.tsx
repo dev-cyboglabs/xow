@@ -1525,30 +1525,12 @@ export default function GalleryScreen() {
                     <Text style={styles.videoLoadingText}>Loading video...</Text>
                   </View>
                 )}
-                
-                {/* Left-side overlay with Timecode and FPS */}
-                <View style={styles.videoOverlay}>
-                  <View style={styles.overlayLogo}>
-                    <Ionicons name="videocam" size={12} color="#fff" />
-                    <Text style={styles.overlayLogoText}>XoW</Text>
-                  </View>
-                  <View style={styles.overlayDivider} />
-                  <View style={styles.overlayBlock}>
-                    <Text style={styles.overlayLabel}>TIMECODE</Text>
-                    <Text style={styles.overlayTCValue}>{formatTC(videoPosition)}</Text>
-                  </View>
-                  <View style={styles.overlayDivider} />
-                  <View style={styles.overlayBlock}>
-                    <Text style={styles.overlayLabel}>FPS</Text>
-                    <Text style={styles.overlayFPSValue}>{videoFps}</Text>
-                  </View>
-                </View>
 
                 {/* Replay button - shown when video ends */}
                 {videoHasEnded && (
                   <TouchableOpacity style={styles.replayButton} onPress={replayVideo}>
                     <Ionicons name="refresh" size={32} color="#fff" />
-                    <Text style={styles.replayText}>Replay</Text>
+                    {/* <Text style={styles.replayText}>Replay</Text> */}
                   </TouchableOpacity>
                 )}
 
@@ -1815,7 +1797,7 @@ const styles = StyleSheet.create({
   overlayFPSValue: { color: '#E54B2A', fontSize: 22, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
 
   // Replay button
-  replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -98 }, { translateY: -98 }], width: 195, height: 195, borderRadius: 98, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
+  replayButton: { position: 'absolute', top: '50%', left: '50%', transform: [{ translateX: -60 }, { translateY: -60 }], width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(229,75,42,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 5 }, shadowOpacity: 0.3, shadowRadius: 10, elevation: 10 },
   replayText: { color: '#fff', fontSize: 25, fontWeight: '700', marginTop: 13, letterSpacing: 0.5 },
   controlsBar: { position: 'absolute', left: 18, right: 18, bottom: 80, backgroundColor: 'rgba(0,0,0,0.82)', borderRadius: 13, paddingHorizontal: 18, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 16 },
   controlPlayBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: 'rgba(229,75,42,0.85)', justifyContent: 'center', alignItems: 'center' },
